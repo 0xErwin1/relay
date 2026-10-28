@@ -1,0 +1,15 @@
+[package]
+name = "relay_http"
+description = "Relay HTTP transport: TLS, certificates, proxies, cookies, timings, auth signing."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+relay_core.workspace = true

@@ -1,0 +1,19 @@
+[package]
+name = "relay_engine"
+description = "Relay execution pipeline, runner, history and secrets. The API every front end uses."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+relay_core.workspace = true
+relay_http.workspace = true
+relay_postman.workspace = true
+relay_script.workspace = true
+relay_store.workspace = true

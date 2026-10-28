@@ -1,0 +1,15 @@
+[package]
+name = "relay_postman"
+description = "Postman collection v2.1 and environment import and export."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+relay_core.workspace = true

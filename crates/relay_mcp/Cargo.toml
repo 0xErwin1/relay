@@ -1,0 +1,15 @@
+[package]
+name = "relay_mcp"
+description = "Relay MCP server over the engine."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+relay_engine.workspace = true

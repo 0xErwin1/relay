@@ -1,0 +1,70 @@
+[workspace]
+members = [
+    "crates/relay",
+    "crates/relay_core",
+    "crates/relay_engine",
+    "crates/relay_http",
+    "crates/relay_mcp",
+    "crates/relay_postman",
+    "crates/relay_script",
+    "crates/relay_store",
+    "crates/relay_ui",
+]
+default-members = ["crates/relay"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.95"
+version = "0.1.0-dev.0"
+authors = ["Ignacio Perez <ignacio@feuer.me>"]
+description = "A keyboard-first, local-first HTTP client"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+relay_core = { path = "crates/relay_core" }
+relay_engine = { path = "crates/relay_engine" }
+relay_http = { path = "crates/relay_http" }
+relay_mcp = { path = "crates/relay_mcp" }
+relay_postman = { path = "crates/relay_postman" }
+relay_script = { path = "crates/relay_script" }
+relay_store = { path = "crates/relay_store" }
+relay_ui = { path = "crates/relay_ui" }
+
+anyhow = "1"
+
+# GPUI comes from the published crates without local patches. Adopt a
+# `[patch.crates-io]` entry only for a concrete defect; see ARCHITECTURE.md.
+gpui = { package = "gpui-pre", version = "=0.3.9" }
+gpui-component = { version = "=0.7.3" }
+gpui-platform = { package = "gpui-pre-platform", version = "=0.3.9", default-features = false, features = ["font-kit", "wayland", "x11"] }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unused_must_use = "deny"
+unreachable_pub = "warn"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+unwrap_in_result = "warn"
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+indexing_slicing = "warn"
+let_underscore_must_use = "warn"
+
+# Line tables keep backtraces usable at a fraction of the link time and
+# memory that full debug info costs with GPUI in the graph.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.release]
+lto = "thin"
+strip = "symbols"

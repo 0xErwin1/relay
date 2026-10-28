@@ -1,0 +1,7 @@
+# The workspace lints deny-list unwrap, expect, panic, indexing and dbg in
+# production code; tests may use them freely.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-dbg-in-tests = true
