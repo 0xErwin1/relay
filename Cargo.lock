@@ -740,6 +740,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bolt"
+version = "0.1.0-dev.0"
+dependencies = [
+ "gpui-component",
+ "gpui-pre",
+]
+
+[[package]]
 name = "borsh"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5814,6 +5822,7 @@ name = "relay_ui"
 version = "0.1.0-dev.0"
 dependencies = [
  "anyhow",
+ "bolt",
  "gpui-component",
  "gpui-mcp",
  "gpui-pre",

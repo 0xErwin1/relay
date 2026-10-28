@@ -23,7 +23,8 @@ names the alternative it rejects and, where relevant, the DBFlux experience behi
 | Postman | Import and export of collection v2.1 and environment files. Unsupported fields are preserved, not dropped. |
 | HTTP | `reqwest` with rustls, per-request clients cached by TLS and proxy configuration. |
 | GPUI | Published `gpui-pre` 0.3.7, `gpui-component` 0.7.0 and `gpui-pre-platform` 0.3.7, the newest the UI automation bridge supports; every other dependency tracks its latest release. `gpui-pre` is patched from the `gpui-mcp` git repository at a pinned rev; nothing is vendored. |
-| Crates | Nine crates in a strict one-way dependency order. Only `relay_ui` and `relay` link GPUI. |
+| Crates | Ten crates in a strict one-way dependency order. Only `bolt`, `relay_ui` and `relay` link GPUI. |
+| Design system | Bolt, copied from DBFlux, in the product-agnostic `bolt` crate. Relay supplies only its accent and its own tokens, so `bolt` can become a shared library without touching Relay's screens. |
 | UI automation | The upstream `gpui-mcp` bridge is always installed. `relay mcp` exposes it as `ui_*` tools under the same policy, so agents declare one MCP server. |
 
 ## Domain model
@@ -154,6 +155,8 @@ relay_core ──┬── relay_store ───┐
              ├── relay_postman ─┤
              ├── relay_http ────┼── relay_engine ──┬── relay_mcp ──┐
              └── relay_script ──┘                  └── relay_ui ───┴── relay (binary)
+                                                         │
+                                              bolt ──────┘   (design system, no Relay types)
 ```
 
 | Crate | Owns | Must not |
@@ -165,6 +168,7 @@ relay_core ──┬── relay_store ───┐
 | `relay_script` | The QuickJS sandbox, the `pm` API, bundled libraries, time and memory limits. | Send requests directly; `pm.sendRequest` goes through a host callback. |
 | `relay_engine` | The execution pipeline, collection runner, history and app state (SQLite), keyring secrets. The single API surface for all front ends. | Depend on GPUI or rmcp. |
 | `relay_mcp` | The MCP server: tools, resources, agent policy, audit. | Duplicate engine logic. |
+| `bolt` | Bolt, the design system shared with DBFlux: tokens, theme, generic components. | Know about Relay, HTTP or any product type. |
 | `relay_ui` | Everything GPUI: theme, components, sidebar, documents, keymap. | Contain domain rules that the engine or core should own. |
 | `relay` | The binary: GUI startup and the `mcp`, `run` and `import` subcommands. | Contain logic beyond wiring. |
 
@@ -270,8 +274,31 @@ database, which was DBFlux's most expensive structural mistake.
   script console.
 - Keyboard-first: GPUI `KeyBinding`s with context predicates, a command palette, and a test
   that every action reachable by pointer is also bound to a key.
-- Theming through semantic tokens mapped onto the gpui-component theme, with a test that
-  rejects raw colors in components.
+- Theming through Bolt (see "Design system"), with a test that rejects raw colors and bare
+  pixel values outside the token files.
+
+## Design system
+
+Relay and DBFlux are a family of apps: both use **Bolt** (islands, 45 degree cuts, Archivo and
+JetBrains Mono, compact density) with one accent per product. `design/system.md` holds the
+values and the hierarchy rules; `design/bolt/` holds the artboards.
+
+Bolt is copied from DBFlux for now. The goal is to make the later move to a shared library a
+dependency swap, so the copy lives behind a boundary from the start:
+
+- **`crates/bolt`** owns everything product-agnostic: color roles and washes, typography roles,
+  spacing, cuts and chrome metrics, the chamfer shape, the theme mapping onto gpui-component,
+  and generic components (island, button, input, tabs, tree row, table, keycap, status chip).
+  It depends on GPUI and gpui-component only and never names Relay, HTTP or a Relay type.
+- **Relay passes in what differs:** a `Brand` value (accent fill, hover, pressed, tint, app
+  name, logo) and its own extra tokens (`method-*`, `draft`), defined in `relay_ui`.
+- **`relay_ui` never reads gpui-component `Theme` fields or raw colors directly.** It asks
+  `bolt` for a role (`text strong`, `panel`, `accent tint`) or uses a `bolt` component.
+  A guardrail test rejects color literals and bare pixel values outside the token files, as
+  DBFlux does.
+- Extraction then means moving `crates/bolt` to its own repository, depending on it from
+  both products, and deleting DBFlux's copy. Bolt values that change in the meantime are
+  changed in both products or recorded as a divergence in `design/system.md`.
 
 ## UI automation
 

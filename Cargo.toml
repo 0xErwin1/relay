@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/bolt",
     "crates/relay",
     "crates/relay_core",
     "crates/relay_engine",
@@ -23,6 +24,7 @@ license = "Apache-2.0"
 publish = false
 
 [workspace.dependencies]
+bolt = { path = "crates/bolt" }
 relay_core = { path = "crates/relay_core" }
 relay_engine = { path = "crates/relay_engine" }
 relay_http = { path = "crates/relay_http" }
