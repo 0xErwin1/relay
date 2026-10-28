@@ -19,7 +19,7 @@ rust-version = "1.96"
 version = "0.1.0-dev.0"
 authors = ["Ignacio Perez <ignacio@feuer.me>"]
 description = "A keyboard-first, local-first HTTP client"
-license = "MIT OR Apache-2.0"
+license = "Apache-2.0"
 publish = false
 
 [workspace.dependencies]

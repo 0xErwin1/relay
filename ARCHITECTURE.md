@@ -13,6 +13,8 @@ names the alternative it rejects and, where relevant, the DBFlux experience behi
 | Area | Decision |
 |------|----------|
 | Source of truth | A workspace is a directory of TOML files, one file per request, folder, collection and environment. |
+| Saving | Edits are local drafts that survive restarts. `Ctrl+S` writes the workspace file. |
+| Protocols | HTTP only until after v1. |
 | App state | History, recent workspaces, cookies and UI state live in a per-user SQLite file, never in the workspace. |
 | Secrets | Secret variable values live in the OS keyring; workspace files hold only the key and `secret = true`. |
 | Engine | One `relay_engine` crate drives load, resolve, script, send and record. The UI, the MCP server and the CLI all call it. |
@@ -127,6 +129,23 @@ Writes are atomic (temporary file plus rename) and carry the content hash the wr
 read. A mismatch means someone else changed the file (another window, `relay mcp`, a `git
 pull`) and the write fails with a conflict instead of overwriting. The GUI watches the
 workspace directory and reloads changed files.
+
+## Drafts and saving
+
+Saving is explicit, as in Postman: an edit never touches the workspace file until `Ctrl+S`.
+
+- An edited entity becomes a **draft**, stored in the per-user app state and keyed by
+  workspace id and entity id. Drafts survive a restart and their tabs show them as unsaved.
+- **Sending** a request with a draft sends the draft. History records what was sent.
+- **Saving** writes the entity file (atomic, hash-checked) and discards the draft.
+- **Reverting** discards the draft.
+- When the file changes underneath a draft (a `git pull`, an agent's write tool, another
+  editor), the draft is kept and its tab shows that the saved version moved. Saving then
+  fails with a conflict until the user picks a side.
+- Agent write tools write files directly; they never create or read drafts. An agent and the
+  user editing the same request meet at that conflict, not at a silent overwrite.
+
+Drafts stay out of the workspace directory so that a commit never picks one up.
 
 ## Crate map
 
@@ -327,9 +346,9 @@ development stopgap that disappears with the `ui_*` tools.
 | 2 HTTP | `relay_http` with basic, bearer and API key auth; `relay run` sends a request from the CLI. |
 | 3 UI MVP | Sidebar, request editor, response view, environment switcher, and `relay mcp` with the `ui_*` tools so agents verify the UI from here on. |
 | 4 Postman | v2.1 collection and environment import and export against a fixture corpus. |
-| 5 Scripts | `pm.*` variables, tests and expectations, then `pm.sendRequest` and bundled libraries. |
+| 5 Scripts | `pm.*` variables, tests and expectations, then `pm.sendRequest` and bundled libraries. Required for v1. |
 | 6 MCP | Workspace, collection, request and runner tools, resources, policy, approvals and audit. |
 | 7 Depth | Client certificates, proxies, cookies, digest, OAuth 2, AWS v4, collection runner, native bundles. |
 
-Phases 1 and 2 are the foundation everything else stands on; the UI starts once a request can
+FEATURES.md assigns each feature to MVP, v1 or later. Phases 1 and 2 are the foundation everything else stands on; the UI starts once a request can
 be loaded from disk and sent from the CLI.

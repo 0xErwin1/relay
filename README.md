@@ -8,7 +8,8 @@ Workspaces are directories of small TOML files, so collections diff, merge and r
 cleanly in git.
 
 > Status: foundation. The workspace compiles and opens an empty window; no product
-> features exist yet. See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and roadmap.
+> features exist yet. See [FEATURES.md](FEATURES.md) for what is planned and
+> [ARCHITECTURE.md](ARCHITECTURE.md) for how it is built.
 
 ## Quick path
 
@@ -24,4 +25,4 @@ and the GPUI native dependencies (Wayland, X11, xkbcommon, Vulkan, fontconfig, f
 
 ## License
 
-Dual-licensed under MIT or Apache-2.0, at your option.
+Licensed under the [Apache License 2.0](LICENSE-APACHE).
