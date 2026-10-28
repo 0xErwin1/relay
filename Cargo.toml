@@ -15,7 +15,7 @@ resolver = "3"
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.96"
+rust-version = "1.99"
 version = "0.1.0-dev.0"
 authors = ["Ignacio Perez <ignacio@feuer.me>"]
 description = "A keyboard-first, local-first HTTP client"
@@ -32,13 +32,14 @@ relay_script = { path = "crates/relay_script" }
 relay_store = { path = "crates/relay_store" }
 relay_ui = { path = "crates/relay_ui" }
 
-anyhow = "1"
-env_logger = "0.11"
-log = "0.4"
+anyhow = "1.0.104"
+env_logger = "0.11.11"
+log = "0.4.34"
 
-# GPUI comes from the published crates. The versions follow the newest
-# gpui-pre release the UI automation bridge (gpui-mcp) supports: gpui-pre 0.3.7,
-# which is what gpui-component 0.7.0 and gpui-pre-platform 0.3.7 pin.
+# Dependencies track their latest release, except the GPUI stack: it follows
+# the newest gpui-pre the UI automation bridge (gpui-mcp) supports, 0.3.7,
+# which gpui-component 0.7.0 and gpui-pre-platform 0.3.7 pin. Move all three when
+# gpui-mcp supports a newer gpui-pre (tracked upstream in gpui-mcp#15).
 gpui = { package = "gpui-pre", version = "=0.3.7" }
 gpui-component = { version = "=0.7.0" }
 gpui-platform = { package = "gpui-pre-platform", version = "=0.3.7", default-features = false, features = ["font-kit", "wayland", "x11"] }

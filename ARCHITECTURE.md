@@ -22,7 +22,7 @@ names the alternative it rejects and, where relevant, the DBFlux experience behi
 | Scripting | QuickJS through `rquickjs`, with a `pm` API shim and bundled Postman sandbox libraries. |
 | Postman | Import and export of collection v2.1 and environment files. Unsupported fields are preserved, not dropped. |
 | HTTP | `reqwest` with rustls, per-request clients cached by TLS and proxy configuration. |
-| GPUI | Published `gpui-pre` 0.3.7, `gpui-component` 0.7.0 and `gpui-pre-platform` 0.3.7. `gpui-pre` is patched from the `gpui-mcp` git repository at a pinned rev; nothing is vendored. |
+| GPUI | Published `gpui-pre` 0.3.7, `gpui-component` 0.7.0 and `gpui-pre-platform` 0.3.7, the newest the UI automation bridge supports; every other dependency tracks its latest release. `gpui-pre` is patched from the `gpui-mcp` git repository at a pinned rev; nothing is vendored. |
 | Crates | Nine crates in a strict one-way dependency order. Only `relay_ui` and `relay` link GPUI. |
 | UI automation | The upstream `gpui-mcp` bridge is always installed. `relay mcp` exposes it as `ui_*` tools under the same policy, so agents declare one MCP server. |
 

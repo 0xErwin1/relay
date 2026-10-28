@@ -3,7 +3,7 @@
 Status: **proposed starter**. The project has no design sources yet (no CSS, no theme code),
 so every value below is a proposal to accept or change, not something read from the code.
 
-Token names are the `ThemeColor` fields of `gpui-kit` 0.7.0 (formerly `gpui-component`)
+Token names are the `ThemeColor` fields of `gpui-component` 0.7.0
 (`src/theme/theme_color.rs`), so the implementation maps one to one onto the GPUI theme.
 Relay-specific tokens (methods, status codes, variables) map onto its named colors
 (`green`, `yellow`, `blue`, `magenta`, `red`, `cyan`).
