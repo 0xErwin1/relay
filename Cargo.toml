@@ -37,6 +37,16 @@ relay_ui = { path = "crates/relay_ui" }
 anyhow = "1.0.104"
 env_logger = "0.11.11"
 log = "0.4.34"
+pretty_assertions = "1.4.1"
+rand = "0.10.3"
+serde = { version = "1.0.229", features = ["derive"] }
+sha2 = "0.11.1"
+tempfile = "3.27.0"
+thiserror = "2.0.21"
+time = { version = "0.3.55", features = ["formatting"] }
+toml = { version = "1.1.8", features = ["preserve_order"] }
+ulid = { version = "3.0.0", features = ["serde"] }
+uuid = { version = "1.29.0", features = ["v4"] }
 
 # Dependencies track their latest release, except the GPUI stack: it follows
 # the newest gpui-pre the UI automation bridge (gpui-mcp) supports, 0.3.7,
