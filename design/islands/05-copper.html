@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440, height=900">
+<title>Relay — Islands, Copper palette</title>
+<style>
+:root {
+  --canvas: #0e0d0c;
+  --background: #1a1918;
+  --sidebar: #171615;
+  --title-bar: #0e0d0c;
+  --tab-bar: #141312;
+  --tab: #141312;
+  --tab-active: #1a1918;
+  --status-bar: #0e0d0c;
+  --popover: #242220;
+  --input: #201e1c;
+  --muted: #272523;
+  --border: #34312e;
+  --foreground: #e8e4df;
+  --muted-foreground: #9e9891;
+  --primary: #d9784a;
+  --primary-foreground: #1a0d06;
+  --primary-hover: #e48f66;
+  --accent: #282624;
+  --accent-foreground: #e8e4df;
+  --list-active: #d9784a1f;
+  --list-active-border: #d9784a;
+  --selection: #d9784a40;
+  --ring: #d9784a;
+  --overlay: #0e0d0cb3;
+  --success: #8fb87f;
+  --info: #6fb0b3;
+  --warning: #d4b46a;
+  --danger: #e07a6e;
+  --green: #8fb87f;
+  --yellow: #d4b46a;
+  --blue: #8ea7d4;
+  --magenta: #c0a0d6;
+  --red: #e07a6e;
+  --cyan: #6fb0b3;
+  --method-get: #8fb87f;
+  --method-post: #7fb0d6;
+  --method-put: #a3a3e0;
+  --method-patch: #cf98c2;
+  --method-delete: #e8707a;
+  --method-other: #6fb7ad;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --shadow-popover: 0 8px 24px rgba(0,0,0,.45);
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", "Cantarell", "Noto Sans", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1440px; height: 900px; overflow: hidden; }
+body {
+  background: var(--canvas); color: var(--foreground);
+  font: 400 13px/18px var(--font-ui);
+  display: grid; grid-template-rows: 36px 1fr 24px;
+}
+::selection { background: var(--selection); }
+button, input { font: inherit; color: inherit; }
+button { background: none; border: 0; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+.mono { font-family: var(--font-mono); }
+.small { font-size: 12px; line-height: 16px; }
+.dim { color: var(--muted-foreground); }
+.m { font: 700 11px/16px var(--font-mono); text-transform: uppercase; }
+.get { color: var(--method-get); } .post { color: var(--method-post); } .put { color: var(--method-put); } .patch { color: var(--method-patch); } .del { color: var(--method-delete); } .other { color: var(--method-other); }
+.var { color: var(--cyan); background: #6fb0b31f; border-radius: 3px; padding: 0 2px; }
+.var-bad { color: var(--warning); text-decoration: underline dotted var(--warning); text-underline-offset: 3px; }
+.secret { color: var(--muted-foreground); letter-spacing: 1px; }
+.btn { height: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--input); display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { background: var(--accent); }
+.chev { width: 10px; height: 10px; flex: none; }
+kbd { font: 400 11px/16px var(--font-mono); background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 4px; color: var(--foreground); }
+
+/* Title bar */
+.titlebar { background: var(--title-bar); display: flex; align-items: center; padding: 0 8px; gap: 8px; }
+.ws { font-weight: 600; }
+.ws .logo { width: 16px; height: 16px; border-radius: var(--radius-sm); background: var(--primary); color: var(--primary-foreground); font: 700 10px/16px var(--font-ui); text-align: center; }
+.titlebar .spacer { flex: 1; text-align: center; }
+.env-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warning); }
+.winctl { display: flex; gap: 4px; margin-left: 4px; }
+.winctl button { width: 28px; height: 28px; border-radius: var(--radius-sm); color: var(--muted-foreground); display: grid; place-items: center; }
+.winctl button:hover { background: var(--accent); color: var(--foreground); }
+
+/* Main */
+.main { display: grid; grid-template-columns: 280px 1fr; gap: 8px; padding: 0 8px; min-height: 0; }
+.island { border-radius: 10px; overflow: hidden; }
+.sidebar { background: var(--sidebar); display: flex; flex-direction: column; min-height: 0; }
+.search { padding: 8px; }
+.search label { position: relative; display: block; }
+.search svg { position: absolute; left: 8px; top: 9px; color: var(--muted-foreground); }
+.search input { width: 100%; height: 28px; background: var(--input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 40px 0 26px; }
+.search input::placeholder { color: var(--muted-foreground); }
+.search kbd { position: absolute; right: 6px; top: 5px; }
+.sec-h { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px 4px; font: 600 11px/16px var(--font-ui); text-transform: uppercase; letter-spacing: .04em; color: var(--muted-foreground); }
+.sec-h button { color: var(--muted-foreground); width: 20px; height: 20px; border-radius: var(--radius-sm); display: grid; place-items: center; }
+.sec-h button:hover { background: var(--accent); color: var(--foreground); }
+.tree { flex: 1; overflow: auto; list-style: none; padding-bottom: 8px; }
+.tree ul { list-style: none; }
+.row { height: 26px; display: flex; align-items: center; gap: 4px; padding-right: 8px; border-left: 2px solid transparent; cursor: default; white-space: nowrap; }
+.row:hover { background: var(--accent); }
+.row[aria-selected="true"] { background: var(--list-active); border-left-color: var(--list-active-border); }
+.l0 { padding-left: 6px; } .l1 { padding-left: 14px; } .l2 { padding-left: 22px; }
+.row .m { width: 44px; flex: none; }
+.row .name { overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.row .folder { color: var(--muted-foreground); flex: none; }
+.row .draft { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-foreground); flex: none; }
+.envs { border-top: 1px solid var(--border); padding-bottom: 8px; list-style: none; }
+.envs .row { padding-left: 12px; gap: 8px; }
+.envs .tag { margin-left: auto; }
+
+/* Document */
+.doc { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.tabs { height: 32px; background: var(--tab-bar); flex: none; border-bottom: 1px solid var(--border); display: flex; flex: none; }
+.tab { height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 12px; background: var(--tab); border-right: 1px solid var(--border); color: var(--muted-foreground); max-width: 220px; position: relative; }
+.tab:hover { background: var(--accent); color: var(--foreground); }
+.tab[aria-selected="true"] { background: var(--tab-active); color: var(--foreground); height: 33px; box-shadow: inset 0 2px 0 var(--primary); }
+.tab .end { width: 16px; height: 16px; display: grid; place-items: center; border-radius: var(--radius-sm); }
+.tab .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted-foreground); }
+.tab .x { display: none; color: var(--muted-foreground); }
+.tab:hover .x, .tab:focus-visible .x { display: block; }
+.tab:hover .dot, .tab:focus-visible .dot { display: none; }
+.tab-new { width: 32px; color: var(--muted-foreground); display: grid; place-items: center; }
+
+.reqhead { padding: 8px 12px 0; display: flex; align-items: center; gap: 8px; flex: none; }
+.crumb { font-size: 12px; color: var(--muted-foreground); }
+.crumb b { color: var(--foreground); font: 600 15px/20px var(--font-ui); margin-left: 4px; }
+.reqhead .actions { margin-left: auto; display: flex; gap: 8px; }
+.draft-note { display: inline-flex; align-items: center; gap: 6px; color: var(--muted-foreground); font-size: 12px; }
+.draft-note i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-foreground); }
+
+.urlbar { margin: 8px 12px; height: 36px; display: flex; flex: none; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--input); }
+.urlbar .method { width: 92px; border-right: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 12px; }
+.urlbar .method .m { font-size: 12px; }
+.urlbar .url { flex: 1; display: flex; align-items: center; padding: 0 12px; font: 400 13px/20px var(--font-mono); white-space: nowrap; overflow: hidden; }
+.urlbar .send { margin: 3px; padding: 0 16px; border-radius: var(--radius-sm); background: var(--primary); color: var(--primary-foreground); font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.urlbar .send:hover { background: var(--primary-hover); }
+.urlbar .send kbd { background: #1a0d0626; border-color: #1a0d0640; color: var(--primary-foreground); }
+
+.subtabs { height: 32px; display: flex; align-items: stretch; gap: 4px; padding: 0 12px; border-bottom: 1px solid var(--border); flex: none; }
+.subtab { padding: 0 8px; color: var(--muted-foreground); display: flex; align-items: center; gap: 6px; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.subtab:hover { color: var(--foreground); }
+.subtab[aria-selected="true"] { color: var(--foreground); border-bottom-color: var(--primary); font-weight: 500; }
+.count { font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: var(--radius-sm); background: var(--muted); color: var(--muted-foreground); }
+.subtabs .right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+.editor { background: var(--background); display: flex; flex-direction: column; flex: none; }
+.request-pane { height: 300px; display: flex; flex-direction: column; flex: none; min-height: 0; }
+.table-wrap { padding: 8px 12px; overflow: auto; }
+table { width: 100%; border-collapse: collapse; border: 1px solid var(--border); table-layout: fixed; }
+th, td { height: 28px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); padding: 0 8px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+th { background: var(--muted); font: 500 12px/16px var(--font-ui); color: var(--muted-foreground); }
+td { font: 400 13px/20px var(--font-mono); }
+td.ck, th.ck { width: 36px; text-align: center; padding: 0; }
+th.k { width: 220px; } th.d { width: 240px; }
+td.desc { font-family: var(--font-ui); color: var(--muted-foreground); font-size: 12px; }
+tr.ghost td { color: var(--muted-foreground); }
+.cb { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--border); background: var(--input); display: inline-grid; place-items: center; vertical-align: middle; }
+.cb[aria-checked="true"] { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+.warn-note { display: inline-flex; align-items: center; gap: 4px; color: var(--warning); font: 400 12px/16px var(--font-ui); }
+
+.divider { height: 8px; flex: none; cursor: row-resize; background: var(--canvas); position: relative; border-radius: var(--radius-sm); }
+.divider::after { content: ""; position: absolute; left: 50%; top: 2.5px; width: 32px; height: 3px; margin-left: -16px; border-radius: 2px; background: var(--border); }
+.divider:hover::after, .divider:focus-visible::after { background: var(--primary); }
+
+.response { background: var(--background); flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.summary { height: 32px; display: flex; align-items: center; gap: 12px; padding: 0 12px; flex: none; }
+.summary .h { font: 600 11px/16px var(--font-ui); text-transform: uppercase; letter-spacing: .04em; color: var(--muted-foreground); }
+.status-ok { color: var(--success); font-weight: 600; font-family: var(--font-mono); }
+.summary .right { margin-left: auto; display: flex; gap: 8px; }
+.code { flex: 1; overflow: auto; display: grid; grid-template-columns: 48px 1fr; font: 400 13px/20px var(--font-mono); padding: 8px 0; }
+.ln { color: var(--muted-foreground); text-align: right; padding-right: 12px; user-select: none; white-space: pre; }
+.json { white-space: pre; padding-left: 8px; border-left: 1px solid var(--border); }
+.k { color: var(--blue); } .s { color: var(--green); } .n { color: var(--magenta); } .p { color: var(--muted-foreground); }
+
+/* Status bar */
+.statusbar { background: var(--status-bar); display: flex; align-items: center; gap: 16px; padding: 0 12px; font-size: 12px; line-height: 16px; color: var(--muted-foreground); }
+.statusbar .hint { display: inline-flex; gap: 4px; align-items: center; }
+.statusbar .sp { flex: 1; }
+.statusbar .ok { display: inline-flex; gap: 6px; align-items: center; }
+.statusbar .ok i { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="chev" viewBox="0 0 10 10"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="chevr" viewBox="0 0 10 10"><path d="M3.5 2 6.5 5 3.5 8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="folder" viewBox="0 0 14 14"><path d="M1.5 3.5h4l1.2 1.4h5.8v6.6h-11z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+  <symbol id="x" viewBox="0 0 10 10"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+  <symbol id="plus" viewBox="0 0 12 12"><path d="M6 2v8M2 6h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+  <symbol id="warn" viewBox="0 0 12 12"><path d="M6 1.5 11 10.5H1z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M6 5v2.5M6 9v.01" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+  <symbol id="check" viewBox="0 0 10 10"><path d="M2 5.2 4.2 7.3 8 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<header class="titlebar" aria-label="Window title bar">
+  <button class="btn ws" aria-haspopup="listbox" aria-label="Workspace: billing">
+    <span class="logo" aria-hidden="true">R</span> billing
+    <svg class="chev dim"><use href="#chev"/></svg>
+  </button>
+  <span class="spacer small dim">Relay — billing · Create invoice</span>
+  <button class="btn" aria-haspopup="listbox" aria-label="Environment: staging">
+    <span class="env-dot" aria-hidden="true"></span>
+    <span class="dim small">Environment</span> staging
+    <svg class="chev dim"><use href="#chev"/></svg>
+  </button>
+  <div class="winctl" role="group" aria-label="Window controls">
+    <button aria-label="Minimize"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5h6" stroke="currentColor" stroke-width="1.2"/></svg></button>
+    <button aria-label="Maximize"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="2" y="2" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></button>
+    <button aria-label="Close window"><svg width="10" height="10"><use href="#x"/></svg></button>
+  </div>
+</header>
+
+<div class="main">
+  <nav class="sidebar island" aria-label="Collections">
+    <div class="search" role="search">
+      <label>
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle cx="5" cy="5" r="3.6" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M7.8 7.8 10.5 10.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        <input type="search" placeholder="Search requests" aria-label="Search requests">
+        <kbd>Ctrl+P</kbd>
+      </label>
+    </div>
+    <div class="sec-h"><span>Collections</span><button aria-label="New collection"><svg width="12" height="12"><use href="#plus"/></svg></button></div>
+    <ul class="tree" role="tree" aria-label="Collection tree">
+      <li role="treeitem" aria-expanded="true">
+        <div class="row l0" tabindex="-1"><svg class="chev dim"><use href="#chev"/></svg><span class="name" style="font-weight:500">Billing API</span></div>
+        <ul role="group">
+          <li role="treeitem" aria-expanded="true">
+            <div class="row l1" tabindex="-1"><svg class="chev dim"><use href="#chev"/></svg><svg class="folder" width="14" height="14"><use href="#folder"/></svg><span class="name">invoices</span></div>
+            <ul role="group">
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m get">GET</span><span class="name">List invoices</span></div></li>
+              <li role="treeitem" aria-selected="true" class="row l2" tabindex="0" aria-label="POST Create invoice, unsaved draft"><span class="m post">POST</span><span class="name">Create invoice</span><span class="draft" aria-hidden="true"></span></li>
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m get">GET</span><span class="name">Get invoice</span></div></li>
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m patch">PATCH</span><span class="name">Update invoice</span></div></li>
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m del">DEL</span><span class="name">Void invoice</span></div></li>
+            </ul>
+          </li>
+          <li role="treeitem" aria-expanded="true">
+            <div class="row l1" tabindex="-1"><svg class="chev dim"><use href="#chev"/></svg><svg class="folder" width="14" height="14"><use href="#folder"/></svg><span class="name">customers</span></div>
+            <ul role="group">
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m get">GET</span><span class="name">List customers</span></div></li>
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m post">POST</span><span class="name">Create customer</span></div></li>
+            </ul>
+          </li>
+          <li role="treeitem" aria-expanded="true">
+            <div class="row l1" tabindex="-1"><svg class="chev dim"><use href="#chev"/></svg><svg class="folder" width="14" height="14"><use href="#folder"/></svg><span class="name">webhooks</span></div>
+            <ul role="group">
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m post">POST</span><span class="name">Stripe webhook replay</span></div></li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+      <li role="treeitem" aria-expanded="true">
+        <div class="row l0" tabindex="-1"><svg class="chev dim"><use href="#chev"/></svg><span class="name" style="font-weight:500">Auth</span></div>
+        <ul role="group">
+          <li role="treeitem"><div class="row l1" tabindex="-1" style="padding-left:22px"><span class="m post">POST</span><span class="name">Token</span></div></li>
+          <li role="treeitem"><div class="row l1" tabindex="-1" style="padding-left:22px"><span class="m post">POST</span><span class="name">Refresh token</span></div></li>
+        </ul>
+      </li>
+    </ul>
+    <section aria-label="Environments">
+      <div class="sec-h" style="border-top:1px solid var(--border)"><span>Environments</span><button aria-label="New environment"><svg width="12" height="12"><use href="#plus"/></svg></button></div>
+      <ul class="envs" role="listbox" aria-label="Environments">
+        <li role="option" aria-selected="false" class="row" tabindex="-1"><span class="name">dev</span><span class="tag small dim">12 vars</span></li>
+        <li role="option" aria-selected="true" class="row" tabindex="-1"><span class="name">staging</span><span class="tag small" style="color:var(--warning)">1 unresolved</span></li>
+        <li role="option" aria-selected="false" class="row" tabindex="-1"><span class="name">prod</span><span class="tag small dim">12 vars</span></li>
+      </ul>
+    </section>
+  </nav>
+
+  <main class="doc" aria-label="Request editor">
+    <div class="editor island">
+    <div class="tabs" role="tablist" aria-label="Open requests">
+      <button class="tab" role="tab" aria-selected="false"><span class="m get">GET</span><span>List invoices</span><span class="end"><svg class="x" width="10" height="10"><use href="#x"/></svg></span></button>
+      <button class="tab" role="tab" aria-selected="true" aria-label="POST Create invoice, unsaved draft"><span class="m post">POST</span><span>Create invoice</span><span class="end"><span class="dot" aria-hidden="true"></span><svg class="x" width="10" height="10"><use href="#x"/></svg></span></button>
+      <button class="tab" role="tab" aria-selected="false"><span class="m post">POST</span><span>Token</span><span class="end"><svg class="x" width="10" height="10"><use href="#x"/></svg></span></button>
+      <button class="tab-new" aria-label="New request"><svg width="12" height="12"><use href="#plus"/></svg></button>
+    </div>
+
+    <div class="request-pane">
+      <div class="reqhead">
+        <h1 class="crumb">Billing API / invoices /<b>Create invoice</b></h1>
+        <span class="draft-note"><i aria-hidden="true"></i>Unsaved draft</span>
+        <div class="actions">
+          <button class="btn small">Revert</button>
+          <button class="btn small">Save <kbd>Ctrl+S</kbd></button>
+        </div>
+      </div>
+
+      <form class="urlbar" aria-label="Request URL" onsubmit="return false">
+        <button type="button" class="method" aria-label="Method: POST"><span class="m post">POST</span><svg class="chev dim"><use href="#chev"/></svg></button>
+        <div class="url" role="textbox" tabindex="0" aria-label="URL"><span class="var">{{base_url}}</span>/v1/invoices?expand=lines</div>
+        <button type="submit" class="send">Send <kbd>Ctrl+Enter</kbd></button>
+      </form>
+
+      <div class="subtabs" role="tablist" aria-label="Request sections">
+        <button class="subtab" role="tab" aria-selected="false">Params <span class="count">1</span></button>
+        <button class="subtab" role="tab" aria-selected="true">Headers <span class="count">4</span></button>
+        <button class="subtab" role="tab" aria-selected="false">Body <span class="count">JSON</span></button>
+        <button class="subtab" role="tab" aria-selected="false">Auth</button>
+        <button class="subtab" role="tab" aria-selected="false">Scripts</button>
+        <button class="subtab" role="tab" aria-selected="false">Settings</button>
+        <div class="right"><button class="btn small">Bulk edit</button></div>
+      </div>
+
+      <div class="table-wrap" role="tabpanel" aria-label="Headers">
+        <table>
+          <thead><tr><th class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Toggle all"><svg width="10" height="10"><use href="#check"/></svg></span></th><th class="k">Key</th><th>Value</th><th class="d">Description</th></tr></thead>
+          <tbody>
+            <tr><td class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Enabled"><svg width="10" height="10"><use href="#check"/></svg></span></td><td>Content-Type</td><td>application/json</td><td class="desc"></td></tr>
+            <tr><td class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Enabled"><svg width="10" height="10"><use href="#check"/></svg></span></td><td>Authorization</td><td>Bearer <span class="var">{{access_token}}</span> <span class="secret" aria-label="secret value masked">••••••••</span></td><td class="desc">Secret, from staging</td></tr>
+            <tr><td class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Enabled"><svg width="10" height="10"><use href="#check"/></svg></span></td><td>Idempotency-Key</td><td><span class="var">{{$guid}}</span></td><td class="desc">New GUID per send</td></tr>
+            <tr><td class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Enabled"><svg width="10" height="10"><use href="#check"/></svg></span></td><td>X-Tenant</td><td><span class="var-bad">{{tenant_id}}</span></td><td><span class="warn-note"><svg width="12" height="12"><use href="#warn"/></svg>Not defined in staging</span></td></tr>
+            <tr class="ghost"><td class="ck"><span class="cb" role="checkbox" aria-checked="false" aria-label="Enabled"></span></td><td>Key</td><td>Value</td><td class="desc"></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+
+    <div class="divider" role="separator" aria-orientation="horizontal" aria-label="Resize request and response" aria-valuenow="40" aria-valuemin="15" aria-valuemax="85" tabindex="0"></div>
+
+    <section class="response island" aria-label="Response">
+      <div class="summary">
+        <span class="h">Response</span>
+        <span class="status-ok">201 Created</span>
+        <span class="dim small">184 ms</span>
+        <span class="dim small">1.2 KB</span>
+        <span class="dim small">· sent 19:42:11</span>
+        <div class="right"><button class="btn small">Copy</button><button class="btn small">Save as example</button></div>
+      </div>
+      <div class="subtabs" role="tablist" aria-label="Response sections">
+        <button class="subtab" role="tab" aria-selected="true">Body</button>
+        <button class="subtab" role="tab" aria-selected="false">Headers <span class="count">11</span></button>
+        <button class="subtab" role="tab" aria-selected="false">Cookies <span class="count">1</span></button>
+        <button class="subtab" role="tab" aria-selected="false">Timeline</button>
+        <div class="right"><span class="small dim">Pretty</span><span class="count">JSON</span></div>
+      </div>
+      <div class="code" role="tabpanel" aria-label="Response body" tabindex="0">
+<div class="ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19</div><div class="json"><span class="p">{</span>
+  <span class="k">"id"</span><span class="p">:</span> <span class="s">"inv_01JB7X3K9Q"</span><span class="p">,</span>
+  <span class="k">"object"</span><span class="p">:</span> <span class="s">"invoice"</span><span class="p">,</span>
+  <span class="k">"customer_id"</span><span class="p">:</span> <span class="s">"cus_9f2KQ81"</span><span class="p">,</span>
+  <span class="k">"status"</span><span class="p">:</span> <span class="s">"draft"</span><span class="p">,</span>
+  <span class="k">"currency"</span><span class="p">:</span> <span class="s">"usd"</span><span class="p">,</span>
+  <span class="k">"due_date"</span><span class="p">:</span> <span class="s">"2026-11-30"</span><span class="p">,</span>
+  <span class="k">"total"</span><span class="p">:</span> <span class="n">4900</span><span class="p">,</span>
+  <span class="k">"lines"</span><span class="p">: [</span>
+    <span class="p">{</span>
+      <span class="k">"id"</span><span class="p">:</span> <span class="s">"il_01JB7X3KA2"</span><span class="p">,</span>
+      <span class="k">"description"</span><span class="p">:</span> <span class="s">"Pro plan, November"</span><span class="p">,</span>
+      <span class="k">"quantity"</span><span class="p">:</span> <span class="n">1</span><span class="p">,</span>
+      <span class="k">"unit_amount"</span><span class="p">:</span> <span class="n">4900</span><span class="p">,</span>
+      <span class="k">"amount"</span><span class="p">:</span> <span class="n">4900</span>
+    <span class="p">}</span>
+  <span class="p">],</span>
+  <span class="k">"created_at"</span><span class="p">:</span> <span class="s">"2026-10-28T19:42:11Z"</span>
+<span class="p">}</span></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer class="statusbar" aria-label="Status bar">
+  <span class="ok"><i aria-hidden="true"></i>billing · git main</span>
+  <span>1 unsaved draft</span>
+  <span class="sp"></span>
+  <span class="hint"><kbd>Ctrl+Enter</kbd> Send</span>
+  <span class="hint"><kbd>Ctrl+S</kbd> Save</span>
+  <span class="hint"><kbd>Ctrl+K</kbd> Command palette</span>
+  <span class="hint"><kbd>Ctrl+P</kbd> Go to request</span>
+</footer>
+</body>
+</html>
