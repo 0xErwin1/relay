@@ -1,0 +1,27 @@
+{
+  "title": "Relay main window",
+  "brief": "Main window of Relay, a keyboard-first, local-first desktop HTTP client (Postman-like): workspace and collection tree, environment selector, request editor with drafts and explicit save, response view. Developer audience, dense, dark by default.",
+  "artboards": [
+    {
+      "file": "01-classic-stacked.html",
+      "title": "Classic stacked",
+      "tradeoff": "Familiar to Postman users and fits long forms; the response only gets the lower half of the height on a wide screen",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "02-side-by-side-rail.html",
+      "title": "Side by side with rail",
+      "tradeoff": "Uses wide screens, request and response visible together; long URLs and wide header tables get cramped",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "03-document-palette.html",
+      "title": "Document and palette",
+      "tradeoff": "Fastest for keyboard use, request reads like an .http file; least discoverable, and form-like parts (form-data, auth) fit text worse",
+      "width": 1440,
+      "height": 900
+    }
+  ]
+}
