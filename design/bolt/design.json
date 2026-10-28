@@ -11,22 +11,8 @@
     },
     {
       "file": "02-cobalt.html",
-      "title": "Cobalt accent",
-      "tradeoff": "Cleanest separation from every semantic color; blue is the most common dev-tool accent, and POST moved to orange",
-      "width": 1440,
-      "height": 900
-    },
-    {
-      "file": "03-emerald.html",
-      "title": "Emerald accent",
-      "tradeoff": "Most distinct from DBFlux; success becomes chartreuse and GET blue, away from HTTP client conventions",
-      "width": 1440,
-      "height": 900
-    },
-    {
-      "file": "04-garnet.html",
-      "title": "Garnet accent",
-      "tradeoff": "Closest sibling to byzantine, strongest family feel; a red Send reads near destructive actions",
+      "title": "Relay (Cobalt)",
+      "tradeoff": "Chosen direction: Bolt with the cobalt accent and the hierarchy rules",
       "width": 1440,
       "height": 900
     }

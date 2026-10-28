@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Relay design system — Bolt with cobalt</title>
+<style>
+:root {
+  /* Bolt neutrals, identical to DBFlux (DESIGN.md). Relay differs from DBFlux only in the accent. */
+  --desk: #050507;
+  --background: #09090B;
+  --panel: #100F13;
+  --raised: #1A181E;
+  --line: #232128;
+  --line-2: #37333D;
+  --row-divider: #18161B;
+  --strong: #F7F4F7;
+  --foreground: #C6C3CC;
+  --muted-foreground: #8E8996;
+
+  /* Accent. Cobalt is a fill only (white on it 7.9:1); the tint carries accent text and focus. */
+  --accent: #2B45B8;
+  --accent-hover: #3451C8;
+  --accent-pressed: #1F3389;
+  --accent-tint: #9DB1FF;
+  --on-accent: #FFFFFF;
+
+  /* Semantic, state only. One meaning per color. */
+  --success: #7BE0A0;
+  --warning: #FFC23D;
+  --danger: #FF6B5E;
+  --info: #6EA8FF;
+  --draft: #F28AC9;
+
+  /* Washes */
+  --hover-wash: rgba(255, 255, 255, 0.04);
+  --alternating-row: rgba(255, 255, 255, 0.012);
+  --selected-row: rgba(157, 177, 255, 0.07);
+  --selected-item: rgba(157, 177, 255, 0.12);
+  --text-selection: rgba(157, 177, 255, 0.25);
+  --drop-target: rgba(157, 177, 255, 0.10);
+  --island-edge: rgba(255, 255, 255, 0.05);
+  --scrim: rgba(5, 5, 7, 0.62);
+
+  /* Syntax: quiet keys, values carry the data */
+  --syntax-key: #A9A4B2;
+  --syntax-string: #7BE0A0;
+  --syntax-number: #B79CFF;
+  --syntax-punct: #8E8996;
+
+  /* HTTP methods: separate from status colors, warning, draft and the accent. */
+  --method-get: #6FD3A0;
+  --method-post: #F2A65A;
+  --method-put: #5FCFD6;
+  --method-patch: #C3D865;
+  --method-delete: #FF8C80;
+  --method-other: #B4AEC0;
+  /* Reduced emphasis for lists: blended over the panel, solid, >= 4.5:1 on the selected-row wash */
+  --method-get-dim: #57A27D;
+  --method-post-dim: #B98048;
+  --method-put-dim: #4B9FA5;
+  --method-patch-dim: #96A650;
+  --method-delete-dim: #D4766C;
+  --method-other-dim: #938E9D;
+
+  /* Cuts */
+  --cut-keycap: 4px;
+  --cut-control: 6px;
+  --cut-input: 8px;
+  --cut-large: 10px;
+  --cut-overlay: 12px;
+  --cut-card: 14px;
+  --cut-modal: 18px;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-half: 6px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+
+  /* Chrome */
+  --control: 30px;
+  --control-inline: 24px;
+  --control-large: 44px;
+  --title-bar: 44px;
+  --status-bar: 38px;
+  --status-chip: 26px;
+  --doc-tab-bar: 46px;
+  --doc-tab: 30px;
+  --panel-header: 40px;
+  --tree-row: 26px;
+  --tree-indent: 14px;
+  --grid-row: 31px;
+  --island-gap: 8px;
+  --sidebar-w: 290px;
+  --focus-ring: 1.5px;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --fast: 150ms;
+
+  --font-ui: "Archivo", "Inter", "Cantarell", "Noto Sans", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Archivo Expanded", "Archivo", "Inter", "Noto Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "JetBrainsMono Nerd Font", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { width: 1440px; background: var(--desk); color: var(--foreground); font: 500 13px/18px var(--font-ui); padding: 24px 8px; }
+header.top { display: flex; align-items: baseline; gap: 16px; padding: 0 8px 16px; }
+header.top h1 { font: 700 20px/28px var(--font-ui); color: var(--strong); }
+main { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.wide { grid-column: 1 / -1; }
+.span2 { grid-column: span 2; }
+.mt code { white-space: nowrap; }
+code, .mono { font: 500 12px/16px var(--font-mono); color: var(--strong); }
+.label { font: 800 10px/14px var(--font-display); font-stretch: expanded; letter-spacing: .14em; text-transform: uppercase; color: var(--muted-foreground); }
+.sub { margin: 16px 0 8px; }
+.caption { font: 500 12px/16px var(--font-ui); color: var(--muted-foreground); }
+.note { margin-top: 8px; }
+.island { --c: var(--cut-card); position: relative; isolation: isolate; background: var(--island-edge); clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c)); }
+.island::before { --ci: calc(var(--c) - 0.41px); content: ""; position: absolute; inset: 1px; z-index: -1; background: var(--panel); clip-path: polygon(var(--ci) 0, 100% 0, 100% calc(100% - var(--ci)), calc(100% - var(--ci)) 100%, 0 100%, 0 var(--ci)); }
+.blk { padding: 16px; }
+.grid { list-style: none; display: grid; gap: 8px; }
+.sw { display: grid; grid-template-columns: 64px 1fr auto; grid-template-rows: auto auto; column-gap: 12px; align-items: center; }
+.sw .chipc { grid-row: span 2; width: 64px; height: 32px; box-shadow: inset 0 0 0 1px var(--line-2); }
+.chipc.txt { display: grid; place-items: center; box-shadow: none; background: var(--panel); font: 700 13px/16px var(--font-ui); width: auto; }
+.chipc.mono { font: 500 12px/16px var(--font-mono); }
+.chipc.wash { background: linear-gradient(var(--w), var(--w)), var(--panel); }
+.sw .hex { font: 500 12px/16px var(--font-mono); color: var(--muted-foreground); text-align: right; }
+.sw .use { grid-column: 2 / 4; font: 500 12px/16px var(--font-ui); color: var(--muted-foreground); }
+.mt { width: 100%; border-collapse: collapse; }
+.mt th { text-align: left; font: 500 12px/16px var(--font-ui); color: var(--muted-foreground); height: 28px; padding-right: 12px; }
+.mt td { height: 28px; border-top: 1px solid var(--row-divider); padding-right: 12px; }
+.mt .hx { font: 500 12px/16px var(--font-mono); color: var(--muted-foreground); }
+.mt tbody tr:nth-child(odd) td { background: var(--alternating-row); }
+.m { font: 600 10.5px/16px var(--font-mono); text-transform: uppercase; letter-spacing: .02em; }
+.get { color: var(--method-get-dim); } .post { color: var(--method-post-dim); } .put { color: var(--method-put-dim); } .patch { color: var(--method-patch-dim); } .del { color: var(--method-delete-dim); } .other { color: var(--method-other-dim); }
+.full.get { color: var(--method-get); } .full.post { color: var(--method-post); } .full.put { color: var(--method-put); } .full.patch { color: var(--method-patch); } .full.del { color: var(--method-delete); } .full.other { color: var(--method-other); }
+.type { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px 24px; }
+.type dt { font: 500 12px/16px var(--font-ui); color: var(--muted-foreground); margin-bottom: 6px; }
+.cuts { list-style: none; display: flex; flex-wrap: wrap; gap: 16px; }
+.cuts li { display: grid; justify-items: start; gap: 4px; }
+.cuts .hex, .space .hex { font: 500 12px/16px var(--font-mono); color: var(--muted-foreground); }
+.cutbox { width: 56px; height: 40px; background: var(--raised); clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c)); }
+.space { list-style: none; display: grid; gap: 6px; }
+.space li { display: grid; grid-template-columns: 32px 120px auto; align-items: center; }
+.bar { display: block; height: 10px; background: var(--accent-tint); }
+.cgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+.cell .sub:first-child { margin-top: 0; }
+.cell:nth-child(6) { grid-column: span 2; }
+.demo-desk { background: var(--desk); padding: 12px; }
+.island.mini { height: 88px; padding: 16px; }
+.cut { --c: var(--cut-control); clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c)); }
+.brow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.brow .w { width: 64px; }
+.btn { height: var(--control); padding: 0 12px; display: inline-flex; align-items: center; font: 600 12.5px/16px var(--font-ui); white-space: nowrap; }
+.btn-primary { background: var(--accent); color: var(--on-accent); }
+.btn-primary.is-hover { background: var(--accent-hover); } .btn-primary.is-active { background: var(--accent-pressed); }
+.btn-secondary { background: var(--raised); box-shadow: inset 0 0 0 1px var(--line-2); }
+.btn-secondary.is-hover { background: var(--line); } .btn-secondary.is-active { background: var(--line-2); }
+.btn-ghost { color: var(--muted-foreground); }
+.btn-ghost.is-hover { background: var(--raised); color: var(--foreground); } .btn-ghost.is-active { background: var(--line); color: var(--foreground); }
+.is-focus { box-shadow: inset 0 0 0 var(--focus-ring) var(--accent-tint) !important; }
+.urlbar { height: 36px; display: flex; gap: 8px; }
+.url-field { flex: 1; display: flex; background: var(--background); box-shadow: inset 0 0 0 1px var(--line-2); min-width: 0; }
+.method { display: flex; align-items: center; gap: 8px; padding: 0 8px 0 12px; }
+.chev { width: 10px; height: 10px; color: var(--muted-foreground); }
+.url { display: flex; align-items: center; font: 500 13px/18px var(--font-mono); color: var(--strong); white-space: nowrap; overflow: hidden; }
+.caret { display: inline-block; width: 1.5px; height: 16px; background: var(--accent-tint); margin-left: 1px; }
+.send { height: 36px; padding: 0 16px; }
+.input { height: var(--control); flex: 1; display: flex; align-items: center; padding: 0 12px; background: var(--background); color: var(--muted-foreground); }
+.input.is-focus { color: var(--strong); }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tab { height: var(--doc-tab); display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; color: var(--muted-foreground); font-weight: 400; }
+.tab.on { background: var(--raised); color: var(--strong); font-weight: 600; box-shadow: inset 0 2px 0 var(--accent); }
+.tab.is-hover { background: var(--hover-wash); color: var(--foreground); }
+.state-marker { width: 6px; height: 6px; background: var(--draft); transform: rotate(45deg); flex: none; display: inline-block; }
+.tree { list-style: none; }
+.row { height: var(--tree-row); display: flex; align-items: center; gap: 6px; padding: 0 10px 0 8px; white-space: nowrap; }
+.row .m { width: 48px; flex: none; }
+.row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.row.is-hover { background: var(--hover-wash); }
+.row.sel { background: var(--selected-item); box-shadow: inset 2px 0 0 var(--accent-tint); color: var(--strong); }
+.ht { width: 100%; border-collapse: collapse; }
+.ht th { text-align: left; height: 28px; font: 500 12px/16px var(--font-ui); color: var(--muted-foreground); padding: 0 12px; }
+.ht td { height: var(--grid-row); border-top: 1px solid var(--row-divider); font: 500 13px/20px var(--font-mono); color: var(--strong); padding: 0 12px; white-space: nowrap; overflow: hidden; }
+.ht .ck { width: 40px; padding: 0; text-align: center; }
+.ht .desc { font: 500 12px/16px var(--font-ui); color: var(--muted-foreground); }
+.ht tr.ghost td { color: var(--muted-foreground); }
+.cb { width: 16px; height: 16px; display: inline-grid; place-items: center; vertical-align: middle; background: var(--raised); color: var(--strong); box-shadow: inset 0 0 0 1px var(--line-2); clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px); }
+.cb.off { background: var(--background); }
+.cb.on-focus { box-shadow: inset 0 0 0 var(--focus-ring) var(--accent-tint); }
+.var .b { color: var(--muted-foreground); }
+.var-bad { color: var(--warning); text-decoration: underline dotted var(--warning); text-underline-offset: 3px; }
+.warn-text { color: var(--warning); }
+.secret { color: var(--muted-foreground); letter-spacing: 1px; }
+.codes { display: grid; gap: 6px; }
+.sc { font: 700 16px/22px var(--font-mono); }
+.sc span { font: 600 13px/22px var(--font-ui); margin-left: 4px; }
+.vars { display: grid; gap: 8px; }
+.sbar { background: var(--desk); padding: 6px 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chip { height: var(--status-chip); display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; background: var(--panel); font: 500 12px/16px var(--font-ui); color: var(--muted-foreground); white-space: nowrap; }
+.hint { display: inline-flex; align-items: center; gap: 6px; font: 500 12px/16px var(--font-ui); color: var(--muted-foreground); }
+kbd { font: 500 10.5px/16px var(--font-mono); color: var(--muted-foreground); background: var(--raised); padding: 0 5px; clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="chev" viewBox="0 0 10 10"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/></symbol>
+  <symbol id="check" viewBox="0 0 10 10"><path d="M2 5.2 4.2 7.3 8 3" fill="none" stroke="currentColor" stroke-width="1.6"/></symbol>
+</svg>
+<header class="top"><h1>Relay design system</h1><span class="caption">Bolt (DBFlux) neutrals, type, shapes and density · cobalt accent · dark theme · contrast ratios measured on panel #100F13</span></header>
+<main>
+<section class="island blk" aria-labelledby="h-neu"><h2 id="h-neu" class="label">Neutrals · shared with DBFlux</h2><ul class="grid"><li class="sw"><span class="chipc" style="background:var(--desk)"></span><code>--desk</code><span class="hex">#050507</span><span class="use">Window ground under islands</span></li><li class="sw"><span class="chipc" style="background:var(--background)"></span><code>--background</code><span class="hex">#09090B</span><span class="use">Inputs, wells, segmented control</span></li><li class="sw"><span class="chipc" style="background:var(--panel)"></span><code>--panel</code><span class="hex">#100F13</span><span class="use">Islands, status chips</span></li><li class="sw"><span class="chipc" style="background:var(--raised)"></span><code>--raised</code><span class="hex">#1A181E</span><span class="use">Secondary buttons, active tab, keycaps, checked box</span></li><li class="sw"><span class="chipc" style="background:var(--line)"></span><code>--line</code><span class="hex">#232128</span><span class="use">Separators, secondary hover</span></li><li class="sw"><span class="chipc" style="background:var(--line-2)"></span><code>--line-2</code><span class="hex">#37333D</span><span class="use">Control edges, unchecked box edge</span></li><li class="sw"><span class="chipc" style="background:var(--row-divider)"></span><code>--row-divider</code><span class="hex">#18161B</span><span class="use">Table row dividers</span></li></ul><h3 class="label sub">Text on panel</h3><ul class="grid"><li class="sw"><span class="chipc txt" style="color:var(--strong)">Aa</span><code>--strong</code><span class="hex">#F7F4F7</span><span class="use">Titles, selected item, data values · 17.5:1</span></li><li class="sw"><span class="chipc txt" style="color:var(--foreground)">Aa</span><code>--foreground</code><span class="hex">#C6C3CC</span><span class="use">Body copy, button labels · 11.0:1</span></li><li class="sw"><span class="chipc txt" style="color:var(--muted-foreground)">Aa</span><code>--muted-foreground</code><span class="hex">#8E8996</span><span class="use">Metadata, labels, counts, line numbers · 5.6:1 (4.6:1 on selected item)</span></li></ul></section>
+<section class="island blk" aria-labelledby="h-acc"><h2 id="h-acc" class="label">Accent · cobalt</h2><ul class="grid"><li class="sw"><span class="chipc" style="background:var(--accent)"></span><code>--accent</code><span class="hex">#2B45B8</span><span class="use">Send fill, active tab edge, logo</span></li><li class="sw"><span class="chipc" style="background:var(--accent-hover)"></span><code>--accent-hover</code><span class="hex">#3451C8</span><span class="use">Primary hover</span></li><li class="sw"><span class="chipc" style="background:var(--accent-pressed)"></span><code>--accent-pressed</code><span class="hex">#1F3389</span><span class="use">Primary pressed</span></li><li class="sw"><span class="chipc" style="background:var(--on-accent)"></span><code>--on-accent</code><span class="hex">#FFFFFF</span><span class="use">Text on accent fills (7.9:1)</span></li><li class="sw"><span class="chipc txt" style="color:var(--accent-tint)">Aa</span><code>--accent-tint</code><span class="hex">#9DB1FF</span><span class="use">Accent text, selection bar, caret, focus ring (9.2:1)</span></li></ul><h3 class="label sub">Washes over panel</h3><ul class="grid"><li class="sw"><span class="chipc wash" style="--w:var(--hover-wash)"></span><code>--hover-wash</code><span class="hex">white 4 %</span><span class="use">Row and ghost hover</span></li><li class="sw"><span class="chipc wash" style="--w:var(--alternating-row)"></span><code>--alternating-row</code><span class="hex">white 1.2 %</span><span class="use">Alternating rows</span></li><li class="sw"><span class="chipc wash" style="--w:var(--selected-row)"></span><code>--selected-row</code><span class="hex">tint 7 %</span><span class="use">Selected table row</span></li><li class="sw"><span class="chipc wash" style="--w:var(--selected-item)"></span><code>--selected-item</code><span class="hex">tint 12 %</span><span class="use">Selected tree item</span></li><li class="sw"><span class="chipc wash" style="--w:var(--text-selection)"></span><code>--text-selection</code><span class="hex">tint 25 %</span><span class="use">Text selection</span></li><li class="sw"><span class="chipc wash" style="--w:var(--drop-target)"></span><code>--drop-target</code><span class="hex">tint 10 %</span><span class="use">Drop target</span></li><li class="sw"><span class="chipc wash" style="--w:var(--island-edge)"></span><code>--island-edge</code><span class="hex">white 5 %</span><span class="use">1 px island outline</span></li><li class="sw"><span class="chipc wash" style="--w:var(--scrim)"></span><code>--scrim</code><span class="hex">desk 62 %</span><span class="use">Behind modals</span></li></ul></section>
+<section class="island blk" aria-labelledby="h-sem"><h2 id="h-sem" class="label">Semantic · one meaning per color</h2><ul class="grid"><li class="sw"><span class="chipc" style="background:var(--success)"></span><code>--success</code><span class="hex">#7BE0A0 · 11.8:1</span><span class="use">2xx status</span></li><li class="sw"><span class="chipc" style="background:var(--info)"></span><code>--info</code><span class="hex">#6EA8FF · 7.9:1</span><span class="use">3xx status, links</span></li><li class="sw"><span class="chipc" style="background:var(--warning)"></span><code>--warning</code><span class="hex">#FFC23D · 11.9:1</span><span class="use">Unresolved variable, environment warning only</span></li><li class="sw"><span class="chipc" style="background:var(--danger)"></span><code>--danger</code><span class="hex">#FF6B5E · 6.8:1</span><span class="use">4xx and 5xx status, errors</span></li><li class="sw"><span class="chipc" style="background:var(--draft)"></span><code>--draft</code><span class="hex">#F28AC9 · 8.4:1</span><span class="use">Unsaved draft marker only</span></li></ul></section>
+<section class="island blk span2" aria-labelledby="h-met"><h2 id="h-met" class="label">HTTP methods · plain mono, no box</h2><table class="mt"><thead><tr><th>Full</th><th>Token</th><th>Hex</th><th>Dim</th><th>Token</th><th>Hex</th><th>Dim on selected item</th></tr></thead><tbody><tr><td><span class="m full get">GET</span></td><td><code>--method-get</code></td><td class="hx">#6FD3A0</td><td><span class="m get">GET</span></td><td><code>--method-get-dim</code></td><td class="hx">#57A27D</td><td class="hx">5.1:1</td></tr><tr><td><span class="m full post">POST</span></td><td><code>--method-post</code></td><td class="hx">#F2A65A</td><td><span class="m post">POST</span></td><td><code>--method-post-dim</code></td><td class="hx">#B98048</td><td class="hx">4.7:1</td></tr><tr><td><span class="m full put">PUT</span></td><td><code>--method-put</code></td><td class="hx">#5FCFD6</td><td><span class="m put">PUT</span></td><td><code>--method-put-dim</code></td><td class="hx">#4B9FA5</td><td class="hx">5.1:1</td></tr><tr><td><span class="m full patch">PATCH</span></td><td><code>--method-patch</code></td><td class="hx">#C3D865</td><td><span class="m patch">PATCH</span></td><td><code>--method-patch-dim</code></td><td class="hx">#96A650</td><td class="hx">5.9:1</td></tr><tr><td><span class="m full del">DELETE</span></td><td><code>--method-delete</code></td><td class="hx">#FF8C80</td><td><span class="m del">DELETE</span></td><td><code>--method-delete-dim</code></td><td class="hx">#D4766C</td><td class="hx">4.9:1</td></tr><tr><td><span class="m full other">HEAD</span></td><td><code>--method-other</code></td><td class="hx">#B4AEC0</td><td><span class="m other">HEAD</span></td><td><code>--method-other-dim</code></td><td class="hx">#938E9D</td><td class="hx">4.9:1</td></tr></tbody></table><p class="caption note">Full strength in the URL bar and the selected row; dim in the tree and inactive tabs. Other covers HEAD, OPTIONS and custom verbs.</p></section>
+<section class="island blk" aria-labelledby="h-syn"><h2 id="h-syn" class="label">Syntax</h2><ul class="grid"><li class="sw"><span class="chipc txt mono" style="color:var(--syntax-key)">"total"</span><code>--syntax-key</code><span class="hex">#A9A4B2</span><span class="use">JSON keys</span></li><li class="sw"><span class="chipc txt mono" style="color:var(--syntax-string)">"usd"</span><code>--syntax-string</code><span class="hex">#7BE0A0</span><span class="use">Strings</span></li><li class="sw"><span class="chipc txt mono" style="color:var(--syntax-number)">4900</span><code>--syntax-number</code><span class="hex">#B79CFF</span><span class="use">Numbers, booleans, null</span></li><li class="sw"><span class="chipc txt mono" style="color:var(--syntax-punct)">{ } : ,</span><code>--syntax-punct</code><span class="hex">#8E8996</span><span class="use">Punctuation</span></li></ul></section>
+<section class="island blk wide" aria-labelledby="h-typ"><h2 id="h-typ" class="label">Type roles</h2><dl class="type">
+<div><dt>Title · Archivo 700 20/28</dt><dd style="font:700 20px/28px var(--font-ui);color:var(--strong)">Create invoice</dd></div>
+<div><dt>Heading · Archivo 700 18/24</dt><dd style="font:700 18px/24px var(--font-ui);color:var(--strong)">Response</dd></div>
+<div><dt>Body · Archivo 500 13/18</dt><dd style="font:500 13px/18px var(--font-ui)">Saved requests sync to the workspace on Ctrl+S.</dd></div>
+<div><dt>Body small · Archivo 500 12/16</dt><dd style="font:500 12px/16px var(--font-ui)">Secret, from staging</dd></div>
+<div><dt>Label · Archivo Expanded 800 11/14 uppercase 0.14em</dt><dd><span class="label" style="font-size:11px">Collections</span></dd></div>
+<div><dt>Caption · Archivo 500 12/16 muted</dt><dd class="caption">11 requests · 3 environments</dd></div>
+<div><dt>Code · JetBrains Mono 500 13/18</dt><dd style="font:500 13px/18px var(--font-mono);color:var(--strong)">{{base_url}}/v1/invoices?expand=lines</dd></div>
+<div><dt>Key hint · JetBrains Mono 500 12 in keycap</dt><dd><kbd>Ctrl+Enter</kbd></dd></div>
+</dl><p class="caption note">Fallbacks: Archivo → Inter, Cantarell, Noto Sans, Segoe UI, system-ui. JetBrains Mono → Cascadia Code, Fira Code, ui-monospace.</p></section>
+<section class="island blk" aria-labelledby="h-cut"><h2 id="h-cut" class="label">Cuts · 45 degrees, data stays square</h2><ul class="cuts"><li><span class="cutbox" style="--c:var(--cut-keycap)"></span><code>--cut-keycap</code><span class="hex">4 px</span></li><li><span class="cutbox" style="--c:var(--cut-control)"></span><code>--cut-control</code><span class="hex">6 px</span></li><li><span class="cutbox" style="--c:var(--cut-input)"></span><code>--cut-input</code><span class="hex">8 px</span></li><li><span class="cutbox" style="--c:var(--cut-large)"></span><code>--cut-large</code><span class="hex">10 px</span></li><li><span class="cutbox" style="--c:var(--cut-overlay)"></span><code>--cut-overlay</code><span class="hex">12 px</span></li><li><span class="cutbox" style="--c:var(--cut-card)"></span><code>--cut-card</code><span class="hex">14 px</span></li><li><span class="cutbox" style="--c:var(--cut-modal)"></span><code>--cut-modal</code><span class="hex">18 px</span></li></ul><h3 class="label sub">Spacing</h3><ul class="space"><li><span class="bar" style="width:var(--space-1)"></span><code>--space-1</code><span class="hex">4 px</span></li><li><span class="bar" style="width:var(--space-half)"></span><code>--space-half</code><span class="hex">6 px</span></li><li><span class="bar" style="width:var(--space-2)"></span><code>--space-2</code><span class="hex">8 px</span></li><li><span class="bar" style="width:var(--space-3)"></span><code>--space-3</code><span class="hex">12 px</span></li><li><span class="bar" style="width:var(--space-4)"></span><code>--space-4</code><span class="hex">16 px</span></li><li><span class="bar" style="width:var(--space-6)"></span><code>--space-6</code><span class="hex">24 px</span></li></ul></section>
+<section class="island blk span2" aria-labelledby="h-chr"><h2 id="h-chr" class="label">Chrome metrics</h2><table class="mt"><tbody><tr><td><code>--title-bar</code></td><td class="hx">44 px</td><td><span class="bar" style="width:calc(var(--title-bar) * 3)"></span></td></tr><tr><td><code>--doc-tab-bar</code></td><td class="hx">46 px</td><td><span class="bar" style="width:calc(var(--doc-tab-bar) * 3)"></span></td></tr><tr><td><code>--doc-tab</code></td><td class="hx">30 px</td><td><span class="bar" style="width:calc(var(--doc-tab) * 3)"></span></td></tr><tr><td><code>--panel-header</code></td><td class="hx">40 px</td><td><span class="bar" style="width:calc(var(--panel-header) * 3)"></span></td></tr><tr><td><code>--status-bar</code></td><td class="hx">38 px</td><td><span class="bar" style="width:calc(var(--status-bar) * 3)"></span></td></tr><tr><td><code>--status-chip</code></td><td class="hx">26 px</td><td><span class="bar" style="width:calc(var(--status-chip) * 3)"></span></td></tr><tr><td><code>--tree-row</code></td><td class="hx">26 px</td><td><span class="bar" style="width:calc(var(--tree-row) * 3)"></span></td></tr><tr><td><code>--tree-indent</code></td><td class="hx">14 px</td><td><span class="bar" style="width:calc(var(--tree-indent) * 3)"></span></td></tr><tr><td><code>--grid-row</code></td><td class="hx">31 px</td><td><span class="bar" style="width:calc(var(--grid-row) * 3)"></span></td></tr><tr><td><code>--control</code></td><td class="hx">30 px</td><td><span class="bar" style="width:calc(var(--control) * 3)"></span></td></tr><tr><td><code>--control-inline</code></td><td class="hx">24 px</td><td><span class="bar" style="width:calc(var(--control-inline) * 3)"></span></td></tr><tr><td><code>--control-large</code></td><td class="hx">44 px</td><td><span class="bar" style="width:calc(var(--control-large) * 3)"></span></td></tr><tr><td><code>--island-gap</code></td><td class="hx">8 px</td><td><span class="bar" style="width:calc(var(--island-gap) * 3)"></span></td></tr><tr><td><code>--focus-ring</code></td><td class="hx">1.5 px</td><td><span class="bar" style="width:calc(var(--focus-ring) * 3)"></span></td></tr></tbody></table><p class="caption note">Motion: <code>--fast</code> 150 ms, <code>--ease</code> cubic-bezier(.2, .8, .2, 1).</p></section>
+<section class="island blk wide" aria-labelledby="h-cmp"><h2 id="h-cmp" class="label">Components</h2>
+<div class="cgrid">
+<div class="cell"><h3 class="label sub">Island · panel, cut 14, 1 px edge</h3><div class="demo-desk"><div class="island mini"><span class="caption">Island content</span></div></div></div>
+<div class="cell"><h3 class="label sub">Buttons · rest / hover / focus / pressed</h3>
+<div class="brow"><span class="caption w">Primary</span><span class="btn btn-primary cut">Send</span><span class="btn btn-primary cut is-hover">Send</span><span class="btn btn-primary cut is-focus">Send</span><span class="btn btn-primary cut is-active">Send</span></div>
+<div class="brow"><span class="caption w">Secondary</span><span class="btn btn-secondary cut">Save</span><span class="btn btn-secondary cut is-hover">Save</span><span class="btn btn-secondary cut is-focus">Save</span><span class="btn btn-secondary cut is-active">Save</span></div>
+<div class="brow"><span class="caption w">Ghost</span><span class="btn btn-ghost cut">Revert</span><span class="btn btn-ghost cut is-hover">Revert</span><span class="btn btn-ghost cut is-focus">Revert</span><span class="btn btn-ghost cut is-active">Revert</span></div></div>
+<div class="cell"><h3 class="label sub">URL bar · focus caret in tint</h3><div class="urlbar"><div class="url-field cut"><span class="method"><span class="m post full">POST</span><svg class="chev"><use href="#chev"/></svg></span><span class="url"><span class="var"><span class="b">{{</span>base_url<span class="b">}}</span></span>/v1/invoices<span class="caret" aria-hidden="true"></span></span></div><span class="btn btn-primary cut send">Send</span></div>
+<h3 class="label sub">Input · rest / focus</h3><div class="brow"><span class="input cut">Filter requests</span><span class="input cut is-focus">invoi<span class="caret" aria-hidden="true"></span></span></div></div>
+<div class="cell"><h3 class="label sub">Document tabs · inactive / active draft / hover</h3><div class="tabs"><span class="tab cut"><span class="m get">GET</span>List invoices</span><span class="tab cut on"><span class="m post full">POST</span>Create invoice<span class="state-marker" aria-hidden="true"></span></span><span class="tab cut is-hover"><span class="m patch">PATCH</span>Update invoice</span></div></div>
+<div class="cell"><h3 class="label sub">Tree rows · default / hover / selected</h3><ul class="tree"><li class="row"><span class="m get">GET</span><span class="name">List invoices</span></li><li class="row is-hover"><span class="m patch">PATCH</span><span class="name">Update invoice</span></li><li class="row sel"><span class="m post full">POST</span><span class="name">Create invoice</span><span class="state-marker" aria-hidden="true"></span></li><li class="row sel"><span class="m del">DELETE</span><span class="name">Void invoice · dim on selected wash</span></li><li class="row"><span class="m put">PUT</span><span class="name">Replace customer</span></li><li class="row"><span class="m other">HEAD</span><span class="name">Health check</span></li></ul></div>
+<div class="cell"><h3 class="label sub">Headers row · checkbox unchecked / checked / focus</h3><table class="ht"><thead><tr><th class="ck"></th><th>Key</th><th>Value</th><th>Description</th></tr></thead><tbody>
+<tr><td class="ck"><span class="cb" role="img" aria-label="checked"><svg width="10" height="10"><use href="#check"/></svg></span></td><td>Authorization</td><td>Bearer <span class="var"><span class="b">{{</span>access_token<span class="b">}}</span></span> <span class="secret">••••••••</span></td><td class="desc">Masked secret</td></tr>
+<tr><td class="ck"><span class="cb on-focus" role="img" aria-label="checked, focused"><svg width="10" height="10"><use href="#check"/></svg></span></td><td>X-Tenant</td><td><span class="var-bad">{{tenant_id}}</span></td><td class="desc"><span class="warn-text">Unresolved variable</span></td></tr>
+<tr class="ghost"><td class="ck"><span class="cb off" role="img" aria-label="unchecked"></span></td><td>Key</td><td>Value</td><td class="desc"></td></tr></tbody></table></div>
+<div class="cell"><h3 class="label sub">Status codes</h3><div class="codes"><span class="sc" style="color:var(--success)">200 <span>OK</span></span><span class="sc" style="color:var(--info)">304 <span>Not Modified</span></span><span class="sc" style="color:var(--danger)">404 <span>Not Found</span></span><span class="sc" style="color:var(--danger)">502 <span>Bad Gateway</span></span></div><p class="caption note">4xx and 5xx share danger; the code number distinguishes them.</p>
+<h3 class="label sub">Variables</h3><div class="vars"><span class="mono"><span class="var"><span class="b">{{</span>base_url<span class="b">}}</span></span> <span class="caption">resolved</span></span><span class="mono"><span class="var-bad">{{tenant_id}}</span> <span class="caption">unresolved</span></span><span class="mono"><span class="secret">••••••••</span> <span class="caption">masked secret</span></span></div></div>
+<div class="cell"><h3 class="label sub">Status bar · chip and key hint</h3><div class="sbar"><span class="chip cut">billing · git main</span><span class="chip cut"><span class="state-marker" aria-hidden="true"></span>1 unsaved draft</span><span class="hint"><kbd>Ctrl+S</kbd>Save</span></div></div>
+</div></section>
+</main>
+</body>
+</html>

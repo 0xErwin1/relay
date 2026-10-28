@@ -26,14 +26,42 @@ the dark ground, and accent text, icons, caret and focus ring use the accent **t
 
 ## What Relay sets itself
 
-| Token | Purpose | Value |
-|-------|---------|-------|
-| `accent` | Fill: Send, checked boxes, active tab edge, logo | Pending: cobalt `#2B45B8`, emerald `#17704F` or garnet `#8C1D3C` (see `design/bolt/`) |
-| `accent-hover`, `accent-pressed` | Fill states | Derived per accent |
-| `accent-tint` | Accent text, selection bar, caret, focus ring | Derived per accent |
-| `method-get` ... `method-other` | HTTP method labels | Separate tokens, never aliases of status colors |
-| `method-*-dim` | Method labels in the tree and inactive tabs | Mixed toward gray, at least 4.5:1 on the selected-row wash |
-| `draft` | Unsaved draft marker | Its own color, not the warning color |
+Values from `design/bolt/02-cobalt.html`, rendered on the system board `design/system.html`.
+Contrast is measured on panel `#100F13`; "selected" is the selected tree item (tint 12 %).
+
+| Token | Value | Usage | Contrast |
+|-------|-------|-------|----------|
+| `accent` | `#2B45B8` | Send fill, active tab edge, logo | white text 7.9:1 |
+| `accent-hover` | `#3451C8` | Primary hover | white text 6.7:1 |
+| `accent-pressed` | `#1F3389` | Primary pressed | white text 11.1:1 |
+| `accent-tint` | `#9DB1FF` | Accent text, selection bar, caret, focus ring | 9.2:1 |
+| `on-accent` | `#FFFFFF` | Text on accent fills | |
+| `draft` | `#F28AC9` | Unsaved draft marker only | 8.4:1 |
+| `success` | `#7BE0A0` | 2xx status | 11.8:1 |
+| `info` | `#6EA8FF` | 3xx status, links | 7.9:1 |
+| `warning` | `#FFC23D` | Unresolved variable, environment warning only | 11.9:1 |
+| `danger` | `#FF6B5E` | 4xx and 5xx status, errors | 6.8:1 |
+| `syntax-key` | `#A9A4B2` | JSON keys | 7.9:1 |
+| `syntax-string` | `#7BE0A0` | Strings | |
+| `syntax-number` | `#B79CFF` | Numbers, booleans, null | 8.4:1 |
+| `syntax-punct` | `#8E8996` | Punctuation | |
+| `method-get` / `-dim` | `#6FD3A0` / `#57A27D` | GET | dim 5.1:1 selected |
+| `method-post` / `-dim` | `#F2A65A` / `#B98048` | POST | dim 4.7:1 selected |
+| `method-put` / `-dim` | `#5FCFD6` / `#4B9FA5` | PUT | dim 5.1:1 selected |
+| `method-patch` / `-dim` | `#C3D865` / `#96A650` | PATCH | dim 5.9:1 selected |
+| `method-delete` / `-dim` | `#FF8C80` / `#D4766C` | DELETE | dim 4.9:1 selected |
+| `method-other` / `-dim` | `#B4AEC0` / `#938E9D` | HEAD, OPTIONS, custom verbs | dim 4.9:1 selected |
+
+Method colors are their own tokens, never aliases of status colors. The `-dim` values are the
+full color blended 75 to 80 % over the panel, solid, so AA holds on the selected item.
+
+## Divergences from Bolt
+
+| Change | Bolt | Relay | Why |
+|--------|------|-------|-----|
+| Accent | byzantine `#702963`, tint `#D48CC8` | cobalt `#2B45B8`, tint `#9DB1FF` | One accent per product in the family |
+| Checked checkbox | accent fill | `raised` fill, `strong` check, `line-2` edge | Send stays the only filled accent in the editor |
+| Status bar key hints | inside buttons and chips | status bar only | Hierarchy rule 6 |
 
 ## Hierarchy rules
 
@@ -57,9 +85,9 @@ These are Relay's additions to Bolt. They apply to every screen.
 
 ## Open points
 
-- The accent.
-- Checked checkboxes use the accent fill and are the heaviest element after Send; a neutral
-  check may be calmer.
+- `draft` pink echoes DBFlux's byzantine tint; inside Relay it means only "unsaved", but a
+  user of both apps may read it as DBFlux's accent.
+- 4xx and 5xx share `danger`; the code number tells them apart.
 - The focus ring does not follow the cut corners in the artboards (CSS `clip-path` removes
   outlines). In GPUI the ring is drawn as its own path, so the app can trace the cuts.
 - Light theme: Bolt has one; Relay's light accent values are not defined yet.
