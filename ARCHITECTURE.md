@@ -1,6 +1,6 @@
 # Relay architecture
 
-Relay is a keyboard-first, local-first HTTP client built on GPUI. It reads and writes Postman
+Relay is a local-first HTTP client built on GPUI. It reads and writes Postman
 v2.1 collections and environments, runs Postman `pm.*` scripts, and exposes the same engine to
 AI agents through MCP. The workspace on disk is a directory of small text files, so the
 collaboration path is git.
@@ -272,7 +272,7 @@ database, which was DBFlux's most expensive structural mistake.
   settings.
 - Response view: body (pretty, raw, preview), headers, cookies, timings, test results and
   script console.
-- Keyboard-first: GPUI `KeyBinding`s with context predicates, a command palette, and a test
+- Keyboard: GPUI `KeyBinding`s with context predicates, a command palette, and a test
   that every action reachable by pointer is also bound to a key.
 - Theming through Bolt (see "Design system"), with a test that rejects raw colors and bare
   pixel values outside the token files.

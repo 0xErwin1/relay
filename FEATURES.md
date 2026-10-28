@@ -127,7 +127,7 @@ One MCP server, `relay`, for everything.
 
 | Feature | Level |
 |---------|-------|
-| Keyboard-first: command palette, context-aware keymap, keyboard coverage test | MVP |
+| Full keyboard control: command palette, context-aware keymap, keyboard coverage test | MVP |
 | Document tabs with unsaved state | MVP |
 | Light and dark themes from semantic tokens | MVP |
 | Islands layout: sidebar, editor and response as separate rounded panels on a canvas | MVP |

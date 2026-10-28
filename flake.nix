@@ -1,5 +1,5 @@
 {
-  description = "Relay - a keyboard-first, local-first HTTP client";
+  description = "Relay - a local-first HTTP client";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

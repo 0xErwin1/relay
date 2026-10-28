@@ -1,6 +1,6 @@
 # Relay
 
-A keyboard-first, local-first HTTP client built on [GPUI](https://www.gpui.rs/).
+A local-first HTTP client built on [GPUI](https://www.gpui.rs/).
 Relay reads and writes Postman collection v2.1 and environment files, runs Postman
 `pm.*` scripts, and lets AI agents manage collections and send requests through MCP.
 
