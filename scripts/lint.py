@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""Repository checks for Relay.
+
+Usage: scripts/lint.py [check ...]
+
+Checks (all run when none is named):
+  fmt        cargo fmt --check
+  clippy     cargo clippy on every target with warnings denied
+  file-size  no Rust source file over MAX_LINES lines, without exemptions
+  layering   only GPUI_CRATES may depend on GPUI, and internal dependencies
+             follow the order in ARCHITECTURE.md
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+MAX_LINES = 1000
+GPUI_PACKAGES = {"gpui-pre", "gpui-component", "gpui-pre-platform"}
+GPUI_CRATES = {"relay", "relay_ui"}
+
+# Each crate may depend only on the internal crates listed here.
+ALLOWED_INTERNAL = {
+    "relay_core": set(),
+    "relay_store": {"relay_core"},
+    "relay_postman": {"relay_core"},
+    "relay_http": {"relay_core"},
+    "relay_script": {"relay_core"},
+    "relay_engine": {"relay_core", "relay_http", "relay_postman", "relay_script", "relay_store"},
+    "relay_mcp": {"relay_core", "relay_engine"},
+    "relay_ui": {"relay_core", "relay_engine"},
+    "relay": {"relay_core", "relay_engine", "relay_mcp", "relay_ui"},
+}
+
+
+def run(command: list[str]) -> bool:
+    print(f"$ {' '.join(command)}", flush=True)
+    return subprocess.run(command, cwd=ROOT).returncode == 0
+
+
+def check_fmt() -> bool:
+    return run(["cargo", "fmt", "--all", "--check"])
+
+
+def check_clippy() -> bool:
+    return run(["cargo", "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"])
+
+
+def check_file_size() -> bool:
+    ok = True
+    for path in sorted((ROOT / "crates").rglob("*.rs")):
+        lines = sum(1 for _ in path.open(encoding="utf-8"))
+        if lines > MAX_LINES:
+            print(f"{path.relative_to(ROOT)}: {lines} lines (limit {MAX_LINES})")
+            ok = False
+    return ok
+
+
+def check_layering() -> bool:
+    metadata = json.loads(
+        subprocess.run(
+            ["cargo", "metadata", "--format-version", "1", "--no-deps"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    )
+    ok = True
+    for package in metadata["packages"]:
+        name = package["name"]
+        if name not in ALLOWED_INTERNAL:
+            print(f"{name}: not listed in ALLOWED_INTERNAL; add it with its allowed dependencies")
+            ok = False
+            continue
+        for dependency in package["dependencies"]:
+            dep = dependency["name"]
+            if dep in GPUI_PACKAGES and name not in GPUI_CRATES:
+                print(f"{name}: depends on {dep}, but only {sorted(GPUI_CRATES)} may use GPUI")
+                ok = False
+            if dep in ALLOWED_INTERNAL and dep not in ALLOWED_INTERNAL[name]:
+                print(f"{name}: depends on {dep}, which ARCHITECTURE.md does not allow")
+                ok = False
+    return ok
+
+
+CHECKS = {
+    "fmt": check_fmt,
+    "clippy": check_clippy,
+    "file-size": check_file_size,
+    "layering": check_layering,
+}
+
+
+def main(argv: list[str]) -> int:
+    names = argv or list(CHECKS)
+    unknown = [name for name in names if name not in CHECKS]
+    if unknown:
+        print(f"unknown check(s): {', '.join(unknown)}; expected one of {', '.join(CHECKS)}")
+        return 2
+    failed = [name for name in names if not CHECKS[name]()]
+    if failed:
+        print(f"failed: {', '.join(failed)}")
+        return 1
+    print("all checks passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

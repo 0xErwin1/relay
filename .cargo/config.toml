@@ -1,0 +1,9 @@
+# Link with mold on Linux x86_64. The Nix dev shell provides it; elsewhere,
+# install it from the system package manager.
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+# Load fontconfig on demand instead of linking it, so the binary starts on
+# systems without it and the build does not require fontconfig.pc.
+[env]
+RUST_FONTCONFIG_DLOPEN = "1"
