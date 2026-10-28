@@ -1,4 +1,5 @@
 /target
+/.tools
 /result
 /.direnv
 .relay/

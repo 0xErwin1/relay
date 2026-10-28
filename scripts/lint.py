@@ -4,8 +4,9 @@
 Usage: scripts/lint.py [check ...]
 
 Checks (all run when none is named):
-  fmt        cargo fmt --check
-  clippy     cargo clippy on every target with warnings denied
+  fmt        cargo fmt --check on first-party crates
+  clippy     cargo clippy on first-party crates, every target and feature,
+             with warnings denied
   file-size  no Rust source file over MAX_LINES lines, without exemptions
   layering   only GPUI_CRATES may depend on GPUI, and internal dependencies
              follow the order in ARCHITECTURE.md
@@ -20,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_LINES = 1000
-GPUI_PACKAGES = {"gpui-pre", "gpui-component", "gpui-pre-platform"}
+GPUI_PACKAGES = {"gpui-pre", "gpui-component", "gpui-pre-platform", "gpui-mcp"}
 GPUI_CRATES = {"relay", "relay_ui"}
 
 # Each crate may depend only on the internal crates listed here.
@@ -37,17 +38,40 @@ ALLOWED_INTERNAL = {
 }
 
 
+def first_party_packages() -> list[str]:
+    """Workspace members under crates/; vendored crates keep upstream style."""
+    metadata = json.loads(
+        subprocess.run(
+            ["cargo", "metadata", "--format-version", "1", "--no-deps"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    )
+    crates_dir = ROOT / "crates"
+    return [
+        package
+        for package in metadata["packages"]
+        if Path(package["manifest_path"]).is_relative_to(crates_dir)
+    ]
+
+
 def run(command: list[str]) -> bool:
     print(f"$ {' '.join(command)}", flush=True)
     return subprocess.run(command, cwd=ROOT).returncode == 0
 
 
 def check_fmt() -> bool:
-    return run(["cargo", "fmt", "--all", "--check"])
+    packages = [arg for p in first_party_packages() for arg in ("-p", p["name"])]
+    return run(["cargo", "fmt", *packages, "--check"])
 
 
 def check_clippy() -> bool:
-    return run(["cargo", "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"])
+    packages = [arg for p in first_party_packages() for arg in ("-p", p["name"])]
+    return run(
+        ["cargo", "clippy", *packages, "--all-targets", "--all-features", "--", "-D", "warnings"]
+    )
 
 
 def check_file_size() -> bool:
@@ -61,17 +85,8 @@ def check_file_size() -> bool:
 
 
 def check_layering() -> bool:
-    metadata = json.loads(
-        subprocess.run(
-            ["cargo", "metadata", "--format-version", "1", "--no-deps"],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout
-    )
     ok = True
-    for package in metadata["packages"]:
+    for package in first_party_packages():
         name = package["name"]
         if name not in ALLOWED_INTERNAL:
             print(f"{name}: not listed in ALLOWED_INTERNAL; add it with its allowed dependencies")

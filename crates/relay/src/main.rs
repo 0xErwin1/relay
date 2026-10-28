@@ -7,6 +7,8 @@ use std::rc::Rc;
 use gpui::App;
 
 fn main() -> ExitCode {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
     let startup_error: Rc<RefCell<Option<anyhow::Error>>> = Rc::default();
 
     let error_slot = Rc::clone(&startup_error);

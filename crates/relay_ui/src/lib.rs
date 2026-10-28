@@ -1,5 +1,6 @@
 //! The GPUI user interface.
 
+mod ui_automation;
 mod workspace;
 
 use gpui::{App, AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
@@ -23,6 +24,7 @@ pub fn open_main_window(cx: &mut App) -> anyhow::Result<()> {
     };
 
     cx.open_window(options, |window, cx| {
+        ui_automation::install(window, cx);
         let workspace = cx.new(|_cx| Workspace::new());
         cx.new(|cx| Root::new(workspace, window, cx))
     })?;

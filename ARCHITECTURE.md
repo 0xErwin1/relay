@@ -20,8 +20,9 @@ names the alternative it rejects and, where relevant, the DBFlux experience behi
 | Scripting | QuickJS through `rquickjs`, with a `pm` API shim and bundled Postman sandbox libraries. |
 | Postman | Import and export of collection v2.1 and environment files. Unsupported fields are preserved, not dropped. |
 | HTTP | `reqwest` with rustls, per-request clients cached by TLS and proxy configuration. |
-| GPUI | Published `gpui-pre` and `gpui-component` crates, no vendored patches until a concrete need appears. |
-| Crates | Ten crates in a strict one-way dependency order. Only `relay_ui` and `relay` link GPUI. |
+| GPUI | Published `gpui-pre` 0.3.7, `gpui-component` 0.7.0 and `gpui-pre-platform` 0.3.7. `gpui-pre` is patched from the `gpui-mcp` git repository at a pinned rev; nothing is vendored. |
+| Crates | Nine crates in a strict one-way dependency order. Only `relay_ui` and `relay` link GPUI. |
+| UI automation | The upstream `gpui-mcp` bridge is always installed. `relay mcp` exposes it as `ui_*` tools under the same policy, so agents declare one MCP server. |
 
 ## Domain model
 
@@ -253,6 +254,47 @@ database, which was DBFlux's most expensive structural mistake.
 - Theming through semantic tokens mapped onto the gpui-component theme, with a test that
   rejects raw colors in components.
 
+## UI automation
+
+Every window installs the [`gpui-mcp`](https://github.com/themixednuts/gpui-mcp) bridge. It is
+always on, not a development feature: agents drive the running app through the same `relay mcp`
+server they use for collections and requests, so a client declares one MCP server, not two.
+
+```text
+agent ── stdio (MCP) ──> relay mcp ──┬── relay_engine          collections, requests, execution
+                                     └── gpui-mcp-protocol ──> bridge in each Relay window
+```
+
+- `relay_mcp` speaks `gpui-mcp-protocol` to the bridge directly: endpoint discovery, the token
+  handshake and operations such as reading the element tree, focusing, typing, pressing keys
+  and clicking. There is no second process; `gpui-mcp-server` is upstream's own client and
+  Relay does not ship it.
+- UI tools are named `ui_*` and go through the same policy as every other tool. Reading the
+  tree is class `read`; any input is class `execute`, because a click on Send executes a
+  request just as `request_execute` does. Without that, the UI would be a way around the policy.
+- With several Relay windows or processes, `ui_list_targets` lists them and `ui_select_target`
+  chooses one; a single target is selected automatically.
+- Screenshots need native window capture, which on Linux only works for X11 windows. They are
+  a later addition through `gpui-mcp-capture`; the element tree and input work on Wayland.
+
+Trust model, and what it costs:
+
+- The bridge listens on an owner-only socket under `$XDG_RUNTIME_DIR/gpui-mcp/` and writes a
+  descriptor with a random token. Any process running as the same user can read that token and
+  drive the app or read what it renders, with no policy in between; only `relay mcp` enforces
+  the policy. This is the same exposure the user's files and keyring already have to such a
+  process, and it is the price of having automation always on.
+- Secret values must never be rendered in clear text by default. Secret inputs are masked, and
+  the bridge withholds masked and `frame_redacted` text from observers.
+- The bridge, the patched `gpui-pre` and `gpui-mcp-protocol` all come from one `gpui-mcp`
+  rev, set once in the root `Cargo.toml`. Bump it for all of them at once.
+- `gpui-mcp` supports `gpui-pre` 0.3.5 to 0.3.7, which caps Relay at `gpui-component` 0.7.0
+  until upstream supports a newer release.
+
+Until `relay mcp` exists, `scripts/gpui-mcp.sh` builds and runs upstream's server at the same
+rev (`scripts/gpui-mcp.sh install`, then `scripts/gpui-mcp.sh --app-id relay`). It is a
+development stopgap that disappears with the `ui_*` tools.
+
 ## Lessons from DBFlux
 
 | Keep | Evidence in DBFlux |
@@ -271,7 +313,7 @@ database, which was DBFlux's most expensive structural mistake.
 | User content in text files instead of one SQLite file. | Collections must diff, merge and be reviewed in git. |
 | MCP as a thin layer over the shared engine, in one crate. | DBFlux runs a second driver runtime in the MCP process, coordinates through a shared SQLite file and splits MCP across two overlapping crates. |
 | One UI crate to start. | Six UI crates forced feature forwarding through every one of them and spread the keymap over three crates. |
-| No vendored GPUI patches up front. | Four patched vendored crates carry a refresh procedure each. Adopt a patch only for a concrete defect; the first candidate is the Wayland held-modifier fix in `gpui-pre-linux`. |
+| Vendor nothing. | DBFlux carries four patched vendored crates, each with its own refresh procedure. Relay uses published crates plus one git patch of `gpui-pre` from the `gpui-mcp` repository, which upstream maintains. |
 | A hard 1000-line limit on source files from day one, with no grandfathering. | DBFlux carries 2,000 to 3,900 line `lib.rs` and `mod.rs` files. |
 | Persistence never depends on governance crates. | `dbflux_storage` depends on `dbflux_approval`. |
 | Docs updated in the same change as the code they describe. | DBFlux still documents a removed hand-rolled MCP transport. |
@@ -283,10 +325,10 @@ database, which was DBFlux's most expensive structural mistake.
 | 0 Foundation | This document, a compiling workspace, dev shell, lint and CI. |
 | 1 Model and store | `relay_core` types and templating, `relay_store` load and save with round-trip tests. |
 | 2 HTTP | `relay_http` with basic, bearer and API key auth; `relay run` sends a request from the CLI. |
-| 3 UI MVP | Sidebar, request editor, response view, environment switcher. |
+| 3 UI MVP | Sidebar, request editor, response view, environment switcher, and `relay mcp` with the `ui_*` tools so agents verify the UI from here on. |
 | 4 Postman | v2.1 collection and environment import and export against a fixture corpus. |
 | 5 Scripts | `pm.*` variables, tests and expectations, then `pm.sendRequest` and bundled libraries. |
-| 6 MCP | Tools, resources, policy, approvals and audit. |
+| 6 MCP | Workspace, collection, request and runner tools, resources, policy, approvals and audit. |
 | 7 Depth | Client certificates, proxies, cookies, digest, OAuth 2, AWS v4, collection runner, native bundles. |
 
 Phases 1 and 2 are the foundation everything else stands on; the UI starts once a request can

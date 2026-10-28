@@ -41,20 +41,33 @@
           ++ lib.optionals stdenv.hostPlatform.isLinux [
             wayland
             libxkbcommon
-            xorg.libX11
-            xorg.libxcb
-            xorg.libXcursor
-            xorg.libXrandr
-            xorg.libXi
+            libx11
+            libxcb
+            libxcursor
+            libxrandr
+            libxi
             vulkan-loader
             alsa-lib
           ];
+
+        # scripts/gpui-mcp.sh builds the UI automation server, whose capture
+        # backend links PipeWire, libgbm and EGL and generates bindings with
+        # bindgen. Relay itself does not need them.
+        automationBuildInputs = lib.optionals pkgs.stdenv.hostPlatform.isLinux (
+          with pkgs;
+          [
+            pipewire
+            libgbm
+            libGL
+          ]
+        );
 
         nativeBuildInputs =
           with pkgs;
           [
             pkg-config
             cmake
+            rustPlatform.bindgenHook
           ]
           ++ lib.optionals stdenv.hostPlatform.isLinux [ mold ];
 
@@ -65,15 +78,15 @@
             wayland
             libxkbcommon
             vulkan-loader
-            xorg.libX11
-            xorg.libxcb
+            libx11
+            libxcb
             fontconfig
           ]
         );
       in
       {
         devShells.default = pkgs.mkShell {
-          inherit buildInputs;
+          buildInputs = buildInputs ++ automationBuildInputs;
           nativeBuildInputs = nativeBuildInputs ++ [
             rustToolchain
             pkgs.cargo-nextest

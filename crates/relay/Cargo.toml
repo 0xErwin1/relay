@@ -17,6 +17,7 @@ workspace = true
 
 [dependencies]
 anyhow.workspace = true
+env_logger.workspace = true
 gpui.workspace = true
 gpui-platform.workspace = true
 relay_ui.workspace = true

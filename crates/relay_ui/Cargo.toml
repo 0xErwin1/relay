@@ -15,4 +15,6 @@ workspace = true
 anyhow.workspace = true
 gpui.workspace = true
 gpui-component.workspace = true
+gpui-mcp.workspace = true
+log.workspace = true
 relay_engine.workspace = true
