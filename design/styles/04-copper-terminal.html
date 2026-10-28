@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440, height=900">
+<title>Relay — Copper / Terminal</title>
+<style>
+:root {
+  /* Copper palette, unchanged */
+  --canvas: #0e0d0c;
+  --background: #1a1918;
+  --sidebar: #171615;
+  --title-bar: #0e0d0c;
+  --tab-bar: #141312;
+  --tab: #141312;
+  --tab-active: #1a1918;
+  --status-bar: #0e0d0c;
+  --popover: #242220;
+  --input: #201e1c;
+  --muted: #272523;
+  --border: #34312e;
+  --foreground: #e8e4df;
+  --muted-foreground: #9e9891;
+  --primary: #d9784a;
+  --primary-foreground: #1a0d06;
+  --primary-hover: #e48f66;
+  --accent: #282624;
+  --accent-foreground: #e8e4df;
+  --list-active: #d9784a1f;
+  --list-active-border: #d9784a;
+  --selection: #d9784a40;
+  --ring: #d9784a;
+  --overlay: #0e0d0cb3;
+  --success: #8fb87f;
+  --info: #6fb0b3;
+  --warning: #d4b46a;
+  --danger: #e07a6e;
+  --green: #8fb87f;
+  --yellow: #d4b46a;
+  --blue: #8ea7d4;
+  --magenta: #c0a0d6;
+  --red: #e07a6e;
+  --cyan: #6fb0b3;
+  --method-get: #8fb87f;
+  --method-post: #7fb0d6;
+  --method-put: #a3a3e0;
+  --method-patch: #cf98c2;
+  --method-delete: #e8707a;
+  --method-other: #6fb7ad;
+  /* Terminal visual language */
+  --radius: 0;
+  --rule: 1px solid var(--border);
+  --row: 22px;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", "Cantarell", "Noto Sans", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, "DejaVu Sans Mono", monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; border-radius: 0; }
+html, body { width: 1440px; height: 900px; overflow: hidden; }
+body {
+  background: var(--border); color: var(--foreground);
+  font: 400 12px/var(--row) var(--font-mono);
+  display: grid; grid-template-rows: 28px 1fr 22px; gap: 1px;
+}
+::selection { background: var(--selection); }
+button, input { font: inherit; color: inherit; background: none; border: 0; }
+button { cursor: pointer; }
+:focus-visible { outline: 1px solid var(--ring); outline-offset: -1px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+.dim { color: var(--muted-foreground); }
+.g { color: var(--border); } /* decorative box-drawing guides, aria-hidden */
+.m { font-weight: 700; display: inline-block; width: 6ch; flex: none; }
+.get { color: var(--method-get); } .post { color: var(--method-post); } .put { color: var(--method-put); } .patch { color: var(--method-patch); } .del { color: var(--method-delete); } .other { color: var(--method-other); }
+.var { color: var(--cyan); }
+.var-bad { color: var(--warning); text-decoration: underline dotted var(--warning); text-underline-offset: 3px; }
+.secret { color: var(--muted-foreground); }
+.warn { color: var(--warning); }
+.ok { color: var(--success); }
+
+/* Text buttons: no fill, no border, key hint in copper */
+.tb { height: var(--row); padding: 0 6px; display: inline-flex; align-items: center; gap: 6px; color: var(--foreground); white-space: nowrap; }
+.tb:hover { color: var(--primary-hover); background: var(--accent); }
+.tb .key { color: var(--primary); }
+.tb u { text-decoration: none; color: var(--primary); }
+.tb.primary { color: var(--primary); font-weight: 700; }
+.tb.primary:hover { color: var(--primary-hover); }
+kbd { font: inherit; color: var(--primary); }
+
+/* Section header: ── LABEL (n) ────── */
+.sh { display: flex; align-items: center; gap: 1ch; height: var(--row); padding: 0 8px; color: var(--muted-foreground); font-weight: 700; letter-spacing: .04em; white-space: nowrap; }
+.sh::after { content: ""; flex: 1; border-top: var(--rule); }
+.sh .lead { color: var(--border); font-weight: 400; }
+.sh .act { order: 2; font-weight: 400; letter-spacing: 0; }
+
+/* Title bar */
+.titlebar { background: var(--title-bar); display: flex; align-items: center; padding: 0 4px 0 8px; gap: 12px; }
+.titlebar .brand { color: var(--primary); font-weight: 700; }
+.titlebar .center { flex: 1; text-align: center; color: var(--muted-foreground); }
+.winctl { display: flex; }
+.winctl button { width: 28px; height: 28px; color: var(--muted-foreground); }
+.winctl button:hover { color: var(--foreground); background: var(--accent); }
+
+/* Main: islands separated by 1px rules */
+.main { display: grid; grid-template-columns: 280px 1fr; gap: 1px; min-height: 0; }
+.sidebar { background: var(--sidebar); display: flex; flex-direction: column; min-height: 0; }
+.search { display: flex; align-items: center; height: 28px; padding: 0 8px; border-bottom: var(--rule); gap: 1ch; }
+.search .prompt { color: var(--primary); }
+.search input { flex: 1; height: 26px; outline: none; }
+.search input::placeholder { color: var(--muted-foreground); }
+.search:focus-within { box-shadow: inset 0 -1px 0 var(--primary); }
+
+.tree, .tree ul, .envs { list-style: none; }
+.tree { flex: 1; overflow: hidden; padding-bottom: 4px; }
+.row { height: var(--row); display: flex; align-items: center; padding: 0 8px; white-space: pre; border-left: 2px solid transparent; }
+.row:hover { background: var(--accent); }
+.row[aria-selected="true"] { background: var(--list-active); border-left-color: var(--list-active-border); }
+.row .name { overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.row .fold { color: var(--muted-foreground); }
+.row .draft { color: var(--primary); }
+.row strong { font-weight: 700; }
+.envs { padding-bottom: 4px; }
+.envs .row .tag { color: var(--muted-foreground); }
+.envs .row .tag.warn { color: var(--warning); }
+
+/* Document column */
+.doc { display: grid; grid-template-rows: auto 1fr; gap: 1px; min-width: 0; min-height: 0; }
+.editor, .response { background: var(--background); display: flex; flex-direction: column; min-height: 0; }
+
+.tabs { height: 26px; background: var(--tab-bar); border-bottom: var(--rule); display: flex; align-items: stretch; padding: 0 4px; flex: none; }
+.tab { padding: 0 8px; display: flex; align-items: center; color: var(--muted-foreground); white-space: pre; }
+.tab:hover { color: var(--foreground); background: var(--accent); }
+.tab .br { color: var(--border); }
+.tab[aria-selected="true"] { color: var(--foreground); background: var(--tab-active); box-shadow: inset 0 -2px 0 var(--primary); }
+.tab[aria-selected="true"] .br { color: var(--primary); }
+.tab .dirty { color: var(--primary); }
+.tab-new { padding: 0 8px; color: var(--muted-foreground); }
+.tab-new:hover { color: var(--foreground); }
+
+.reqhead { height: 26px; display: flex; align-items: center; padding: 0 8px; gap: 1ch; flex: none; }
+.crumb { font: inherit; color: var(--muted-foreground); }
+.crumb b { color: var(--foreground); }
+.reqhead .note { color: var(--primary); }
+.reqhead .actions { margin-left: auto; display: flex; }
+
+.urlbar { margin: 0 8px 6px; height: 28px; display: flex; align-items: stretch; border: var(--rule); flex: none; }
+.urlbar:focus-within { border-color: var(--primary); }
+.urlbar .method { padding: 0 8px; border-right: var(--rule); display: flex; align-items: center; gap: 1ch; }
+.urlbar .url { flex: 1; display: flex; align-items: center; padding: 0 8px; white-space: pre; overflow: hidden; }
+.urlbar .send { border-left: var(--rule); padding: 0 12px; height: auto; }
+
+.subtabs { height: var(--row); display: flex; align-items: stretch; padding: 0 4px; border-bottom: var(--rule); flex: none; }
+.subtab { padding: 0 6px; color: var(--muted-foreground); white-space: pre; }
+.subtab:hover { color: var(--foreground); }
+.subtab[aria-selected="true"] { color: var(--foreground); box-shadow: inset 0 -2px 0 var(--primary); }
+.subtab .n { color: var(--muted-foreground); }
+.subtabs .right { margin-left: auto; display: flex; align-items: center; gap: 1ch; padding-right: 4px; }
+
+.request-pane { display: flex; flex-direction: column; }
+.panel { padding: 2px 0 6px; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+th, td { height: var(--row); padding: 0 8px; text-align: left; white-space: pre; overflow: hidden; text-overflow: ellipsis; font-weight: 400; }
+th { color: var(--muted-foreground); border-bottom: var(--rule); }
+td { border-bottom: 1px dotted var(--border); }
+th.ck, td.ck { width: 5ch; padding: 0 0 0 8px; }
+th.k { width: 220px; } th.d { width: 260px; }
+.cb { color: var(--primary); }
+.cb.off { color: var(--muted-foreground); }
+tr.ghost td { color: var(--muted-foreground); border-bottom: 0; }
+td.desc { color: var(--muted-foreground); }
+
+.summary { height: 26px; display: flex; align-items: center; gap: 2ch; padding: 0 8px; border-bottom: var(--rule); flex: none; white-space: pre; }
+.summary .status { color: var(--success); font-weight: 700; }
+.summary .right { margin-left: auto; display: flex; }
+.code { flex: 1; overflow: hidden; display: grid; grid-template-columns: 5ch 1fr; line-height: 18px; padding: 4px 0; }
+.ln { color: var(--muted-foreground); text-align: right; padding-right: 1ch; user-select: none; white-space: pre; border-right: var(--rule); }
+.json { white-space: pre; padding-left: 1ch; }
+.k { color: var(--blue); } .s { color: var(--green); } .nu { color: var(--magenta); } .p { color: var(--muted-foreground); }
+
+/* Status bar */
+.statusbar { background: var(--status-bar); display: flex; align-items: center; gap: 2ch; padding: 0 8px; color: var(--muted-foreground); white-space: pre; }
+.statusbar .mode { background: var(--primary); color: var(--primary-foreground); font-weight: 700; padding: 0 1ch; margin-left: -8px; }
+.statusbar .sp { flex: 1; }
+</style>
+</head>
+<body>
+
+<header class="titlebar" aria-label="Window title bar">
+  <button class="tb" aria-haspopup="listbox" aria-label="Workspace: billing"><span class="brand">relay</span><span class="dim">:</span>billing <span class="dim">▾</span></button>
+  <span class="center">Relay — billing · Create invoice</span>
+  <button class="tb" aria-haspopup="listbox" aria-label="Environment: staging"><span class="dim">env</span> <span class="warn">●</span> staging <span class="dim">▾</span></button>
+  <div class="winctl" role="group" aria-label="Window controls">
+    <button aria-label="Minimize">─</button>
+    <button aria-label="Maximize">□</button>
+    <button aria-label="Close window">×</button>
+  </div>
+</header>
+
+<div class="main">
+  <nav class="sidebar" aria-label="Collections">
+    <div class="search" role="search">
+      <span class="prompt" aria-hidden="true">/</span>
+      <input type="search" placeholder="Search requests" aria-label="Search requests">
+      <kbd>^P</kbd>
+    </div>
+    <div class="sh"><span class="lead" aria-hidden="true">──</span>COLLECTIONS<button class="tb act" aria-label="New collection"><span class="key">[+]</span></button></div>
+    <ul class="tree" role="tree" aria-label="Collection tree">
+      <li role="treeitem" aria-expanded="true">
+        <div class="row" tabindex="-1"><span class="fold" aria-hidden="true">▾ </span><strong class="name">Billing API</strong></div>
+        <ul role="group">
+          <li role="treeitem" aria-expanded="true">
+            <div class="row" tabindex="-1"><span class="g" aria-hidden="true">├─</span><span class="fold" aria-hidden="true">▾ </span><span class="name">invoices/</span></div>
+            <ul role="group">
+              <li role="treeitem"><div class="row" tabindex="-1"><span class="g" aria-hidden="true">│  ├─ </span><span class="m get">GET</span><span class="name">List invoices</span></div></li>
+              <li role="treeitem" aria-selected="true" class="row" tabindex="0" aria-label="POST Create invoice, unsaved draft"><span class="g" aria-hidden="true">│  ├─ </span><span class="m post">POST</span><span class="name">Create invoice</span><span class="draft" aria-hidden="true">●</span></li>
+              <li role="treeitem"><div class="row" tabindex="-1"><span class="g" aria-hidden="true">│  ├─ </span><span class="m get">GET</span><span class="name">Get invoice</span></div></li>
+              <li role="treeitem"><div class="row" tabindex="-1"><span class="g" aria-hidden="true">│  ├─ </span><span class="m patch">PATCH</span><span class="name">Update invoice</span></div></li>
+              <li role="treeitem"><div class="row" tabindex="-1"><span class="g" aria-hidden="true">│  └─ </span><span class="m del">DEL</span><span class="name">Void invoice</span></div></li>
+            </ul>
+          </li>
+          <li role="treeitem" aria-expanded="true">
+            <div class="row" tabindex="-1"><span class="g" aria-hidden="true">├─</span><span class="fold" aria-hidden="true">▾ </span><span class="name">customers/</span></div>
+            <ul role="group">
+              <li role="treeitem"><div class="row" tabindex="-1"><span class="g" aria-hidden="true">│  ├─ </span><span class="m get">GET</span><span class="name">List customers</span></div></li>
+              <li role="treeitem"><div class="row" tabindex="-1"><span class="g" aria-hidden="true">│  └─ </span><span class="m post">POST</span><span class="name">Create customer</span></div></li>
+            </ul>
+          </li>
+          <li role="treeitem" aria-expanded="true">
+            <div class="row" tabindex="-1"><span class="g" aria-hidden="true">└─</span><span class="fold" aria-hidden="true">▾ </span><span class="name">webhooks/</span></div>
+            <ul role="group">
+              <li role="treeitem"><div class="row" tabindex="-1"><span class="g" aria-hidden="true">   └─ </span><span class="m post">POST</span><span class="name">Stripe webhook replay</span></div></li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+      <li role="treeitem" aria-expanded="true">
+        <div class="row" tabindex="-1"><span class="fold" aria-hidden="true">▾ </span><strong class="name">Auth</strong></div>
+        <ul role="group">
+          <li role="treeitem"><div class="row" tabindex="-1"><span class="g" aria-hidden="true">├─ </span><span class="m post">POST</span><span class="name">Token</span></div></li>
+          <li role="treeitem"><div class="row" tabindex="-1"><span class="g" aria-hidden="true">└─ </span><span class="m post">POST</span><span class="name">Refresh token</span></div></li>
+        </ul>
+      </li>
+    </ul>
+    <section aria-label="Environments">
+      <div class="sh"><span class="lead" aria-hidden="true">──</span>ENVIRONMENTS (3)<button class="tb act" aria-label="New environment"><span class="key">[+]</span></button></div>
+      <ul class="envs" role="listbox" aria-label="Environments">
+        <li role="option" aria-selected="false" class="row" tabindex="-1"><span class="dim" aria-hidden="true">( ) </span><span class="name">dev</span><span class="tag">12 vars</span></li>
+        <li role="option" aria-selected="true" class="row" tabindex="-1"><span class="draft" aria-hidden="true">(•) </span><span class="name">staging</span><span class="tag warn">! 1 unresolved</span></li>
+        <li role="option" aria-selected="false" class="row" tabindex="-1"><span class="dim" aria-hidden="true">( ) </span><span class="name">prod</span><span class="tag">12 vars</span></li>
+      </ul>
+    </section>
+  </nav>
+
+  <main class="doc" aria-label="Request editor">
+    <div class="editor">
+      <div class="tabs" role="tablist" aria-label="Open requests">
+        <button class="tab" role="tab" aria-selected="false"><span class="br">[ </span><span class="get">GET</span> List invoices<span class="br"> ]</span></button>
+        <button class="tab" role="tab" aria-selected="true" aria-label="POST Create invoice, unsaved draft"><span class="br">[ </span><span class="post">POST</span> Create invoice <span class="dirty">*</span><span class="br"> ]</span></button>
+        <button class="tab" role="tab" aria-selected="false"><span class="br">[ </span><span class="post">POST</span> Token<span class="br"> ]</span></button>
+        <button class="tab-new" aria-label="New request">[+]</button>
+      </div>
+
+      <div class="request-pane">
+        <div class="reqhead">
+          <h1 class="crumb">Billing API / invoices / <b>Create invoice</b></h1>
+          <span class="note">* unsaved draft</span>
+          <div class="actions">
+            <button class="tb"><span><u>[R]</u>evert</span></button>
+            <button class="tb"><span><u>[S]</u>ave</span> <kbd class="dim">^S</kbd></button>
+          </div>
+        </div>
+
+        <form class="urlbar" aria-label="Request URL" onsubmit="return false">
+          <button type="button" class="method" aria-label="Method: POST"><span class="post" style="font-weight:700">POST</span><span class="dim">▾</span></button>
+          <div class="url" role="textbox" tabindex="0" aria-label="URL"><span class="var">{{base_url}}</span>/v1/invoices?expand=lines</div>
+          <button type="submit" class="tb primary send">Send ⏎ <span class="dim" style="font-weight:400">^⏎</span></button>
+        </form>
+
+        <div class="subtabs" role="tablist" aria-label="Request sections">
+          <button class="subtab" role="tab" aria-selected="false">Params <span class="n">1</span></button>
+          <button class="subtab" role="tab" aria-selected="true">Headers <span class="n">4</span></button>
+          <button class="subtab" role="tab" aria-selected="false">Body <span class="n">json</span></button>
+          <button class="subtab" role="tab" aria-selected="false">Auth</button>
+          <button class="subtab" role="tab" aria-selected="false">Scripts</button>
+          <button class="subtab" role="tab" aria-selected="false">Settings</button>
+          <div class="right"><button class="tb"><span><u>[B]</u>ulk edit</span></button></div>
+        </div>
+
+        <div class="panel" role="tabpanel" aria-label="Headers">
+          <div class="sh"><span class="lead" aria-hidden="true">──</span>HEADERS (4)</div>
+          <table>
+            <thead><tr><th class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Toggle all">[x]</span></th><th class="k">KEY</th><th>VALUE</th><th class="d">DESCRIPTION</th></tr></thead>
+            <tbody>
+              <tr><td class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Enabled">[x]</span></td><td>Content-Type</td><td>application/json</td><td class="desc"></td></tr>
+              <tr><td class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Enabled">[x]</span></td><td>Authorization</td><td>Bearer <span class="var">{{access_token}}</span> <span class="secret" aria-label="secret value masked">••••••••</span></td><td class="desc">secret, from staging</td></tr>
+              <tr><td class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Enabled">[x]</span></td><td>Idempotency-Key</td><td><span class="var">{{$guid}}</span></td><td class="desc">new GUID per send</td></tr>
+              <tr><td class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Enabled">[x]</span></td><td>X-Tenant</td><td><span class="var-bad">{{tenant_id}}</span></td><td class="warn">! not defined in staging</td></tr>
+              <tr class="ghost"><td class="ck"><span class="cb off" role="checkbox" aria-checked="false" aria-label="Enabled">[ ]</span></td><td>key</td><td>value</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <section class="response" aria-label="Response">
+      <div class="summary">
+        <span class="dim" style="font-weight:700">RESPONSE</span>
+        <span class="status">201 Created</span>
+        <span class="dim">184 ms</span>
+        <span class="dim">1.2 KB</span>
+        <span class="dim">sent 19:42:11</span>
+        <div class="right"><button class="tb"><span><u>[C]</u>opy</span></button><button class="tb"><span>Save as <u>[E]</u>xample</span></button></div>
+      </div>
+      <div class="subtabs" role="tablist" aria-label="Response sections">
+        <button class="subtab" role="tab" aria-selected="true">Body</button>
+        <button class="subtab" role="tab" aria-selected="false">Headers <span class="n">11</span></button>
+        <button class="subtab" role="tab" aria-selected="false">Cookies <span class="n">1</span></button>
+        <button class="subtab" role="tab" aria-selected="false">Timeline</button>
+        <div class="right dim">pretty · json</div>
+      </div>
+      <div class="code" role="tabpanel" aria-label="Response body" tabindex="0">
+<div class="ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19</div><div class="json"><span class="p">{</span>
+  <span class="k">"id"</span><span class="p">:</span> <span class="s">"inv_01JB7X3K9Q"</span><span class="p">,</span>
+  <span class="k">"object"</span><span class="p">:</span> <span class="s">"invoice"</span><span class="p">,</span>
+  <span class="k">"customer_id"</span><span class="p">:</span> <span class="s">"cus_9f2KQ81"</span><span class="p">,</span>
+  <span class="k">"status"</span><span class="p">:</span> <span class="s">"draft"</span><span class="p">,</span>
+  <span class="k">"currency"</span><span class="p">:</span> <span class="s">"usd"</span><span class="p">,</span>
+  <span class="k">"due_date"</span><span class="p">:</span> <span class="s">"2026-11-30"</span><span class="p">,</span>
+  <span class="k">"total"</span><span class="p">:</span> <span class="nu">4900</span><span class="p">,</span>
+  <span class="k">"lines"</span><span class="p">: [</span>
+    <span class="p">{</span>
+      <span class="k">"id"</span><span class="p">:</span> <span class="s">"il_01JB7X3KA2"</span><span class="p">,</span>
+      <span class="k">"description"</span><span class="p">:</span> <span class="s">"Pro plan, November"</span><span class="p">,</span>
+      <span class="k">"quantity"</span><span class="p">:</span> <span class="nu">1</span><span class="p">,</span>
+      <span class="k">"unit_amount"</span><span class="p">:</span> <span class="nu">4900</span><span class="p">,</span>
+      <span class="k">"amount"</span><span class="p">:</span> <span class="nu">4900</span>
+    <span class="p">}</span>
+  <span class="p">],</span>
+  <span class="k">"created_at"</span><span class="p">:</span> <span class="s">"2026-10-28T19:42:11Z"</span>
+<span class="p">}</span></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer class="statusbar" aria-label="Status bar">
+  <span class="mode">NORMAL</span>
+  <span><span class="ok">●</span> billing · git main</span>
+  <span><span style="color:var(--primary)">*</span> 1 unsaved draft</span>
+  <span class="sp"></span>
+  <span><kbd>^⏎</kbd> send</span>
+  <span><kbd>^S</kbd> save</span>
+  <span><kbd>^K</kbd> command palette</span>
+  <span><kbd>^P</kbd> go to request</span>
+</footer>
+</body>
+</html>

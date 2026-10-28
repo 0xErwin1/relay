@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440, height=900">
+<title>Relay — Copper / Machined</title>
+<style>
+:root {
+  /* Copper palette, unchanged */
+  --canvas: #0e0d0c;
+  --background: #1a1918;
+  --sidebar: #171615;
+  --title-bar: #0e0d0c;
+  --tab-bar: #141312;
+  --tab: #141312;
+  --tab-active: #1a1918;
+  --status-bar: #0e0d0c;
+  --popover: #242220;
+  --input: #201e1c;
+  --muted: #272523;
+  --border: #34312e;
+  --foreground: #e8e4df;
+  --muted-foreground: #9e9891;
+  --primary: #d9784a;
+  --primary-foreground: #1a0d06;
+  --primary-hover: #e48f66;
+  --accent: #282624;
+  --accent-foreground: #e8e4df;
+  --list-active: #d9784a1f;
+  --list-active-border: #d9784a;
+  --selection: #d9784a40;
+  --ring: #d9784a;
+  --overlay: #0e0d0cb3;
+  --success: #8fb87f;
+  --info: #6fb0b3;
+  --warning: #d4b46a;
+  --danger: #e07a6e;
+  --green: #8fb87f;
+  --yellow: #d4b46a;
+  --blue: #8ea7d4;
+  --magenta: #c0a0d6;
+  --red: #e07a6e;
+  --cyan: #6fb0b3;
+  --method-get: #8fb87f;
+  --method-post: #7fb0d6;
+  --method-put: #a3a3e0;
+  --method-patch: #cf98c2;
+  --method-delete: #e8707a;
+  --method-other: #6fb7ad;
+  /* Machined shape language: chamfers instead of radii */
+  --cut-xs: 3px;
+  --cut-sm: 5px;
+  --cut-md: 7px;
+  --cut-lg: 12px;
+  --hairline: 1px;
+  --track: #121110;
+  --unit: 28px;
+  --label-tracking: .14em;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", "Cantarell", "Noto Sans", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1440px; height: 900px; overflow: hidden; }
+body {
+  background: var(--canvas); color: var(--foreground);
+  font: 400 12px/16px var(--font-ui);
+  display: grid; grid-template-rows: 32px 1fr 22px;
+}
+::selection { background: var(--selection); }
+button, input { font: inherit; color: inherit; }
+button { background: none; border: 0; cursor: pointer; }
+:focus-visible { outline: 1px solid var(--ring); outline-offset: -1px; box-shadow: inset 0 0 0 2px #d9784a55; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* Chamfer: cut top-left and bottom-right; the gradients draw the 1px edge on each cut. */
+.cut {
+  --c: var(--cut-sm); --edge: var(--border);
+  clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c));
+  background-image:
+    linear-gradient(135deg, var(--edge) 0 calc(var(--c) * .7071 + 1px), transparent 0),
+    linear-gradient(315deg, var(--edge) 0 calc(var(--c) * .7071 + 1px), transparent 0);
+  background-origin: border-box;
+}
+.cut-1 { /* single cut, top-left: keycaps */
+  --c: var(--cut-xs); --edge: currentColor;
+  clip-path: polygon(var(--c) 0, 100% 0, 100% 100%, 0 100%, 0 var(--c));
+  background-image: linear-gradient(135deg, var(--edge) 0 calc(var(--c) * .7071 + 1px), transparent 0);
+  background-origin: border-box;
+}
+
+.mono { font-family: var(--font-mono); }
+.small { font-size: 11px; line-height: 16px; }
+.dim { color: var(--muted-foreground); }
+.label { font: 600 10px/14px var(--font-ui); text-transform: uppercase; letter-spacing: var(--label-tracking); color: var(--muted-foreground); }
+
+/* Method keycap chip: outlined, one cut corner, method color for text and edge */
+.m { display: inline-flex; align-items: center; justify-content: center; height: 16px; min-width: 40px; padding: 0 4px; border: 1px solid currentColor; font: 700 10px/14px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; flex: none; }
+.get { color: var(--method-get); } .post { color: var(--method-post); } .put { color: var(--method-put); } .patch { color: var(--method-patch); } .del { color: var(--method-delete); } .other { color: var(--method-other); }
+
+.var { color: var(--cyan); background: #6fb0b31f; box-shadow: inset 0 -1px 0 #6fb0b366; padding: 0 2px; }
+.var-bad { color: var(--warning); text-decoration: underline dotted var(--warning); text-underline-offset: 3px; }
+.secret { color: var(--muted-foreground); letter-spacing: 1px; }
+
+/* Toolbar buttons: all 28px tall, widths on a 4px grid */
+.btn { --edge: var(--border); height: var(--unit); padding: 0 10px; border: 1px solid var(--border); background-color: var(--input); display: inline-flex; align-items: center; gap: 6px; font-weight: 500; white-space: nowrap; }
+.btn:hover { background-color: var(--accent); --edge: var(--muted-foreground); border-color: var(--muted-foreground); }
+.ibtn { width: var(--unit); height: var(--unit); padding: 0; justify-content: center; color: var(--muted-foreground); }
+.ibtn:hover { color: var(--foreground); }
+.chev { width: 10px; height: 10px; flex: none; }
+kbd { font: 500 10px/14px var(--font-mono); border: 1px solid var(--border); background: var(--track); padding: 0 4px; color: var(--foreground); letter-spacing: .02em; }
+
+/* Title bar */
+.titlebar { background: var(--title-bar); display: flex; align-items: center; padding: 0 6px; gap: 6px; border-bottom: 1px solid var(--border); }
+.ws { font-weight: 600; }
+.logo { --c: 4px; --edge: var(--primary); width: 16px; height: 16px; background-color: var(--primary); color: var(--primary-foreground); font: 800 10px/16px var(--font-mono); text-align: center; }
+.titlebar .spacer { flex: 1; text-align: center; }
+.led { width: 7px; height: 7px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 0 2px #d9784a2e, 0 0 6px 1px #d9784a99; flex: none; }
+.led.off { background: var(--border); box-shadow: none; }
+.winctl { display: flex; gap: 0; margin-left: 2px; border-left: 1px solid var(--border); padding-left: 6px; }
+.winctl button { width: var(--unit); height: var(--unit); color: var(--muted-foreground); display: grid; place-items: center; }
+.winctl button:hover { background: var(--accent); color: var(--foreground); }
+
+/* Main */
+.main { display: grid; grid-template-columns: 264px 1fr; gap: 6px; padding: 6px; min-height: 0; }
+.island { --c: var(--cut-lg); border: 1px solid var(--border); overflow: hidden; }
+.sidebar { background-color: var(--sidebar); display: flex; flex-direction: column; min-height: 0; }
+.search { padding: 6px; border-bottom: 1px solid var(--border); }
+.search label { position: relative; display: block; }
+.search svg { position: absolute; left: 8px; top: 8px; color: var(--muted-foreground); }
+.search input { --edge: var(--border); width: 100%; height: var(--unit); background-color: var(--track); border: 1px solid var(--border); padding: 0 52px 0 26px; font-size: 12px; }
+.search input::placeholder { color: var(--muted-foreground); }
+.search kbd { position: absolute; right: 6px; top: 6px; }
+.sec-h { display: flex; align-items: center; justify-content: space-between; height: 28px; padding: 0 4px 0 10px; }
+.sec-h .label::before { content: ""; display: inline-block; width: 6px; height: 1px; background: var(--primary); vertical-align: middle; margin-right: 6px; }
+.sec-h button { width: 24px; height: 24px; color: var(--muted-foreground); display: grid; place-items: center; border: 1px solid transparent; }
+.sec-h button:hover { border-color: var(--border); color: var(--foreground); }
+.tree { flex: 1; overflow: hidden; list-style: none; padding-bottom: 4px; }
+.tree ul { list-style: none; }
+.row { height: 24px; display: flex; align-items: center; gap: 6px; padding-right: 8px; border-left: 2px solid transparent; cursor: default; white-space: nowrap; }
+.row:hover { background: var(--accent); }
+.row[aria-selected="true"] { background: var(--list-active); border-left-color: var(--list-active-border); box-shadow: inset 0 1px 0 #d9784a33, inset 0 -1px 0 #d9784a33; }
+.l0 { padding-left: 6px; } .l1 { padding-left: 16px; } .l2 { padding-left: 30px; }
+.row .name { overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.row .folder { color: var(--muted-foreground); flex: none; }
+.row .draft { width: 6px; height: 6px; background: var(--foreground); transform: rotate(45deg); flex: none; }
+.envs { list-style: none; padding: 0 6px 6px; display: grid; gap: 2px; }
+.envs .row { padding: 0 8px; gap: 8px; height: 26px; border: 1px solid transparent; border-left-width: 1px; }
+.envs .row[aria-selected="true"] { --edge: var(--primary); --c: var(--cut-sm); border-color: #d9784a80; box-shadow: none; }
+.envs .tag { margin-left: auto; font-family: var(--font-mono); font-size: 10px; }
+.env-sec { border-top: 1px solid var(--border); }
+
+/* Document */
+.doc { display: flex; flex-direction: column; min-width: 0; min-height: 0; gap: 6px; }
+.editor { background-color: var(--background); display: flex; flex-direction: column; flex: none; }
+.tabs { height: 30px; background: var(--tab-bar); border-bottom: 1px solid var(--border); display: flex; flex: none; padding-left: 12px; }
+.tab { height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-right: 1px solid var(--border); color: var(--muted-foreground); max-width: 220px; position: relative; }
+.tab:first-child { border-left: 1px solid var(--border); }
+.tab:hover { background: var(--accent); color: var(--foreground); }
+.tab[aria-selected="true"] { background: var(--tab-active); color: var(--foreground); height: 31px; box-shadow: inset 0 2px 0 var(--primary); }
+.tab .end { width: 16px; height: 16px; display: grid; place-items: center; }
+.tab .dot { width: 6px; height: 6px; background: var(--foreground); transform: rotate(45deg); }
+.tab .x { display: none; color: var(--muted-foreground); }
+.tab:hover .x, .tab:focus-visible .x { display: block; }
+.tab:hover .dot, .tab:focus-visible .dot { display: none; }
+.tab-new { width: 30px; color: var(--muted-foreground); display: grid; place-items: center; border-right: 1px solid var(--border); }
+.tab-new:hover { color: var(--foreground); background: var(--accent); }
+
+.reqhead { height: 40px; padding: 0 12px; display: flex; align-items: center; gap: 10px; flex: none; }
+.crumb { font: 400 11px/16px var(--font-mono); color: var(--muted-foreground); }
+.crumb b { color: var(--foreground); font: 600 14px/20px var(--font-ui); margin-left: 6px; }
+.draft-note { --edge: #9e989199; --c: var(--cut-xs); display: inline-flex; align-items: center; gap: 6px; height: 18px; padding: 0 6px; border: 1px solid #9e989199; }
+.draft-note i { width: 5px; height: 5px; background: var(--foreground); transform: rotate(45deg); }
+.reqhead .actions { margin-left: auto; display: flex; gap: 4px; }
+
+.urlbar { --edge: var(--border); --c: var(--cut-md); margin: 0 12px; height: 36px; display: flex; flex: none; border: 1px solid var(--border); background-color: var(--track); }
+.urlbar .method { width: 96px; border-right: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 10px; }
+.urlbar .url { flex: 1; display: flex; align-items: center; padding: 0 12px; font: 400 13px/20px var(--font-mono); white-space: nowrap; overflow: hidden; }
+.urlbar .send { --c: var(--cut-sm); --edge: var(--primary); margin: 3px; height: 28px; padding: 0 12px 0 14px; background-color: var(--primary); color: var(--primary-foreground); font-weight: 700; text-transform: uppercase; letter-spacing: .1em; font-size: 11px; display: flex; align-items: center; gap: 10px; }
+.urlbar .send:hover { background-color: var(--primary-hover); --edge: var(--primary-hover); }
+.urlbar .send kbd { background: #1a0d0626; border-color: #1a0d0659; color: var(--primary-foreground); letter-spacing: .02em; }
+
+/* Segmented control inside a recessed track */
+.segbar { height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 12px; flex: none; }
+.seg { --edge: var(--border); --c: var(--cut-sm); display: inline-flex; height: var(--unit); padding: 2px; gap: 2px; background-color: var(--track); border: 1px solid var(--border); box-shadow: inset 0 1px 2px #00000080; }
+.seg button { --c: var(--cut-xs); height: 22px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; color: var(--muted-foreground); font-weight: 500; border: 1px solid transparent; }
+.seg button:hover { color: var(--foreground); background-color: var(--accent); }
+.seg button[aria-selected="true"] { --edge: #d9784a99; color: var(--foreground); background-color: var(--muted); border-color: #d9784a99; box-shadow: inset 0 -2px 0 var(--primary); }
+.count { font: 500 10px/14px var(--font-mono); padding: 0 4px; border: 1px solid var(--border); color: var(--muted-foreground); }
+.seg button[aria-selected="true"] .count { color: var(--foreground); border-color: var(--muted-foreground); }
+.segbar .right { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+
+.table-wrap { padding: 0 12px 12px; }
+table { width: 100%; border-collapse: collapse; border: 1px solid var(--border); table-layout: fixed; }
+th, td { height: 26px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); padding: 0 8px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+th { background: var(--track); font: 600 10px/14px var(--font-ui); text-transform: uppercase; letter-spacing: var(--label-tracking); color: var(--muted-foreground); }
+td { font: 400 12px/18px var(--font-mono); }
+td.ck, th.ck { width: 32px; text-align: center; padding: 0; }
+th.k { width: 200px; } th.d { width: 230px; }
+td.desc { font-family: var(--font-ui); color: var(--muted-foreground); font-size: 11px; }
+tr.ghost td { color: var(--muted-foreground); }
+.cb { width: 12px; height: 12px; border: 1px solid var(--muted-foreground); background: var(--track); display: inline-grid; place-items: center; vertical-align: middle; }
+.cb[aria-checked="true"] { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+.warn-note { display: inline-flex; align-items: center; gap: 4px; color: var(--warning); font: 400 11px/16px var(--font-ui); }
+
+.response { background-color: var(--background); flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.resp-head { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 12px; flex: none; border-bottom: 1px solid var(--border); }
+.resp-head .label::before { content: ""; display: inline-block; width: 6px; height: 1px; background: var(--primary); vertical-align: middle; margin-right: 6px; }
+/* Readout strip: grouped monospace cells */
+.readout { --edge: var(--border); --c: var(--cut-sm); display: flex; height: var(--unit); border: 1px solid var(--border); background-color: var(--track); }
+.readout .cell { display: flex; flex-direction: column; justify-content: center; padding: 0 10px; border-right: 1px solid var(--border); min-width: 72px; }
+.readout .cell:last-child { border-right: 0; }
+.readout .k2 { font: 600 9px/10px var(--font-ui); letter-spacing: var(--label-tracking); text-transform: uppercase; color: var(--muted-foreground); }
+.readout .v { font: 600 12px/14px var(--font-mono); font-variant-numeric: tabular-nums; }
+.readout .v u { text-decoration: none; color: var(--muted-foreground); font-weight: 400; margin-left: 2px; }
+.status-ok { color: var(--success); }
+.resp-head .right { margin-left: auto; display: flex; gap: 4px; }
+.code { flex: 1; overflow: hidden; display: grid; grid-template-columns: 44px 1fr; font: 400 12px/18px var(--font-mono); padding: 6px 0; margin: 0 12px 12px; border: 1px solid var(--border); background: var(--track); }
+.ln { color: var(--muted-foreground); text-align: right; padding-right: 10px; user-select: none; white-space: pre; }
+.json { white-space: pre; padding-left: 10px; border-left: 1px solid var(--border); }
+.k { color: var(--blue); } .s { color: var(--green); } .n { color: var(--magenta); } .p { color: var(--muted-foreground); }
+
+/* Status bar */
+.statusbar { background: var(--status-bar); display: flex; align-items: center; gap: 0; padding: 0 6px; font-size: 11px; line-height: 16px; color: var(--muted-foreground); border-top: 1px solid var(--border); }
+.statusbar > * { padding: 0 10px; border-right: 1px solid var(--border); display: inline-flex; gap: 6px; align-items: center; height: 14px; }
+.statusbar .sp { flex: 1; border: 0; }
+.statusbar > :last-child { border-right: 0; }
+.statusbar .ok i { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="chev" viewBox="0 0 10 10"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/></symbol>
+  <symbol id="folder" viewBox="0 0 14 14"><path d="M1.5 3.5h4l1.2 1.4h5.8v6.6h-11z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="miter"/></symbol>
+  <symbol id="x" viewBox="0 0 10 10"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="currentColor" stroke-width="1.3"/></symbol>
+  <symbol id="plus" viewBox="0 0 12 12"><path d="M6 2v8M2 6h8" stroke="currentColor" stroke-width="1.3"/></symbol>
+  <symbol id="warn" viewBox="0 0 12 12"><path d="M6 1.5 11 10.5H1z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6 5v2.5M6 9v.01" stroke="currentColor" stroke-width="1.3"/></symbol>
+  <symbol id="check" viewBox="0 0 10 10"><path d="M2 5.2 4.2 7.3 8 3" fill="none" stroke="currentColor" stroke-width="1.6"/></symbol>
+</svg>
+
+<header class="titlebar" aria-label="Window title bar">
+  <button class="btn cut ws" aria-haspopup="listbox" aria-label="Workspace: billing">
+    <span class="logo cut" aria-hidden="true">R</span> billing
+    <svg class="chev dim"><use href="#chev"/></svg>
+  </button>
+  <span class="spacer small dim">Relay — billing · Create invoice</span>
+  <button class="btn cut" aria-haspopup="listbox" aria-label="Environment: staging">
+    <span class="led" aria-hidden="true"></span>
+    <span class="label">Env</span> staging
+    <svg class="chev dim"><use href="#chev"/></svg>
+  </button>
+  <div class="winctl" role="group" aria-label="Window controls">
+    <button aria-label="Minimize"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5h6" stroke="currentColor" stroke-width="1.2"/></svg></button>
+    <button aria-label="Maximize"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="2" y="2" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></button>
+    <button aria-label="Close window"><svg width="10" height="10"><use href="#x"/></svg></button>
+  </div>
+</header>
+
+<div class="main">
+  <nav class="sidebar island cut" aria-label="Collections">
+    <div class="search" role="search">
+      <label>
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle cx="5" cy="5" r="3.6" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M7.8 7.8 10.5 10.5" stroke="currentColor" stroke-width="1.2"/></svg>
+        <input class="cut" type="search" placeholder="Search requests" aria-label="Search requests">
+        <kbd>Ctrl+P</kbd>
+      </label>
+    </div>
+    <div class="sec-h"><span class="label">Collections</span><button class="cut" aria-label="New collection"><svg width="12" height="12"><use href="#plus"/></svg></button></div>
+    <ul class="tree" role="tree" aria-label="Collection tree">
+      <li role="treeitem" aria-expanded="true">
+        <div class="row l0" tabindex="-1"><svg class="chev dim"><use href="#chev"/></svg><span class="name" style="font-weight:600">Billing API</span></div>
+        <ul role="group">
+          <li role="treeitem" aria-expanded="true">
+            <div class="row l1" tabindex="-1"><svg class="chev dim"><use href="#chev"/></svg><svg class="folder" width="14" height="14"><use href="#folder"/></svg><span class="name">invoices</span></div>
+            <ul role="group">
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m cut-1 get">GET</span><span class="name">List invoices</span></div></li>
+              <li role="treeitem" aria-selected="true" class="row l2" tabindex="0" aria-label="POST Create invoice, unsaved draft"><span class="m cut-1 post">POST</span><span class="name">Create invoice</span><span class="draft" aria-hidden="true"></span></li>
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m cut-1 get">GET</span><span class="name">Get invoice</span></div></li>
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m cut-1 patch">PATCH</span><span class="name">Update invoice</span></div></li>
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m cut-1 del">DEL</span><span class="name">Void invoice</span></div></li>
+            </ul>
+          </li>
+          <li role="treeitem" aria-expanded="true">
+            <div class="row l1" tabindex="-1"><svg class="chev dim"><use href="#chev"/></svg><svg class="folder" width="14" height="14"><use href="#folder"/></svg><span class="name">customers</span></div>
+            <ul role="group">
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m cut-1 get">GET</span><span class="name">List customers</span></div></li>
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m cut-1 post">POST</span><span class="name">Create customer</span></div></li>
+            </ul>
+          </li>
+          <li role="treeitem" aria-expanded="true">
+            <div class="row l1" tabindex="-1"><svg class="chev dim"><use href="#chev"/></svg><svg class="folder" width="14" height="14"><use href="#folder"/></svg><span class="name">webhooks</span></div>
+            <ul role="group">
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m cut-1 post">POST</span><span class="name">Stripe webhook replay</span></div></li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+      <li role="treeitem" aria-expanded="true">
+        <div class="row l0" tabindex="-1"><svg class="chev dim"><use href="#chev"/></svg><span class="name" style="font-weight:600">Auth</span></div>
+        <ul role="group">
+          <li role="treeitem"><div class="row l1" tabindex="-1" style="padding-left:30px"><span class="m cut-1 post">POST</span><span class="name">Token</span></div></li>
+          <li role="treeitem"><div class="row l1" tabindex="-1" style="padding-left:30px"><span class="m cut-1 post">POST</span><span class="name">Refresh token</span></div></li>
+        </ul>
+      </li>
+    </ul>
+    <section class="env-sec" aria-label="Environments">
+      <div class="sec-h"><span class="label">Environments</span><button class="cut" aria-label="New environment"><svg width="12" height="12"><use href="#plus"/></svg></button></div>
+      <ul class="envs" role="listbox" aria-label="Environments">
+        <li role="option" aria-selected="false" class="row" tabindex="-1"><span class="led off" aria-hidden="true"></span><span class="name">dev</span><span class="tag dim">12 vars</span></li>
+        <li role="option" aria-selected="true" class="row cut" tabindex="-1"><span class="led" aria-hidden="true"></span><span class="name">staging</span><span class="tag" style="color:var(--warning)">1 unresolved</span></li>
+        <li role="option" aria-selected="false" class="row" tabindex="-1"><span class="led off" aria-hidden="true"></span><span class="name">prod</span><span class="tag dim">12 vars</span></li>
+      </ul>
+    </section>
+  </nav>
+
+  <main class="doc" aria-label="Request editor">
+    <div class="editor island cut">
+      <div class="tabs" role="tablist" aria-label="Open requests">
+        <button class="tab" role="tab" aria-selected="false"><span class="m cut-1 get">GET</span><span>List invoices</span><span class="end"><svg class="x" width="10" height="10"><use href="#x"/></svg></span></button>
+        <button class="tab" role="tab" aria-selected="true" aria-label="POST Create invoice, unsaved draft"><span class="m cut-1 post">POST</span><span>Create invoice</span><span class="end"><span class="dot" aria-hidden="true"></span><svg class="x" width="10" height="10"><use href="#x"/></svg></span></button>
+        <button class="tab" role="tab" aria-selected="false"><span class="m cut-1 post">POST</span><span>Token</span><span class="end"><svg class="x" width="10" height="10"><use href="#x"/></svg></span></button>
+        <button class="tab-new" aria-label="New request"><svg width="12" height="12"><use href="#plus"/></svg></button>
+      </div>
+
+      <div class="reqhead">
+        <h1 class="crumb">Billing API / invoices /<b>Create invoice</b></h1>
+        <span class="draft-note cut label"><i aria-hidden="true"></i>Unsaved draft</span>
+        <div class="actions">
+          <button class="btn cut">Revert</button>
+          <button class="btn cut">Save <kbd>Ctrl+S</kbd></button>
+        </div>
+      </div>
+
+      <form class="urlbar cut" aria-label="Request URL" onsubmit="return false">
+        <button type="button" class="method" aria-label="Method: POST"><span class="m cut-1 post">POST</span><svg class="chev dim"><use href="#chev"/></svg></button>
+        <div class="url" role="textbox" tabindex="0" aria-label="URL"><span class="var">{{base_url}}</span>/v1/invoices?expand=lines</div>
+        <button type="submit" class="send cut">Send <kbd>Ctrl+Enter</kbd></button>
+      </form>
+
+      <div class="segbar">
+        <div class="seg cut" role="tablist" aria-label="Request sections">
+          <button class="cut" role="tab" aria-selected="false">Params <span class="count">1</span></button>
+          <button class="cut" role="tab" aria-selected="true">Headers <span class="count">4</span></button>
+          <button class="cut" role="tab" aria-selected="false">Body <span class="count">JSON</span></button>
+          <button class="cut" role="tab" aria-selected="false">Auth</button>
+          <button class="cut" role="tab" aria-selected="false">Scripts</button>
+          <button class="cut" role="tab" aria-selected="false">Settings</button>
+        </div>
+        <div class="right"><button class="btn cut">Bulk edit</button></div>
+      </div>
+
+      <div class="table-wrap" role="tabpanel" aria-label="Headers">
+        <table>
+          <thead><tr><th class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Toggle all"><svg width="10" height="10"><use href="#check"/></svg></span></th><th class="k">Key</th><th>Value</th><th class="d">Description</th></tr></thead>
+          <tbody>
+            <tr><td class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Enabled"><svg width="10" height="10"><use href="#check"/></svg></span></td><td>Content-Type</td><td>application/json</td><td class="desc"></td></tr>
+            <tr><td class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Enabled"><svg width="10" height="10"><use href="#check"/></svg></span></td><td>Authorization</td><td>Bearer <span class="var">{{access_token}}</span> <span class="secret" aria-label="secret value masked">••••••••</span></td><td class="desc">Secret, from staging</td></tr>
+            <tr><td class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Enabled"><svg width="10" height="10"><use href="#check"/></svg></span></td><td>Idempotency-Key</td><td><span class="var">{{$guid}}</span></td><td class="desc">New GUID per send</td></tr>
+            <tr><td class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Enabled"><svg width="10" height="10"><use href="#check"/></svg></span></td><td>X-Tenant</td><td><span class="var-bad">{{tenant_id}}</span></td><td><span class="warn-note"><svg width="12" height="12"><use href="#warn"/></svg>Not defined in staging</span></td></tr>
+            <tr class="ghost"><td class="ck"><span class="cb" role="checkbox" aria-checked="false" aria-label="Enabled"></span></td><td>Key</td><td>Value</td><td class="desc"></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <section class="response island cut" aria-label="Response">
+      <div class="resp-head">
+        <span class="label">Response</span>
+        <div class="readout cut" role="group" aria-label="Response metrics">
+          <div class="cell"><span class="k2">Status</span><span class="v status-ok">201 Created</span></div>
+          <div class="cell"><span class="k2">Time</span><span class="v">184<u>ms</u></span></div>
+          <div class="cell"><span class="k2">Size</span><span class="v">1.2<u>KB</u></span></div>
+          <div class="cell"><span class="k2">Sent</span><span class="v">19:42:11</span></div>
+        </div>
+        <div class="seg cut" role="tablist" aria-label="Response sections">
+          <button class="cut" role="tab" aria-selected="true">Body</button>
+          <button class="cut" role="tab" aria-selected="false">Headers <span class="count">11</span></button>
+          <button class="cut" role="tab" aria-selected="false">Cookies <span class="count">1</span></button>
+          <button class="cut" role="tab" aria-selected="false">Timeline</button>
+        </div>
+        <div class="right">
+          <span class="count" style="align-self:center">PRETTY · JSON</span>
+          <button class="btn cut">Copy</button>
+          <button class="btn cut">Save as example</button>
+        </div>
+      </div>
+      <div style="height:12px;flex:none"></div>
+      <div class="code" role="tabpanel" aria-label="Response body" tabindex="0">
+<div class="ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19</div><div class="json"><span class="p">{</span>
+  <span class="k">"id"</span><span class="p">:</span> <span class="s">"inv_01JB7X3K9Q"</span><span class="p">,</span>
+  <span class="k">"object"</span><span class="p">:</span> <span class="s">"invoice"</span><span class="p">,</span>
+  <span class="k">"customer_id"</span><span class="p">:</span> <span class="s">"cus_9f2KQ81"</span><span class="p">,</span>
+  <span class="k">"status"</span><span class="p">:</span> <span class="s">"draft"</span><span class="p">,</span>
+  <span class="k">"currency"</span><span class="p">:</span> <span class="s">"usd"</span><span class="p">,</span>
+  <span class="k">"due_date"</span><span class="p">:</span> <span class="s">"2026-11-30"</span><span class="p">,</span>
+  <span class="k">"total"</span><span class="p">:</span> <span class="n">4900</span><span class="p">,</span>
+  <span class="k">"lines"</span><span class="p">: [</span>
+    <span class="p">{</span>
+      <span class="k">"id"</span><span class="p">:</span> <span class="s">"il_01JB7X3KA2"</span><span class="p">,</span>
+      <span class="k">"description"</span><span class="p">:</span> <span class="s">"Pro plan, November"</span><span class="p">,</span>
+      <span class="k">"quantity"</span><span class="p">:</span> <span class="n">1</span><span class="p">,</span>
+      <span class="k">"unit_amount"</span><span class="p">:</span> <span class="n">4900</span><span class="p">,</span>
+      <span class="k">"amount"</span><span class="p">:</span> <span class="n">4900</span>
+    <span class="p">}</span>
+  <span class="p">],</span>
+  <span class="k">"created_at"</span><span class="p">:</span> <span class="s">"2026-10-28T19:42:11Z"</span>
+<span class="p">}</span></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer class="statusbar" aria-label="Status bar">
+  <span class="ok"><i aria-hidden="true"></i>billing · git main</span>
+  <span>1 unsaved draft</span>
+  <span class="sp"></span>
+  <span><kbd>Ctrl+Enter</kbd> Send</span>
+  <span><kbd>Ctrl+S</kbd> Save</span>
+  <span><kbd>Ctrl+K</kbd> Command palette</span>
+  <span><kbd>Ctrl+P</kbd> Go to request</span>
+</footer>
+</body>
+</html>

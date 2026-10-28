@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440, height=900">
+<title>Relay — Bolt Byzantium (DBFlux design system)</title>
+<style>
+:root {
+  /* Bolt Byzantium, Dark palette, Default density (DBFlux DESIGN.md) */
+  --desk: #050507;
+  --background: #09090B;
+  --panel: #100F13;
+  --raised: #1A181E;
+  --line: #232128;
+  --line-2: #37333D;
+  --row-divider: #18161B;
+  --strong: #F7F4F7;
+  --foreground: #C6C3CC;
+  --muted-foreground: #8E8996;
+  --byzantine: #702963;
+  --byzantine-hover: #7F3171;
+  --deep: #4A1B41;
+  --tint: #D48CC8;
+  --on-primary: #FFFFFF;
+  --success: #7BE0A0;
+  --info: #6EA8FF;
+  --warning: #FFC23D;
+  --danger: #FF6B5E;
+  --null: #B79CFF;
+  --cyan: #6FD3D8;
+  --on-semantic: #09090B;
+
+  --hover-wash: rgba(255, 255, 255, 0.04);
+  --alternating-row: rgba(255, 255, 255, 0.012);
+  --selected-row: rgba(212, 140, 200, 0.07);
+  --selected-item: rgba(212, 140, 200, 0.12);
+  --selected-button: rgba(212, 140, 200, 0.14);
+  --text-selection: rgba(212, 140, 200, 0.25);
+  --island-edge: rgba(255, 255, 255, 0.05);
+  --success-soft: rgba(123, 224, 160, 0.14);
+  --banner-warning: rgba(255, 194, 61, 0.12);
+  --scrollbar-thumb: rgba(142, 137, 150, 0.30);
+
+  /* Syntax */
+  --syntax-key: #6EA8FF;
+  --syntax-string: #7BE0A0;
+  --syntax-number: #B79CFF;
+  --syntax-punct: #8E8996;
+
+  /* Relay: HTTP methods, kept apart from the status colors even where the hue matches */
+  --method-get: #7BE0A0;
+  --method-post: #6EA8FF;
+  --method-put: #B79CFF;
+  --method-patch: #FFC23D;
+  --method-delete: #FF6B5E;
+  --method-other: #6FD3D8;
+  /* Relay: template variables */
+  --var: #6FD3D8;
+  --var-wash: rgba(111, 211, 216, 0.12);
+
+  /* Cuts (45 degree chamfers) */
+  --cut-keycap: 4px;
+  --cut-control: 6px;
+  --cut-input: 8px;
+  --cut-overlay: 12px;
+  --cut-card: 14px;
+
+  /* Spacing and chrome */
+  --s-xs: 4px; --s-xxs: 6px; --s-sm: 8px; --s-md: 12px; --s-lg: 16px; --s-xl: 24px;
+  --control: 30px;
+  --control-inline: 24px;
+  --title-bar: 44px;
+  --status-bar: 38px;
+  --status-chip: 26px;
+  --doc-tab-bar: 46px;
+  --doc-tab: 30px;
+  --panel-header: 40px;
+  --tree-row: 26px;
+  --tree-indent: 14px;
+  --grid-row: 31px;
+  --island-gap: 8px;
+  --sidebar-w: 290px;
+  --focus-ring: 1.5px;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --fast: 150ms;
+
+  --font-ui: "Archivo", "Inter", "Cantarell", "Noto Sans", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Archivo Expanded", "Archivo", "Inter", "Noto Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "JetBrainsMono Nerd Font", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1440px; height: 900px; overflow: hidden; }
+body {
+  background: var(--desk); color: var(--foreground);
+  font: 500 13px/18px var(--font-ui);
+  display: grid; grid-template-rows: var(--title-bar) 1fr var(--status-bar);
+}
+::selection { background: var(--text-selection); }
+button, input { font: inherit; color: inherit; }
+button { background: none; border: 0; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* The cut: top-left and bottom-right, 45 degrees. Straight-edge borders come from an inset
+   box-shadow, which clip-path removes on the diagonals, matching Chamfer::border. */
+.cut { --c: var(--cut-control); clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c)); }
+.cut-tl { --c: var(--cut-input); clip-path: polygon(var(--c) 0, 100% 0, 100% 100%, 0 100%, 0 var(--c)); }
+.k4 { --c: var(--cut-keycap); }
+.k8 { --c: var(--cut-input); }
+
+/* Focus-visible ring in the tint. Clip-path hides an outline, so the ring is inset. */
+:focus-visible { outline: none; }
+.ring:focus-visible { box-shadow: inset 0 0 0 var(--focus-ring) var(--tint) !important; }
+.row:focus-visible { box-shadow: inset 2px 0 0 var(--tint); background: var(--selected-item); }
+
+/* Typography roles */
+.label { font: 800 11px/16px var(--font-display); font-stretch: expanded; letter-spacing: .14em; text-transform: uppercase; color: var(--muted-foreground); }
+.caption { font: 500 12px/16px var(--font-ui); color: var(--muted-foreground); }
+.mono { font-family: var(--font-mono); }
+.dim { color: var(--muted-foreground); }
+.strong { color: var(--strong); }
+.m { font: 700 11px/16px var(--font-mono); text-transform: uppercase; }
+.get { color: var(--method-get); } .post { color: var(--method-post); } .put { color: var(--method-put); } .patch { color: var(--method-patch); } .del { color: var(--method-delete); } .other { color: var(--method-other); }
+.var { color: var(--var); background: var(--var-wash); padding: 0 2px; }
+.var-bad { color: var(--warning); text-decoration: underline dotted var(--warning); text-underline-offset: 3px; }
+.secret { color: var(--muted-foreground); letter-spacing: 1px; }
+.chev { width: 10px; height: 10px; flex: none; }
+
+/* Buttons */
+.btn { height: var(--control); padding: 0 12px; display: inline-flex; align-items: center; gap: 8px; font: 600 12.5px/16px var(--font-ui); white-space: nowrap; transition: background var(--fast) var(--ease); }
+.btn.inline { height: var(--control-inline); padding: 0 10px; font-size: 12px; }
+.btn-secondary { background: var(--raised); color: var(--foreground); box-shadow: inset 0 0 0 1px var(--line-2); }
+.btn-secondary:hover { background: var(--line); }
+.btn-secondary:active { background: var(--line-2); }
+.btn-ghost { color: var(--foreground); }
+.btn-ghost:hover { background: var(--raised); }
+.btn-ghost:active { background: var(--line); }
+.btn-primary { background: var(--byzantine); color: var(--on-primary); }
+.btn-primary:hover { background: var(--byzantine-hover); }
+.btn-primary:active { background: var(--deep); }
+.btn-selected { background: var(--selected-button); color: var(--tint); }
+.icon-btn { width: 32px; padding: 0; justify-content: center; }
+.icon-btn.inline { width: 24px; padding: 0; }
+.icon-btn svg { color: var(--muted-foreground); }
+.icon-btn:hover svg { color: var(--tint); }
+
+kbd { font: 500 10.5px/16px var(--font-mono); color: var(--foreground); background: var(--raised); padding: 0 5px; box-shadow: inset 0 -1px 0 var(--line-2), inset 0 0 0 1px var(--line); --c: var(--cut-keycap); clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c)); }
+.btn-primary kbd { background: rgba(255, 255, 255, 0.14); color: var(--on-primary); box-shadow: none; }
+.badge { height: 20px; padding: 0 6px; display: inline-flex; align-items: center; font: 500 11px/16px var(--font-mono); background: var(--raised); color: var(--foreground); }
+
+/* Title bar: on the desk, no fill, no line */
+.titlebar { display: flex; align-items: center; padding: 0 var(--island-gap); position: relative; }
+.ws { gap: 8px; }
+.logo { width: 18px; height: 18px; background: var(--byzantine); color: var(--on-primary); font: 800 10px/18px var(--font-display); text-align: center; --c: var(--cut-keycap); }
+.cmd { position: absolute; left: 50%; top: 7px; width: 420px; margin-left: -210px; height: var(--control); background: var(--background); box-shadow: inset 0 0 0 1px var(--line); display: flex; align-items: center; gap: 8px; padding: 0 6px 0 12px; color: var(--muted-foreground); }
+.cmd .q { flex: 1; text-align: left; }
+.cmd svg { color: var(--tint); }
+.tb-right { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.env { gap: 8px; }
+.env-diamond { width: 7px; height: 7px; background: var(--warning); transform: rotate(45deg); flex: none; }
+.winctl { display: flex; gap: 2px; margin-left: 8px; }
+
+/* Body and islands */
+.main { display: grid; grid-template-columns: var(--sidebar-w) 1fr; gap: var(--island-gap); padding: 0 var(--island-gap); min-height: 0; }
+.island {
+  --c: var(--cut-card);
+  position: relative; isolation: isolate; background: var(--island-edge);
+  clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c));
+  display: flex; flex-direction: column; min-height: 0; min-width: 0;
+}
+/* Panel fill inset 1 px; the 5 % white behind it reads as a hairline that follows the cut. */
+.island::before {
+  --i: 1px; --ci: calc(var(--c) - 0.41px);
+  content: ""; position: absolute; inset: var(--i); z-index: -1; background: var(--panel);
+  clip-path: polygon(var(--ci) 0, 100% 0, 100% calc(100% - var(--ci)), calc(100% - var(--ci)) 100%, 0 100%, 0 var(--ci));
+}
+
+/* Sidebar island */
+.side-head { height: 46px; flex: none; display: flex; align-items: center; padding: 0 8px; }
+.filter { position: relative; flex: 1; }
+.filter svg { position: absolute; left: 10px; top: 9px; color: var(--muted-foreground); }
+.filter input { width: 100%; height: var(--control); background: var(--background); border: 0; box-shadow: inset 0 0 0 1px var(--line); padding: 0 52px 0 30px; font-size: 13px; }
+.filter input::placeholder { color: var(--muted-foreground); }
+.filter kbd { position: absolute; right: 7px; top: 7px; }
+.sec-h { height: 32px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 6px 0 12px; }
+.tree { flex: 1; overflow: hidden; list-style: none; }
+.tree ul { list-style: none; }
+.row { height: var(--tree-row); display: flex; align-items: center; gap: 6px; padding-right: 10px; box-shadow: inset 2px 0 0 transparent; white-space: nowrap; color: var(--foreground); }
+.row:hover { background: var(--hover-wash); }
+.row[aria-selected="true"] { background: var(--selected-item); box-shadow: inset 2px 0 0 var(--tint); color: var(--strong); }
+.l0 { padding-left: 8px; } .l1 { padding-left: calc(8px + var(--tree-indent)); } .l2 { padding-left: calc(8px + 2 * var(--tree-indent)); }
+.row .m { width: 42px; flex: none; }
+.row .name { overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.row .folder { color: var(--muted-foreground); flex: none; }
+.row .coll { font-weight: 600; color: var(--strong); }
+.draft { width: 6px; height: 6px; background: var(--tint); transform: rotate(45deg); flex: none; }
+.envs { list-style: none; padding: 0 0 4px; }
+.envs .row { padding-left: 12px; gap: 8px; }
+.envs .tag { margin-left: auto; font: 500 12px/16px var(--font-ui); color: var(--muted-foreground); }
+.envs .tag.warn { color: var(--warning); }
+.side-foot { height: 46px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; }
+
+/* Document column */
+.doc { display: flex; flex-direction: column; gap: var(--island-gap); min-width: 0; min-height: 0; }
+.editor { flex: none; height: 372px; }
+.response { flex: 1; }
+
+.tabs { height: var(--doc-tab-bar); flex: none; display: flex; align-items: center; gap: 4px; padding: 0 10px; border-bottom: 1px solid var(--line); }
+.tab { height: var(--doc-tab); display: flex; align-items: center; gap: 8px; padding: 0 10px 0 12px; color: var(--muted-foreground); font-weight: 400; position: relative; transition: background var(--fast) var(--ease); }
+.tab:hover { background: var(--hover-wash); color: var(--foreground); }
+.tab[aria-selected="true"] { background: var(--raised); color: var(--strong); font-weight: 600; box-shadow: inset 0 2px 0 var(--byzantine); }
+.tab .end { width: 16px; height: 16px; display: grid; place-items: center; }
+.tab .dot { width: 6px; height: 6px; background: var(--tint); transform: rotate(45deg); }
+.tab .x { display: none; color: var(--muted-foreground); }
+.tab:hover .x, .tab:focus-visible .x { display: block; }
+.tab:hover .dot, .tab:focus-visible .dot { display: none; }
+.tab:focus-visible { box-shadow: inset 0 -2px 0 var(--tint); }
+
+.reqhead { height: 44px; flex: none; padding: 0 12px; display: flex; align-items: center; gap: 12px; }
+.crumb { font: 500 12px/16px var(--font-ui); color: var(--muted-foreground); }
+.crumb b { color: var(--strong); font: 700 18px/22px var(--font-ui); margin-left: 6px; }
+.draft-note { display: inline-flex; align-items: center; gap: 8px; height: 20px; padding: 0 8px; background: var(--selected-button); color: var(--tint); font: 500 12px/16px var(--font-ui); }
+.draft-note i { width: 6px; height: 6px; background: var(--tint); transform: rotate(45deg); }
+.reqhead .actions { margin-left: auto; display: flex; gap: 8px; }
+
+.urlbar { margin: 0 12px 10px; height: var(--control); flex: none; display: flex; gap: 8px; }
+.url-field { flex: 1; display: flex; background: var(--background); box-shadow: inset 0 0 0 1px var(--line); min-width: 0; }
+.method { width: 92px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 12px; box-shadow: inset -1px 0 0 var(--line); }
+.method .m { font-size: 12px; }
+.url { flex: 1; display: flex; align-items: center; padding: 0 12px; font: 500 13px/20px var(--font-mono); color: var(--strong); white-space: nowrap; overflow: hidden; }
+.url .caret { width: 1.5px; height: 16px; background: var(--tint); margin-left: 1px; }
+.send { padding: 0 14px; }
+
+.subtabs { height: 34px; flex: none; display: flex; align-items: stretch; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--line); }
+.subtab { padding: 0 10px; color: var(--muted-foreground); display: flex; align-items: center; gap: 8px; box-shadow: inset 0 -2px 0 transparent; font-weight: 500; }
+.subtab:hover { color: var(--foreground); }
+.subtab[aria-selected="true"] { color: var(--strong); font-weight: 600; box-shadow: inset 0 -2px 0 var(--byzantine); }
+.subtab:focus-visible { box-shadow: inset 0 -2px 0 var(--tint); }
+.count { height: 18px; padding: 0 5px; display: inline-flex; align-items: center; font: 500 11px/16px var(--font-mono); background: var(--raised); color: var(--foreground); --c: var(--cut-keycap); clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c)); }
+.subtab[aria-selected="true"] .count { background: var(--selected-button); color: var(--tint); }
+.subtabs .right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+/* Data: square edges */
+.table-wrap { flex: 1; min-height: 0; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+th, td { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 12px; }
+th { height: 32px; background: var(--background); border-bottom: 1px solid var(--line); }
+td { height: var(--grid-row); border-bottom: 1px solid var(--row-divider); font: 500 13px/20px var(--font-mono); color: var(--strong); }
+tbody tr:nth-child(even) td { background: var(--alternating-row); }
+tbody tr:hover td { background: var(--hover-wash); }
+td + td, th + th { box-shadow: inset 1px 0 0 var(--row-divider); }
+td.ck, th.ck { width: 40px; text-align: center; padding: 0; }
+th.k { width: 220px; } th.d { width: 250px; }
+td.desc { font: 500 12px/16px var(--font-ui); color: var(--muted-foreground); }
+tr.ghost td { color: var(--muted-foreground); }
+.cb { width: 16px; height: 16px; display: inline-grid; place-items: center; vertical-align: middle; background: var(--background); box-shadow: inset 0 0 0 1px var(--line-2); --c: var(--cut-keycap); clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c)); }
+.cb[aria-checked="true"] { background: var(--byzantine); box-shadow: none; color: var(--on-primary); }
+.warn-note { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 8px; background: var(--banner-warning); color: var(--warning); font: 500 12px/16px var(--font-ui); --c: var(--cut-keycap); clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c)); }
+
+/* Response island */
+.summary { height: var(--panel-header); flex: none; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 12px; border-bottom: 1px solid var(--line); }
+.status-chip { height: 20px; padding: 0 8px; display: inline-flex; align-items: center; gap: 6px; background: var(--success-soft); color: var(--success); font: 700 12px/16px var(--font-mono); --c: var(--cut-keycap); clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c)); }
+.metric { font: 500 12px/16px var(--font-mono); color: var(--foreground); }
+.metric small { font: 500 12px/16px var(--font-ui); color: var(--muted-foreground); margin-right: 4px; }
+.summary .right { margin-left: auto; display: flex; gap: 4px; }
+.seg { display: inline-flex; height: var(--control); padding: 2px; background: var(--background); box-shadow: inset 0 0 0 1px var(--line); }
+.seg button { height: 26px; padding: 0 10px; font: 600 12px/16px var(--font-ui); color: var(--muted-foreground); }
+.seg button[aria-pressed="true"] { background: var(--raised); color: var(--strong); --c: var(--cut-keycap); clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c)); }
+.code { flex: 1; min-height: 0; overflow: hidden; display: grid; grid-template-columns: 48px 1fr; font: 500 13px/18px var(--font-mono); padding: 6px 0; }
+.ln { color: var(--muted-foreground); text-align: right; padding-right: 12px; user-select: none; white-space: pre; }
+.json { white-space: pre; padding-left: 12px; box-shadow: inset 1px 0 0 var(--line); color: var(--strong); }
+.k { color: var(--syntax-key); } .s { color: var(--syntax-string); } .n { color: var(--syntax-number); } .p { color: var(--syntax-punct); }
+
+/* Status bar: on the desk, every item a 26 px chip on the panel fill */
+.statusbar { display: flex; align-items: center; gap: 8px; padding: 0 var(--island-gap); }
+.chip { height: var(--status-chip); display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; background: var(--panel); font: 500 12px/16px var(--font-ui); color: var(--foreground); white-space: nowrap; }
+.chip.ok { background: var(--success-soft); color: var(--success); }
+.chip .diamond { width: 7px; height: 7px; background: currentColor; transform: rotate(45deg); }
+.chip .hint { color: var(--muted-foreground); }
+.statusbar .sp { flex: 1; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="chev" viewBox="0 0 10 10"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/></symbol>
+  <symbol id="folder" viewBox="0 0 14 14"><path d="M1.5 3.5h4l1.2 1.4h5.8v6.6h-11z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="miter"/></symbol>
+  <symbol id="x" viewBox="0 0 10 10"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="currentColor" stroke-width="1.3"/></symbol>
+  <symbol id="plus" viewBox="0 0 12 12"><path d="M6 2v8M2 6h8" stroke="currentColor" stroke-width="1.3"/></symbol>
+  <symbol id="warn" viewBox="0 0 12 12"><path d="M6 1.5 11 10.5H1z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6 5v2.5M6 9v1" stroke="currentColor" stroke-width="1.3"/></symbol>
+  <symbol id="check" viewBox="0 0 10 10"><path d="M2 5.2 4.2 7.3 8 3" fill="none" stroke="currentColor" stroke-width="1.6"/></symbol>
+  <symbol id="search" viewBox="0 0 12 12"><circle cx="5" cy="5" r="3.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M7.8 7.8 10.5 10.5" stroke="currentColor" stroke-width="1.3"/></symbol>
+  <symbol id="copy" viewBox="0 0 14 14"><path d="M4.5 4.5h7v7h-7z M2.5 9.5v-7h7" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+  <symbol id="more" viewBox="0 0 14 14"><path d="M3 7h.01M7 7h.01M11 7h.01" stroke="currentColor" stroke-width="2"/></symbol>
+</svg>
+
+<header class="titlebar" aria-label="Window title bar">
+  <button class="btn btn-ghost cut ws ring" aria-haspopup="listbox" aria-label="Workspace: billing">
+    <span class="logo cut" aria-hidden="true">R</span><span class="strong">billing</span>
+    <svg class="chev dim"><use href="#chev"/></svg>
+  </button>
+  <button class="cmd cut ring" aria-label="Command palette">
+    <svg width="12" height="12" aria-hidden="true"><use href="#search"/></svg>
+    <span class="q">Search requests, commands, environments</span>
+    <kbd>Ctrl+K</kbd>
+  </button>
+  <div class="tb-right">
+    <button class="btn btn-secondary cut env ring" aria-haspopup="listbox" aria-label="Environment: staging">
+      <span class="env-diamond" aria-hidden="true"></span><span class="label" style="color:var(--muted-foreground)">Env</span><span class="strong">staging</span>
+      <svg class="chev dim"><use href="#chev"/></svg>
+    </button>
+    <div class="winctl" role="group" aria-label="Window controls">
+      <button class="btn btn-ghost cut icon-btn ring" aria-label="Minimize"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5h6" stroke="currentColor" stroke-width="1.2"/></svg></button>
+      <button class="btn btn-ghost cut icon-btn ring" aria-label="Maximize"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="2" y="2" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></button>
+      <button class="btn btn-ghost cut icon-btn ring" aria-label="Close window"><svg width="10" height="10"><use href="#x"/></svg></button>
+    </div>
+  </div>
+</header>
+
+<div class="main">
+  <nav class="island" aria-label="Collections">
+    <div class="side-head" role="search">
+      <label class="filter">
+        <svg width="12" height="12" aria-hidden="true"><use href="#search"/></svg>
+        <input class="cut ring" type="search" placeholder="Filter requests" aria-label="Filter requests">
+        <kbd>Ctrl+P</kbd>
+      </label>
+    </div>
+    <div class="sec-h"><span class="label">Collections</span><button class="btn btn-ghost cut icon-btn inline ring" aria-label="New collection"><svg width="12" height="12"><use href="#plus"/></svg></button></div>
+    <ul class="tree" role="tree" aria-label="Collection tree">
+      <li role="treeitem" aria-expanded="true">
+        <div class="row l0" tabindex="-1"><svg class="chev dim"><use href="#chev"/></svg><span class="name coll">Billing API</span></div>
+        <ul role="group">
+          <li role="treeitem" aria-expanded="true">
+            <div class="row l1" tabindex="-1"><svg class="chev dim"><use href="#chev"/></svg><svg class="folder" width="14" height="14"><use href="#folder"/></svg><span class="name">invoices</span></div>
+            <ul role="group">
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m get">GET</span><span class="name">List invoices</span></div></li>
+              <li role="treeitem" aria-selected="true" class="row l2" tabindex="0" aria-label="POST Create invoice, unsaved draft"><span class="m post">POST</span><span class="name">Create invoice</span><span class="draft" aria-hidden="true"></span></li>
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m get">GET</span><span class="name">Get invoice</span></div></li>
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m patch">PATCH</span><span class="name">Update invoice</span></div></li>
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m del">DEL</span><span class="name">Void invoice</span></div></li>
+            </ul>
+          </li>
+          <li role="treeitem" aria-expanded="true">
+            <div class="row l1" tabindex="-1"><svg class="chev dim"><use href="#chev"/></svg><svg class="folder" width="14" height="14"><use href="#folder"/></svg><span class="name">customers</span></div>
+            <ul role="group">
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m get">GET</span><span class="name">List customers</span></div></li>
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m post">POST</span><span class="name">Create customer</span></div></li>
+            </ul>
+          </li>
+          <li role="treeitem" aria-expanded="true">
+            <div class="row l1" tabindex="-1"><svg class="chev dim"><use href="#chev"/></svg><svg class="folder" width="14" height="14"><use href="#folder"/></svg><span class="name">webhooks</span></div>
+            <ul role="group">
+              <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m post">POST</span><span class="name">Stripe webhook replay</span></div></li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+      <li role="treeitem" aria-expanded="true">
+        <div class="row l0" tabindex="-1"><svg class="chev dim"><use href="#chev"/></svg><span class="name coll">Auth</span></div>
+        <ul role="group">
+          <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m post">POST</span><span class="name">Token</span></div></li>
+          <li role="treeitem"><div class="row l2" tabindex="-1"><span class="m post">POST</span><span class="name">Refresh token</span></div></li>
+        </ul>
+      </li>
+    </ul>
+    <section aria-label="Environments" style="border-top:1px solid var(--line)">
+      <div class="sec-h"><span class="label">Environments</span><button class="btn btn-ghost cut icon-btn inline ring" aria-label="New environment"><svg width="12" height="12"><use href="#plus"/></svg></button></div>
+      <ul class="envs" role="listbox" aria-label="Environments">
+        <li role="option" aria-selected="false" class="row" tabindex="-1"><span class="name">dev</span><span class="tag">12 vars</span></li>
+        <li role="option" aria-selected="true" class="row" tabindex="-1"><span class="name">staging</span><span class="tag warn">1 unresolved</span></li>
+        <li role="option" aria-selected="false" class="row" tabindex="-1"><span class="name">prod</span><span class="tag">12 vars</span></li>
+      </ul>
+    </section>
+    <div class="side-foot"><span class="caption">10 requests · 3 environments</span></div>
+  </nav>
+
+  <main class="doc" aria-label="Request editor">
+    <div class="island editor">
+      <div class="tabs" role="tablist" aria-label="Open requests">
+        <button class="tab cut ring" role="tab" aria-selected="false"><span class="m get">GET</span><span>List invoices</span><span class="end"><svg class="x" width="10" height="10"><use href="#x"/></svg></span></button>
+        <button class="tab cut" role="tab" aria-selected="true" aria-label="POST Create invoice, unsaved draft"><span class="m post">POST</span><span>Create invoice</span><span class="end"><span class="dot" aria-hidden="true"></span><svg class="x" width="10" height="10"><use href="#x"/></svg></span></button>
+        <button class="tab cut" role="tab" aria-selected="false"><span class="m post">POST</span><span>Token</span><span class="end"><svg class="x" width="10" height="10"><use href="#x"/></svg></span></button>
+        <button class="btn btn-ghost cut icon-btn ring" aria-label="New request"><svg width="12" height="12"><use href="#plus"/></svg></button>
+      </div>
+
+      <div class="reqhead">
+        <h1 class="crumb">Billing API / invoices /<b>Create invoice</b></h1>
+        <span class="draft-note cut k4"><i aria-hidden="true"></i>Unsaved draft</span>
+        <div class="actions">
+          <button class="btn btn-ghost cut ring">Revert</button>
+          <button class="btn btn-secondary cut ring">Save <kbd>Ctrl+S</kbd></button>
+        </div>
+      </div>
+
+      <form class="urlbar" aria-label="Request URL" onsubmit="return false">
+        <div class="url-field cut">
+          <button type="button" class="method ring" aria-label="Method: POST"><span class="m post">POST</span><svg class="chev dim"><use href="#chev"/></svg></button>
+          <div class="url ring" role="textbox" tabindex="0" aria-label="URL"><span class="var">{{base_url}}</span>/v1/invoices?expand=lines<span class="caret" aria-hidden="true"></span></div>
+        </div>
+        <button type="submit" class="btn btn-primary cut send">Send <kbd>Ctrl+Enter</kbd></button>
+      </form>
+
+      <div class="subtabs" role="tablist" aria-label="Request sections">
+        <button class="subtab" role="tab" aria-selected="false">Params <span class="count">1</span></button>
+        <button class="subtab" role="tab" aria-selected="true">Headers <span class="count">4</span></button>
+        <button class="subtab" role="tab" aria-selected="false">Body <span class="count">JSON</span></button>
+        <button class="subtab" role="tab" aria-selected="false">Auth</button>
+        <button class="subtab" role="tab" aria-selected="false">Scripts</button>
+        <button class="subtab" role="tab" aria-selected="false">Settings</button>
+        <div class="right"><button class="btn btn-ghost cut inline ring">Bulk edit</button></div>
+      </div>
+
+      <div class="table-wrap" role="tabpanel" aria-label="Headers">
+        <table>
+          <thead><tr><th class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Toggle all"><svg width="10" height="10"><use href="#check"/></svg></span></th><th class="k"><span class="label">Key</span></th><th><span class="label">Value</span></th><th class="d"><span class="label">Description</span></th></tr></thead>
+          <tbody>
+            <tr><td class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Enabled"><svg width="10" height="10"><use href="#check"/></svg></span></td><td>Content-Type</td><td>application/json</td><td class="desc"></td></tr>
+            <tr><td class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Enabled"><svg width="10" height="10"><use href="#check"/></svg></span></td><td>Authorization</td><td>Bearer <span class="var">{{access_token}}</span> <span class="secret" aria-label="secret value masked">••••••••</span></td><td class="desc">Secret, from staging</td></tr>
+            <tr><td class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Enabled"><svg width="10" height="10"><use href="#check"/></svg></span></td><td>Idempotency-Key</td><td><span class="var">{{$guid}}</span></td><td class="desc">New GUID per send</td></tr>
+            <tr><td class="ck"><span class="cb" role="checkbox" aria-checked="true" aria-label="Enabled"><svg width="10" height="10"><use href="#check"/></svg></span></td><td>X-Tenant</td><td><span class="var-bad">{{tenant_id}}</span></td><td><span class="warn-note"><svg width="12" height="12"><use href="#warn"/></svg>Not defined in staging</span></td></tr>
+            <tr class="ghost"><td class="ck"><span class="cb" role="checkbox" aria-checked="false" aria-label="Enabled"></span></td><td>Key</td><td>Value</td><td class="desc"></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <section class="island response" aria-label="Response">
+      <div class="summary">
+        <span class="label">Response</span>
+        <span class="status-chip"><span aria-hidden="true">●</span>201 Created</span>
+        <span class="metric"><small>time</small>184 ms</span>
+        <span class="metric"><small>size</small>1.2 KB</span>
+        <span class="metric"><small>sent</small>19:42:11</span>
+        <div class="right">
+          <button class="btn btn-ghost cut ring"><svg width="14" height="14" aria-hidden="true"><use href="#copy"/></svg>Copy</button>
+          <button class="btn btn-secondary cut ring">Save as example</button>
+          <button class="btn btn-ghost cut icon-btn ring" aria-label="More response actions"><svg width="14" height="14"><use href="#more"/></svg></button>
+        </div>
+      </div>
+      <div class="subtabs" role="tablist" aria-label="Response sections">
+        <button class="subtab" role="tab" aria-selected="true">Body</button>
+        <button class="subtab" role="tab" aria-selected="false">Headers <span class="count">11</span></button>
+        <button class="subtab" role="tab" aria-selected="false">Cookies <span class="count">1</span></button>
+        <button class="subtab" role="tab" aria-selected="false">Timeline</button>
+        <div class="right">
+          <div class="seg cut" role="group" aria-label="Body view"><button aria-pressed="true">Pretty</button><button aria-pressed="false">Raw</button><button aria-pressed="false">Preview</button></div>
+        </div>
+      </div>
+      <div class="code ring" role="tabpanel" aria-label="Response body" tabindex="0">
+<div class="ln" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19</div><div class="json"><span class="p">{</span>
+  <span class="k">"id"</span><span class="p">:</span> <span class="s">"inv_01JB7X3K9Q"</span><span class="p">,</span>
+  <span class="k">"object"</span><span class="p">:</span> <span class="s">"invoice"</span><span class="p">,</span>
+  <span class="k">"customer_id"</span><span class="p">:</span> <span class="s">"cus_9f2KQ81"</span><span class="p">,</span>
+  <span class="k">"status"</span><span class="p">:</span> <span class="s">"draft"</span><span class="p">,</span>
+  <span class="k">"currency"</span><span class="p">:</span> <span class="s">"usd"</span><span class="p">,</span>
+  <span class="k">"due_date"</span><span class="p">:</span> <span class="s">"2026-11-30"</span><span class="p">,</span>
+  <span class="k">"total"</span><span class="p">:</span> <span class="n">4900</span><span class="p">,</span>
+  <span class="k">"lines"</span><span class="p">: [</span>
+    <span class="p">{</span>
+      <span class="k">"id"</span><span class="p">:</span> <span class="s">"il_01JB7X3KA2"</span><span class="p">,</span>
+      <span class="k">"description"</span><span class="p">:</span> <span class="s">"Pro plan, November"</span><span class="p">,</span>
+      <span class="k">"quantity"</span><span class="p">:</span> <span class="n">1</span><span class="p">,</span>
+      <span class="k">"unit_amount"</span><span class="p">:</span> <span class="n">4900</span><span class="p">,</span>
+      <span class="k">"amount"</span><span class="p">:</span> <span class="n">4900</span>
+    <span class="p">}</span>
+  <span class="p">],</span>
+  <span class="k">"created_at"</span><span class="p">:</span> <span class="s">"2026-10-28T19:42:11Z"</span>
+<span class="p">}</span></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer class="statusbar" aria-label="Status bar">
+  <span class="chip cut ok"><span class="diamond" aria-hidden="true"></span>billing · git main</span>
+  <span class="chip cut"><span class="draft" aria-hidden="true"></span>1 unsaved draft</span>
+  <span class="sp"></span>
+  <span class="chip cut"><kbd>Ctrl+Enter</kbd><span class="hint">Send</span></span>
+  <span class="chip cut"><kbd>Ctrl+S</kbd><span class="hint">Save</span></span>
+  <span class="chip cut"><kbd>Ctrl+K</kbd><span class="hint">Command palette</span></span>
+  <span class="chip cut"><kbd>Ctrl+P</kbd><span class="hint">Go to request</span></span>
+</footer>
+</body>
+</html>

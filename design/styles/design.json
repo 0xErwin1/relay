@@ -1,0 +1,34 @@
+{
+  "title": "Visual styles",
+  "brief": "Relay's default classic islands layout in different visual languages: DBFlux's Bolt Byzantium for reference, and three style languages on the Copper palette (shape, type, tabs, controls, density), not just colors.",
+  "artboards": [
+    {
+      "file": "01-byzantium-bolt.html",
+      "title": "Bolt Byzantium (DBFlux)",
+      "tradeoff": "Proven, distinctive cut-corner system; it is DBFlux's identity, so Relay would read as a sibling product",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "02-copper-machined.html",
+      "title": "Copper / Machined",
+      "tradeoff": "Instrument-like and precise; chamfers and segmented controls cost more to build in GPUI",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "03-copper-soft.html",
+      "title": "Copper / Soft",
+      "tradeoff": "Calm and approachable; lowest density, fewer rows on screen",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "04-copper-terminal.html",
+      "title": "Copper / Terminal",
+      "tradeoff": "Densest and most keyboard-native; mono chrome is harder to scan for non-technical users",
+      "width": 1440,
+      "height": 900
+    }
+  ]
+}
