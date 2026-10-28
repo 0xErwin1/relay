@@ -1,0 +1,27 @@
+{
+  "title": "Islands and palette",
+  "brief": "Layout 01 (classic stacked, the default mode) rebuilt as islands on a canvas, in three palettes with more identity than the generic starter.",
+  "artboards": [
+    {
+      "file": "01-signal.html",
+      "title": "Signal (warm amber)",
+      "tradeoff": "Warm and recognizable; POST and unresolved-variable warnings share the same gold",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "02-abyss.html",
+      "title": "Abyss (deep teal)",
+      "tradeoff": "Calm for long sessions; teal brand sits close to the variable cyan",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "03-ink.html",
+      "title": "Ink (violet)",
+      "tradeoff": "Sharpest contrast and most editorial; needs a fourth accent (coral) that has no gpui-kit theme slot",
+      "width": 1440,
+      "height": 900
+    }
+  ]
+}

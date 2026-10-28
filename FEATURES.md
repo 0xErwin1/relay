@@ -130,6 +130,10 @@ One MCP server, `relay`, for everything.
 | Keyboard-first: command palette, context-aware keymap, keyboard coverage test | MVP |
 | Document tabs with unsaved state | MVP |
 | Light and dark themes from semantic tokens | MVP |
+| Islands layout: sidebar, editor and response as separate rounded panels on a canvas | MVP |
+| Layout mode Classic: tree, request above, response below (default) | MVP |
+| Layout mode Side by side: activity rail, request and response in columns | v1 |
+| Layout mode Document: no sidebar, request as an `.http`-style document, navigation by palette | v1 |
 | Configurable keymap | v1 |
 | Split panes and multiple windows | Later |
 
