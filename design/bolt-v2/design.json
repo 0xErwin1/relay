@@ -85,6 +85,13 @@
       "tradeoff": "DBFlux approvals pattern",
       "width": 1440,
       "height": 900
+    },
+    {
+      "file": "13-audit.html",
+      "title": "Audit log",
+      "tradeoff": "DBFlux audit timeline; agent actions and your decisions, secrets never logged",
+      "width": 1440,
+      "height": 900
     }
   ]
 }
