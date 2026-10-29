@@ -26,82 +26,45 @@ the dark ground, and accent text, icons, caret and focus ring use the accent **t
 
 ## What Relay sets itself
 
-Values from `design/bolt/02-cobalt.html`, rendered on the system board `design/system.html`.
-Contrast is measured on panel `#100F13`; "selected" is the selected tree item (tint 12 %).
+The reference is `design/bolt-v2/`, built from DBFlux's own artboards
+(`design/redesign-islands-*` in DBFlux) and screenshots of the running app. When a value or a
+component is not listed here, take it from DBFlux, not from a reinterpretation.
 
-| Token | Value | Usage | Contrast |
-|-------|-------|-------|----------|
-| `accent` | `#2B45B8` | Send fill, active tab edge, logo | white text 7.9:1 |
-| `accent-hover` | `#3451C8` | Primary hover | white text 6.7:1 |
-| `accent-pressed` | `#1F3389` | Primary pressed | white text 11.1:1 |
-| `accent-tint` | `#9DB1FF` | Accent text, selection bar, caret, focus ring | 9.2:1 |
-| `on-accent` | `#FFFFFF` | Text on accent fills | |
-| `draft` | `#F28AC9` | Unsaved draft marker only | 8.4:1 |
-| `success` | `#7BE0A0` | 2xx status | 11.8:1 |
-| `info` | `#6EA8FF` | 3xx status, links | 7.9:1 |
-| `warning` | `#FFC23D` | Unresolved variable, environment warning only | 11.9:1 |
-| `danger` | `#FF6B5E` | 4xx and 5xx status, errors | 6.8:1 |
-| `syntax-key` | `#A9A4B2` | JSON keys | 7.9:1 |
-| `syntax-string` | `#7BE0A0` | Strings | |
-| `syntax-number` | `#B79CFF` | Numbers, booleans, null | 8.4:1 |
-| `syntax-punct` | `#8E8996` | Punctuation | |
-| `method-get` / `-dim` | `#6FD3A0` / `#57A27D` | GET | dim 5.1:1 selected |
-| `method-post` / `-dim` | `#F2A65A` / `#B98048` | POST | dim 4.7:1 selected |
-| `method-put` / `-dim` | `#5FCFD6` / `#4B9FA5` | PUT | dim 5.1:1 selected |
-| `method-patch` / `-dim` | `#C3D865` / `#96A650` | PATCH | dim 5.9:1 selected |
-| `method-delete` / `-dim` | `#FF8C80` / `#D4766C` | DELETE | dim 4.9:1 selected |
-| `method-other` / `-dim` | `#B4AEC0` / `#938E9D` | HEAD, OPTIONS, custom verbs | dim 4.9:1 selected |
+| Token | Value | Usage |
+|-------|-------|-------|
+| `accent` | `#2B45B8` | Primary fills: Send, primary buttons, badges, logo |
+| `accent-hover` | `#3451C8` | Primary hover |
+| `accent-pressed` | `#1F3389` | Primary pressed |
+| `accent-tint` | `#9DB1FF` | Accent text and icons, selection bar, active rail entry, focus ring, caret, resolved variables |
+| `on-accent` | `#FFFFFF` | Text on accent fills (7.9:1) |
+| Washes | tint at 6, 11, 14, 16 % | Hover, selected item, selected button, active rail entry |
 
-Method colors are their own tokens, never aliases of status colors. The `-dim` values are the
-full color blended 75 to 80 % over the panel, solid, so AA holds on the selected item.
+HTTP methods use Bolt's semantic hues, as DBFlux colors its object kinds: GET `#7BE0A0`
+(success), POST `#FFC23D` (warning), PUT `#6EA8FF` (info), PATCH `#B79CFF` (null), DELETE
+`#FF6B5E` (danger), other verbs `#6FD3D8` (cyan). Status codes use the same semantics: 2xx
+success, 3xx info, 4xx warning, 5xx and transport errors danger.
+
+State markers:
+
+- Unsaved draft: a small diamond in `accent-tint`, on the tab, the tree row and the Save action.
+- Unresolved variable: `warning` text on a 12 % warning wash with a 1 px underline.
+- Resolved variable: `accent-tint` text on a 12 % tint wash.
+- Secrets: always masked as `••••••••`, with a `SECRET` badge where a value would show.
+- Environments: DBFlux's environment diamonds and tags: Production red, Staging yellow,
+  Development blue, Local muted.
 
 ## Divergences from Bolt
 
 | Change | Bolt | Relay | Why |
 |--------|------|-------|-----|
 | Accent | byzantine `#702963`, tint `#D48CC8` | cobalt `#2B45B8`, tint `#9DB1FF` | One accent per product in the family |
-| Checked checkbox | accent fill | `raised` fill, `strong` check, `line-2` edge | Send stays the only filled accent in the editor |
-| Status bar key hints | inside buttons and chips | status bar only | Hierarchy rule 6 |
 
-## Hierarchy rules
-
-These are Relay's additions to Bolt. They apply to every screen.
-
-1. Two focal points per screen: the request line (method, URL, Send) and the response status.
-2. Three text levels: strong (titles, selected item, data values), body, muted (metadata,
-   labels, counts, descriptions, line numbers).
-3. The accent appears only on: the Send fill, the active document tab edge, the selected tree
-   row bar, checked checkboxes, the focus ring and caret, and the logo.
-4. Semantic color only for state: unsaved draft, unresolved variable, response status,
-   environment warning. One meaning per color.
-5. Method labels are plain mono text with no box. Dimmed in the tree and inactive tabs, so the
-   request name is what the eye reads; full strength in the URL bar.
-6. Counts are muted numbers, never chips. Keyboard hints live in the status bar only.
-7. Tables have no vertical rules and no header fill; header labels and descriptions are muted.
-8. Section labels are small and muted wayfinding, not content.
-9. Secondary actions are ghost buttons that fill on hover. Save is the only secondary-styled
-   button.
-10. Remove any border that spacing or alignment already implies.
-
-## Exceptions recorded with the views
-
-Introduced by `design/views/` and pending the user's acceptance:
-
-| Exception | Rule it bends | Where |
-|-----------|---------------|-------|
-| A selected navigation item (settings rail, sub-navigation, environment list) uses the selected-item wash and the accent-tint bar | 3 (accent only on the tree selection bar) | 02, 07 |
-| Keyboard hints inside the environment dropdown (`Manage environments…`) and the command palette footer | 6 (hints only in the status bar) | 01, 08 |
-| Cancel takes the secondary style while a request is in flight, in Send's place | 9 (Save is the only secondary button) | 05 |
-| The production environment is marked with `danger` | 4 (one meaning per color) | 01, 02, 11 |
-| An edited, unsaved row carries a 2 px `draft` edge | 4 | 07 |
-| A switch component (secret toggle): `background` or `raised` fill, `line-2` edge, `muted` or `strong` knob | new component | 02 |
-
+Relay has no rules of its own on top of Bolt's composition: earlier "hierarchy rules" drifted
+the design away from DBFlux and were dropped.
 
 ## Open points
 
-- `draft` pink echoes DBFlux's byzantine tint; inside Relay it means only "unsaved", but a
-  user of both apps may read it as DBFlux's accent.
-- 4xx and 5xx share `danger`; the code number tells them apart.
+- Relay has no logo yet; the welcome artboard uses a placeholder mark.
 - The focus ring does not follow the cut corners in the artboards (CSS `clip-path` removes
   outlines). In GPUI the ring is drawn as its own path, so the app can trace the cuts.
 - Light theme: Bolt has one; Relay's light accent values are not defined yet.

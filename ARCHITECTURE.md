@@ -446,7 +446,7 @@ The plan:
 
 Relay and DBFlux are a family of apps: both use **Bolt** (islands, 45 degree cuts, Archivo and
 JetBrains Mono, compact density) with one accent per product. `design/system.md` holds the
-values and the hierarchy rules; `design/bolt/` holds the artboards.
+values; `design/bolt-v2/` holds the artboards of every view, built from DBFlux's own.
 
 Bolt is copied from DBFlux for now. The goal is to make the later move to a shared library a
 dependency swap, so the copy lives behind a boundary from the start:
