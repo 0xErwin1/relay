@@ -1,7 +1,7 @@
 //! Relay's own tokens, on top of Bolt: method labels, the draft marker, syntax colors, shell
 //! sizes and the main window size. The only `relay_ui` file besides `brand.rs` that holds raw values.
 
-use bolt::tokens::{Colors, hex};
+use bolt::tokens::{Colors, hex, hex_alpha};
 use gpui::{Hsla, Pixels, Size, px, size};
 
 /// The label color of the uppercase HTTP `verb`: Bolt's semantic hues, as DBFlux colors its
@@ -97,6 +97,50 @@ pub(crate) const PATH_BAR_PADDING_X: Pixels = px(14.0);
 
 /// The side of the chevron between path bar segments.
 pub(crate) const PATH_SEPARATOR: Pixels = px(10.0);
+
+/// The height of the request line: method, URL and Send.
+pub(crate) const REQUEST_LINE: Pixels = px(48.0);
+
+/// The width of the method chip on the request line.
+pub(crate) const METHOD_CHIP_WIDTH: Pixels = px(96.0);
+
+/// The height of the URL field and the Send button.
+pub(crate) const URL_FIELD: Pixels = px(32.0);
+
+/// The width of the options part of the Send split button.
+pub(crate) const SEND_OPTIONS_WIDTH: Pixels = px(28.0);
+
+/// The text size of the method chip and the Send button.
+pub(crate) const REQUEST_LINE_TEXT: Pixels = px(12.5);
+
+/// The text size of the URL.
+pub(crate) const URL_TEXT: Pixels = px(13.0);
+
+/// The opacity of the wash behind a `{{name}}` reference in the URL.
+pub(crate) const VARIABLE_WASH: f32 = 0.12;
+
+/// The horizontal and vertical padding of the keycap on the Send button.
+pub(crate) const KEYCAP_PADDING_X: Pixels = px(6.0);
+pub(crate) const KEYCAP_PADDING_Y: Pixels = px(2.0);
+
+/// The text size of keycaps and sub-tab row counts.
+pub(crate) const SMALL_MONO_TEXT: Pixels = px(10.5);
+
+/// The keycap fill on the accent: the accent darkened.
+pub(crate) fn keycap_on_accent_fill() -> Hsla {
+    hex_alpha(0x000000, 0.25)
+}
+
+/// The keycap text on the accent.
+pub(crate) fn keycap_on_accent_text() -> Hsla {
+    hex_alpha(0xFFFFFF, 0.82)
+}
+
+/// The height of the request sub-tab bar.
+pub(crate) const SUB_TAB_BAR: Pixels = px(42.0);
+
+/// The text size of the unresolved notice at the right of the sub-tab bar.
+pub(crate) const NOTICE_TEXT: Pixels = px(12.0);
 
 /// The size the main window opens at.
 pub(crate) const MAIN_WINDOW_SIZE: Size<Pixels> = size(px(1200.0), px(800.0));

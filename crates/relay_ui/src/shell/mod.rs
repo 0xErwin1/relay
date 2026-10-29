@@ -7,6 +7,7 @@ mod document;
 mod documents;
 mod path_bar;
 mod rail;
+mod request;
 mod rows;
 mod sidebar;
 mod status_bar;
@@ -17,6 +18,8 @@ mod tree_model;
 
 pub(crate) use sidebar::bind_keys;
 
+use std::collections::HashMap;
+
 use bolt::tokens::chrome;
 use gpui::{
     Context, Div, ElementId, Entity, IntoElement, ParentElement, Render, Role, Stateful, Styled,
@@ -24,6 +27,7 @@ use gpui::{
 };
 
 use self::documents::Documents;
+use self::request::{RequestState, SubTab};
 use self::sidebar::{OpenRequest, Sidebar};
 use self::tree_model::Node;
 
@@ -40,6 +44,8 @@ pub(crate) struct Shell {
     /// and locations from; empty without one.
     roots: Vec<Node>,
     documents: Documents,
+    /// The state of each open request that the engine could inspect, by request id.
+    requests: HashMap<String, RequestState>,
     _open_requests: Subscription,
 }
 
@@ -51,15 +57,40 @@ impl Shell {
             OpenedWorkspace::None | OpenedWorkspace::Failed { .. } => Vec::new(),
         };
         let open_requests = cx.subscribe(&sidebar, |this, _, OpenRequest(id), cx| {
-            this.documents.open(id);
-            cx.notify();
+            this.open_document(id, cx);
         });
         Self {
             workspace,
             sidebar,
             roots,
             documents: Documents::default(),
+            requests: HashMap::new(),
             _open_requests: open_requests,
+        }
+    }
+
+    /// Opens the request `id` in a tab, inspecting it when it was not open.
+    fn open_document(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.documents.open(id);
+        if !self.requests.contains_key(id)
+            && let OpenedWorkspace::Loaded(engine) = &self.workspace
+        {
+            match engine.inspect(id) {
+                Ok(inspection) => {
+                    self.requests
+                        .insert(id.to_owned(), RequestState::new(inspection));
+                }
+                Err(error) => log::warn!("cannot inspect request {id}: {error}"),
+            }
+        }
+        cx.notify();
+    }
+
+    /// Selects the sub-tab `tab` of the request `id`.
+    fn select_sub_tab(&mut self, id: &str, tab: SubTab, cx: &mut Context<Self>) {
+        if let Some(state) = self.requests.get_mut(id) {
+            state.tab = tab;
+            cx.notify();
         }
     }
 
@@ -72,6 +103,7 @@ impl Shell {
     /// Closes the tab of the request `id`.
     fn close_document(&mut self, id: &str, cx: &mut Context<Self>) {
         self.documents.close(id);
+        self.requests.remove(id);
         cx.notify();
     }
 }
@@ -116,6 +148,8 @@ fn text_region(id: &'static str) -> Stateful<Div> {
 
 #[cfg(test)]
 mod document_tests;
+#[cfg(test)]
+mod request_tests;
 #[cfg(test)]
 mod sidebar_tests;
 #[cfg(test)]
