@@ -89,6 +89,12 @@ pub(crate) const COMMAND_SEARCH_WIDTH: Pixels = px(420.0);
 /// The side of the environment diamond in the title bar.
 pub(crate) const ENVIRONMENT_DIAMOND: Pixels = px(7.0);
 
+/// The width of the title bar environment menu.
+pub(crate) const ENVIRONMENT_MENU_WIDTH: Pixels = px(360.0);
+
+/// The height of a row of the environment menu.
+pub(crate) const ENVIRONMENT_OPTION: Pixels = px(36.0);
+
 /// The height of the document path bar under the tab row.
 pub(crate) const PATH_BAR: Pixels = px(28.0);
 

@@ -435,8 +435,10 @@ the collection tree (icons, indent guides, child counts, method labels in Bolt's
 colors) and a request and collection count; a document island; and a status bar that shows
 load warnings. In the tree the arrow keys move the selection, Enter or the chevron toggles a
 folder, and a click or Enter on a request opens it in a document tab, or focuses its tab.
-Icons are Lucide, from `gpui-kit-assets`, installed by the binary as the application's asset
-source.
+The environment button of the title bar opens a menu with `No environment` and the workspace
+environments by name; choosing one makes it the window's active environment, and Escape or a
+click outside closes the menu without a change. Icons are Lucide, from `gpui-kit-assets`,
+installed by the binary as the application's asset source.
 
 The document island shows the open requests as tabs, the path bar of the active one
 (collection, folders, request), and the request read-only: an action strip (Save, Revert,

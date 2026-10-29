@@ -5,6 +5,7 @@ mod action_strip;
 mod diamond;
 mod document;
 mod documents;
+mod environment_menu;
 mod path_bar;
 mod rail;
 mod request;
@@ -22,8 +23,8 @@ use std::collections::HashMap;
 
 use bolt::tokens::chrome;
 use gpui::{
-    Context, Div, ElementId, Entity, IntoElement, ParentElement, Render, Role, Stateful, Styled,
-    Subscription, Window, div, prelude::*,
+    Context, Div, ElementId, Entity, FocusHandle, IntoElement, ParentElement, Render, Role,
+    Stateful, Styled, Subscription, Window, div, prelude::*,
 };
 
 use self::documents::Documents;
@@ -48,6 +49,10 @@ pub(crate) struct Shell {
     requests: HashMap<String, RequestState>,
     /// The slug of the window's active environment; `None` is No environment.
     active_environment: Option<String>,
+    /// Whether the title bar environment menu is open; not kept across restarts.
+    environment_menu_open: bool,
+    /// Focused while the environment menu is open, so Escape reaches it.
+    environment_menu_focus: FocusHandle,
     _open_requests: Subscription,
 }
 
@@ -68,6 +73,8 @@ impl Shell {
             documents: Documents::default(),
             requests: HashMap::new(),
             active_environment: None,
+            environment_menu_open: false,
+            environment_menu_focus: cx.focus_handle(),
             _open_requests: open_requests,
         }
     }
@@ -91,10 +98,6 @@ impl Shell {
 
     /// Makes `slug` the active environment and inspects every open request again against it,
     /// keeping its sub-tab; a request that can no longer be inspected is dropped.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the title bar environment menu calls it next")
-    )]
     pub(super) fn set_environment(&mut self, slug: Option<String>, cx: &mut Context<Self>) {
         self.active_environment = slug;
         if let OpenedWorkspace::Loaded(engine) = &self.workspace {
@@ -111,6 +114,39 @@ impl Shell {
                     }
                 });
         }
+        cx.notify();
+    }
+
+    /// Opens the environment menu and focuses it, or closes it when open. Does nothing without
+    /// a loaded workspace.
+    fn toggle_environment_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !matches!(self.workspace, OpenedWorkspace::Loaded(_)) {
+            return;
+        }
+        self.environment_menu_open = !self.environment_menu_open;
+        if self.environment_menu_open {
+            self.environment_menu_focus.focus(window, cx);
+        }
+        cx.notify();
+    }
+
+    /// The name of the active environment, `None` for No environment.
+    fn environment_name(&self) -> Option<String> {
+        let slug = self.active_environment.as_deref()?;
+        match &self.workspace {
+            OpenedWorkspace::Loaded(engine) => engine
+                .workspace()
+                .environments
+                .iter()
+                .find(|node| node.slug == slug)
+                .map(|node| node.environment.name.clone()),
+            OpenedWorkspace::None | OpenedWorkspace::Failed { .. } => None,
+        }
+    }
+
+    /// Closes the environment menu without changing the active environment.
+    fn close_environment_menu(&mut self, cx: &mut Context<Self>) {
+        self.environment_menu_open = false;
         cx.notify();
     }
 
@@ -137,7 +173,7 @@ impl Shell {
 }
 
 impl Render for Shell {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = bolt::colors(cx);
 
         div()
@@ -145,7 +181,7 @@ impl Render for Shell {
             .flex()
             .flex_col()
             .bg(colors.desk)
-            .child(title_bar::render(&self.workspace, cx))
+            .child(title_bar::render(self, window, cx))
             .child(
                 div()
                     .flex_1()
@@ -176,6 +212,8 @@ fn text_region(id: &'static str) -> Stateful<Div> {
 
 #[cfg(test)]
 mod document_tests;
+#[cfg(test)]
+mod environment_tests;
 #[cfg(test)]
 mod request_tests;
 #[cfg(test)]
