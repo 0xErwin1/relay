@@ -89,6 +89,16 @@ pub mod chrome {
 }
 
 /// Motion timing.
+/// Icon metrics.
+pub mod icon {
+    use gpui::{Pixels, px};
+
+    /// Small icons: tree disclosure chevrons, inline indicators.
+    pub const SM: Pixels = px(12.0);
+    /// Stroke width of line icons.
+    pub const STROKE: Pixels = px(1.5);
+}
+
 pub mod motion {
     use std::time::Duration;
 
