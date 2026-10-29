@@ -83,6 +83,20 @@ These are Relay's additions to Bolt. They apply to every screen.
    button.
 10. Remove any border that spacing or alignment already implies.
 
+## Exceptions recorded with the views
+
+Introduced by `design/views/` and pending the user's acceptance:
+
+| Exception | Rule it bends | Where |
+|-----------|---------------|-------|
+| A selected navigation item (settings rail, sub-navigation, environment list) uses the selected-item wash and the accent-tint bar | 3 (accent only on the tree selection bar) | 02, 07 |
+| Keyboard hints inside the environment dropdown (`Manage environments…`) and the command palette footer | 6 (hints only in the status bar) | 01, 08 |
+| Cancel takes the secondary style while a request is in flight, in Send's place | 9 (Save is the only secondary button) | 05 |
+| The production environment is marked with `danger` | 4 (one meaning per color) | 01, 02, 11 |
+| An edited, unsaved row carries a 2 px `draft` edge | 4 | 07 |
+| A switch component (secret toggle): `background` or `raised` fill, `line-2` edge, `muted` or `strong` knob | new component | 02 |
+
+
 ## Open points
 
 - `draft` pink echoes DBFlux's byzantine tint; inside Relay it means only "unsaved", but a
