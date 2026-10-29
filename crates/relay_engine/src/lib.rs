@@ -21,11 +21,17 @@
 //! [`Engine::execute_blocking`], which block the calling thread and must not be called from
 //! inside an async context. Dropping the engine shuts the runtime down, so it must not be
 //! dropped from inside an async context either.
+//!
+//! # App state
+//!
+//! [`state::AppState`] is the per-user SQLite app state (drafts today, history later), at
+//! `$XDG_STATE_HOME/relay/state.sqlite3`.
 
 mod engine;
 mod error;
 mod prepare;
 mod select;
+pub mod state;
 
 pub use engine::{Engine, Executed, Execution};
 pub use error::{ExecuteError, OpenError};

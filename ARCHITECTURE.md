@@ -246,6 +246,11 @@ Saving is explicit, as in Postman: an edit never touches the workspace file unti
 
 - An edited entity becomes a **draft**, stored in the per-user app state and keyed by
   workspace id and entity id. Drafts survive a restart and their tabs show them as unsaved.
+  The app state is SQLite (`relay_engine::state`, `rusqlite`) at
+  `$XDG_STATE_HOME/relay/state.sqlite3` (`$HOME/.local/state/relay/state.sqlite3` when the
+  variable is unset), with an explicit, forward-only schema version so history tables can
+  join later. A draft stores the whole entity document as TOML, so later editable surfaces
+  need no new storage.
 - **Sending** a request with a draft sends the draft. History records what was sent.
 - **Saving** writes the entity file (atomic, hash-checked) and discards the draft.
 - **Reverting** discards the draft.
