@@ -251,30 +251,30 @@ button{font:inherit;white-space:nowrap}
           <span style="display:flex;margin-left:4px;color:#8E8996"><svg class="ico" style="width:14px;height:14px"><use href="#i-plus"/></svg></span>
         </div>
 
-        <!-- Document toolbar: breadcrumb, meta, save/revert, undo/redo, layout -->
-        <div style="display:flex;align-items:center;gap:8px;height:46px;padding:0 12px;flex-shrink:0;border-top:1px solid #232128">
-          <svg class="ico" style="width:14px;height:14px;color:#9DB1FF"><use href="#i-box"/></svg>
-          <span style="color:#C6C3CC">Billing API</span>
-          <svg class="ico" style="width:12px;height:12px;color:#37333D"><use href="#i-chev"/></svg>
-          <svg class="ico" style="width:14px;height:14px;color:#8E8996"><use href="#i-folder"/></svg>
-          <span style="color:#C6C3CC">invoices</span>
-          <svg class="ico" style="width:12px;height:12px;color:#37333D"><use href="#i-chev"/></svg>
-          <span style="color:#F7F4F7;font-weight:600">Create invoice</span>
-          <span class="c4 m" style="padding:2px 7px;background:#1A181E;color:#8E8996;font-size:11px">4 headers · JSON body</span>
-          <span style="flex-grow:1"></span>
-          <button class="c6 btn"><svg class="ico" style="width:15px;height:15px"><use href="#i-save"/></svg>Save<span class="c4 kc">Ctrl S</span></button>
-          <button class="c6 btn"><svg class="ico" style="width:15px;height:15px"><use href="#i-revert"/></svg>Revert</button>
-          <span style="width:1px;height:18px;background:#232128;margin:0 2px"></span>
-          <button aria-label="Undo" class="c6 ib g"><svg class="ico" style="width:14px;height:14px"><use href="#i-undo"/></svg></button>
-          <button aria-label="Redo" class="c6 ib g" style="color:#37333D"><svg class="ico" style="width:14px;height:14px"><use href="#i-redo"/></svg></button>
-          <div class="c6 seg">
-            <span class="c4 on"><svg class="ico" style="width:13px;height:13px"><use href="#i-rows"/></svg>Stacked</span>
-            <span><svg class="ico" style="width:13px;height:13px"><use href="#i-cols"/></svg>Split</span>
-          </div>
+        <!-- Path bar: breadcrumb only -->
+        <div style="display:flex;align-items:center;gap:6px;height:28px;padding:0 14px;flex-shrink:0;border-top:1px solid #232128;font-size:12px">
+          <svg class="ico" style="width:12px;height:12px;color:#9DB1FF"><use href="#i-box"/></svg>
+          <span style="color:#8E8996">Billing API</span>
+          <svg class="ico" style="width:10px;height:10px;color:#37333D"><use href="#i-chev"/></svg>
+          <svg class="ico" style="width:12px;height:12px;color:#8E8996"><use href="#i-folder"/></svg>
+          <span style="color:#8E8996">invoices</span>
+          <svg class="ico" style="width:10px;height:10px;color:#37333D"><use href="#i-chev"/></svg>
+          <span style="color:#C6C3CC">Create invoice</span>
         </div>
 
+        <!-- Request area: action strip on the left (as in DBFlux's editor), request on the right -->
+        <div style="display:flex;flex-shrink:0;border-top:1px solid #232128">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:36px;padding:8px 0;flex-shrink:0;border-right:1px solid #232128">
+            <button aria-label="Save (Ctrl S)" title="Save  Ctrl S" class="c6 ib g" style="position:relative;width:28px;height:28px;color:#C6C3CC"><svg class="ico" style="width:14px;height:14px"><use href="#i-save"/></svg><span class="dia" style="position:absolute;top:3px;right:3px;width:5px;height:5px;background:#9DB1FF" title="Unsaved draft"></span></button>
+            <button aria-label="Revert" title="Revert" class="c6 ib g" style="width:28px;height:28px"><svg class="ico" style="width:14px;height:14px"><use href="#i-revert"/></svg></button>
+            <button aria-label="Undo" title="Undo  Ctrl Z" class="c6 ib g" style="width:28px;height:28px"><svg class="ico" style="width:14px;height:14px"><use href="#i-undo"/></svg></button>
+            <button aria-label="Redo" title="Redo  Ctrl Shift Z" class="c6 ib g" style="width:28px;height:28px;color:#37333D"><svg class="ico" style="width:14px;height:14px"><use href="#i-redo"/></svg></button>
+            <span style="width:16px;height:1px;background:#232128;margin:2px 0"></span>
+            <button aria-label="Split request and response side by side" title="Split view" class="c6 ib g" style="width:28px;height:28px"><svg class="ico" style="width:14px;height:14px"><use href="#i-cols"/></svg></button>
+          </div>
+          <div style="display:flex;flex-direction:column;flex-grow:1;min-width:0">
         <!-- Request line -->
-        <div style="display:flex;align-items:center;gap:8px;height:48px;padding:0 12px;flex-shrink:0;border-top:1px solid #232128">
+        <div style="display:flex;align-items:center;gap:8px;height:48px;padding:0 12px;flex-shrink:0">
           <div class="c6 sel" style="width:96px;box-sizing:border-box">
             <span class="m post" style="flex-grow:1;font-weight:700;font-size:12.5px">POST</span>
             <svg class="ico" style="width:12px;height:12px;color:#8E8996"><use href="#i-down"/></svg>
@@ -345,6 +345,9 @@ button{font:inherit;white-space:nowrap}
             <span style="width:200px;color:#37333D">Header</span>
             <span style="width:420px;color:#37333D">Value</span>
             <span style="flex-grow:1"></span>
+          </div>
+        </div>
+
           </div>
         </div>
 
