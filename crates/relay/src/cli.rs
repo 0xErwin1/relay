@@ -2,12 +2,26 @@
 
 use std::path::PathBuf;
 
+#[cfg(test)]
+use clap::CommandFactory as _;
 use clap::{Args, Parser, Subcommand};
+
+const AFTER_HELP: &str = "\
+Without DIR, Relay opens the current directory when it holds a relay.toml, and an empty
+window otherwise. A directory named like a subcommand needs a path prefix: relay ./run";
 
 /// A local-first HTTP client. Without a subcommand, opens the Relay window.
 #[derive(Debug, Parser)]
-#[command(name = "relay", version)]
+#[command(
+    name = "relay",
+    version,
+    args_conflicts_with_subcommands = true,
+    after_help = AFTER_HELP
+)]
 pub(crate) struct Cli {
+    /// The workspace directory to open in the window.
+    #[arg(value_name = "DIR")]
+    pub(crate) workspace: Option<PathBuf>,
     /// What to do instead of opening the window.
     #[command(subcommand)]
     pub(crate) command: Option<Command>,
@@ -54,4 +68,55 @@ pub(crate) struct RunArgs {
     /// Write the status line and the response headers before the body.
     #[arg(short, long)]
     pub(crate) include: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(args: &[&str]) -> Cli {
+        match Cli::try_parse_from(args) {
+            Ok(cli) => cli,
+            Err(error) => panic!("{args:?}: {error}"),
+        }
+    }
+
+    #[test]
+    fn no_arguments_opens_the_window_without_a_directory() {
+        let cli = parse(&["relay"]);
+        assert!(cli.command.is_none());
+        assert_eq!(cli.workspace, None);
+    }
+
+    #[test]
+    fn a_positional_directory_opens_that_workspace() {
+        let cli = parse(&["relay", "some/dir"]);
+        assert!(cli.command.is_none());
+        assert_eq!(cli.workspace, Some(PathBuf::from("some/dir")));
+    }
+
+    #[test]
+    fn run_is_still_the_subcommand() {
+        let cli = parse(&["relay", "run", "x"]);
+        assert_eq!(cli.workspace, None);
+        let Some(Command::Run(args)) = cli.command else {
+            panic!("expected relay run");
+        };
+        assert_eq!(args.request, "x");
+    }
+
+    /// A directory literally named `run` is the subcommand; `./run` opens it.
+    #[test]
+    fn a_directory_named_run_needs_a_path_prefix() {
+        assert!(Cli::try_parse_from(["relay", "run"]).is_err());
+        let cli = parse(&["relay", "./run"]);
+        assert_eq!(cli.workspace, Some(PathBuf::from("./run")));
+    }
+
+    #[test]
+    fn help_documents_the_workspace_directory() {
+        let help = Cli::command().render_long_help().to_string();
+        assert!(help.contains("[DIR]"), "{help}");
+        assert!(help.contains("./run"), "{help}");
+    }
 }
