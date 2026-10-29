@@ -56,8 +56,9 @@ impl AuthField {
     }
 }
 
-/// The fields of `auth`. Passwords and tokens are always masked; other values when they
-/// reference a secret, as `references_secret` (the engine's) decides.
+/// The fields of `auth`. Passwords, tokens, API key values and every field of other types are
+/// always masked; other values when they reference a secret, as `references_secret` (the
+/// engine's) decides.
 pub(crate) fn auth_fields(auth: &Auth, references_secret: impl Fn(&str) -> bool) -> Vec<AuthField> {
     let field = |label: &str, value: &str, always: bool| AuthField {
         label: label.to_owned(),
@@ -77,7 +78,7 @@ pub(crate) fn auth_fields(auth: &Auth, references_secret: impl Fn(&str) -> bool)
             location,
         } => vec![
             field("Key", key, false),
-            field("Value", value, false),
+            field("Value", value, true),
             field(
                 "Add to",
                 match location {
@@ -223,6 +224,19 @@ mod tests {
                 ("client_secret".to_owned(), true),
                 ("expires_in".to_owned(), true)
             ]
+        );
+    }
+
+    #[test]
+    fn a_plain_api_key_value_is_masked() {
+        let auth = Auth::ApiKey {
+            key: "X-Key".to_owned(),
+            value: "plain-key".to_owned(),
+            location: ApiKeyLocation::Header,
+        };
+        assert_eq!(
+            masks(&auth_fields(&auth, |_| false)),
+            [("Key", false), ("Value", true), ("Add to", false)]
         );
     }
 
