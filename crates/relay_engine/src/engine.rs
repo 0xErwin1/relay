@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use relay_core::model::Workspace;
+use relay_core::model::{Request, Workspace};
 use relay_core::template::SystemDynamicSource;
 use relay_http::{HttpClient, HttpError, PreparedRequest, Response};
 use relay_store::{Loaded, Warning};
@@ -11,7 +11,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::{ExecuteError, OpenError};
-use crate::prepare::{ExecuteOptions, Inspection, Prepared, inspect, prepare};
+use crate::prepare::{ExecuteOptions, Inspection, Prepared, inspect, prepare, prepare_draft};
 
 /// A loaded workspace that executes its requests. See the crate docs for the threading
 /// model.
@@ -110,6 +110,28 @@ impl Engine {
         )
     }
 
+    /// Prepares `draft` in the place of the request `selector` selects, keeping the parents
+    /// the workspace has for it. See [`prepare_draft`].
+    ///
+    /// # Errors
+    ///
+    /// The errors of [`prepare_draft`].
+    pub fn prepare_draft(
+        &self,
+        selector: &str,
+        draft: &Request,
+        options: &ExecuteOptions,
+    ) -> Result<Prepared, ExecuteError> {
+        prepare_draft(
+            self.workspace(),
+            &self.root,
+            selector,
+            draft,
+            options,
+            &mut SystemDynamicSource,
+        )
+    }
+
     /// Inspects the request `selector` against the environment slug `environment`. See
     /// [`inspect`].
     ///
@@ -159,6 +181,21 @@ impl Engine {
         options: &ExecuteOptions,
     ) -> Result<Execution, ExecuteError> {
         Ok(self.send(self.prepare(selector, options)?))
+    }
+
+    /// Prepares and sends `draft` in the place of the request `selector` selects, so a front
+    /// end sends what the user edited. See [`prepare_draft`].
+    ///
+    /// # Errors
+    ///
+    /// The errors of [`prepare_draft`]; transport errors come out of the [`Execution`].
+    pub fn execute_draft(
+        &self,
+        selector: &str,
+        draft: &Request,
+        options: &ExecuteOptions,
+    ) -> Result<Execution, ExecuteError> {
+        Ok(self.send(self.prepare_draft(selector, draft, options)?))
     }
 
     /// Blocks the calling thread until `execution` finishes. Must not be called from inside

@@ -12,6 +12,7 @@ use std::path::Path;
 
 use common::{id_text, temp_dir, write};
 use pretty_assertions::assert_eq;
+use relay_core::model::{Body, Id, Method, RawLanguage, Request};
 use relay_engine::{Engine, ExecuteOptions, Executed};
 use tokio::runtime::Runtime;
 use wiremock::matchers::{body_string, header, method, path};
@@ -204,6 +205,65 @@ fn request_inherits_the_collection_auth() {
     );
     assert_eq!(executed.response.status, 201);
     assert_eq!(executed.unresolved, Vec::<String>::new());
+}
+
+#[test]
+fn execute_draft_sends_the_draft_not_the_stored_request() {
+    let rt = runtime();
+    let server = server(
+        &rt,
+        Mock::given(method("POST"))
+            .and(path("/draft"))
+            .and(header("content-type", "application/json"))
+            .and(body_string(r#"{"draft": true}"#))
+            .respond_with(ok()),
+    );
+    let dir = temp_dir();
+    write(
+        dir.path(),
+        "relay.toml",
+        &format!("id = \"{}\"\nname = \"W\"\nformat = 1\n", id_text(900)),
+    );
+    write(
+        dir.path(),
+        "collections/api/collection.toml",
+        &format!("id = \"{}\"\nname = \"Api\"\n", id_text(1)),
+    );
+    write(
+        dir.path(),
+        "collections/api/r.req.toml",
+        &format!(
+            "id = \"{}\"\nname = \"R\"\nmethod = \"GET\"\nurl = \"{}/stored\"\n",
+            id_text(2),
+            server.uri()
+        ),
+    );
+    let engine = match Engine::open(dir.path()) {
+        Ok(engine) => engine,
+        Err(error) => panic!("open: {error}"),
+    };
+    let mut draft = Request::new(
+        Id::new(),
+        "R",
+        Method::POST,
+        format!("{}/draft", server.uri()),
+    );
+    draft.body = Body::Raw {
+        language: RawLanguage::Json,
+        text: r#"{"draft": true}"#.to_owned(),
+    };
+    let execution = match engine.execute_draft("api/r", &draft, &ExecuteOptions::default()) {
+        Ok(execution) => execution,
+        Err(error) => panic!("execute draft: {error}"),
+    };
+    let (method, url) = (execution.method.clone(), execution.url.clone());
+    let response = match engine.wait(execution) {
+        Ok(response) => response,
+        Err(error) => panic!("send: {error}"),
+    };
+    assert_eq!(response.status, 201);
+    assert_eq!(method, "POST");
+    assert_eq!(url, format!("{}/draft", server.uri()));
 }
 
 #[test]

@@ -158,6 +158,44 @@ pub fn prepare_err(workspace: &Workspace, selector: &str, options: &ExecuteOptio
     }
 }
 
+pub fn prepare_draft_with(
+    workspace: &Workspace,
+    selector: &str,
+    draft: &Request,
+    options: &ExecuteOptions,
+) -> Prepared {
+    match relay_engine::prepare_draft(
+        workspace,
+        Path::new(ROOT),
+        selector,
+        draft,
+        options,
+        &mut SequentialDynamicSource::default(),
+    ) {
+        Ok(prepared) => prepared,
+        Err(error) => panic!("prepare draft failed: {error}"),
+    }
+}
+
+pub fn prepare_draft_err(
+    workspace: &Workspace,
+    selector: &str,
+    draft: &Request,
+    options: &ExecuteOptions,
+) -> String {
+    match relay_engine::prepare_draft(
+        workspace,
+        Path::new(ROOT),
+        selector,
+        draft,
+        options,
+        &mut SequentialDynamicSource::default(),
+    ) {
+        Ok(prepared) => panic!("prepare draft unexpectedly succeeded: {prepared:?}"),
+        Err(error) => error.to_string(),
+    }
+}
+
 pub fn temp_dir() -> TempDir {
     match TempDir::new() {
         Ok(dir) => dir,

@@ -2,7 +2,7 @@
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use relay_core::model::{ApiKeyLocation, Auth};
+use relay_core::model::{ApiKeyLocation, Auth, Request};
 use relay_core::template::DynamicSource;
 
 use super::has_header;
@@ -13,9 +13,10 @@ use crate::select::Target;
 const AUTHORIZATION: &str = "Authorization";
 
 /// The auth of the request, or of the nearest folder, then the collection, that does not
-/// inherit. A collection that inherits means no auth.
-pub(super) fn effective<'a>(target: &Target<'a>) -> &'a Auth {
-    std::iter::once(&target.request.request.auth)
+/// inherit. A collection that inherits means no auth. `request` is the document being
+/// prepared, so a draft carries its own auth in front of the same walk.
+pub(super) fn effective<'a>(request: &'a Request, target: &Target<'a>) -> &'a Auth {
+    std::iter::once(&request.auth)
         .chain(
             target
                 .folders

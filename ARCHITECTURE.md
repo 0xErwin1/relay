@@ -346,6 +346,9 @@ the request, checks the environment and resolves variables, auth, body and setti
 `Engine::execute` sends it as a task on the engine runtime and returns an `Execution` with its
 `JoinHandle` and a cancellation token. Auth types other than `inherit`, `none`, `basic`,
 `bearer` and `apikey` fail with `auth type <type> is not supported yet`.
+`Engine::prepare_draft` prepares a draft request document in the place of the stored one,
+keeping the stored request's parents (and with them the scopes and the environment
+allowlist), and `Engine::execute_draft` sends it.
 
 `Engine::inspect` is what a front end shows before sending, against the active environment or
 none: the selected request with its scripts, the URL as written with the enabled params

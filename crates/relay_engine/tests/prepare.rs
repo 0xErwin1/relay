@@ -9,11 +9,11 @@ use std::time::Duration;
 
 use common::{
     ROOT, collection, disabled, environment, folder, get, id, id_text, options, post, prepare,
-    prepare_err, prepare_with, request, single, workspace,
+    prepare_draft_err, prepare_draft_with, prepare_err, prepare_with, request, single, workspace,
 };
 use pretty_assertions::assert_eq;
 use relay_core::model::{
-    ApiKeyLocation, Auth, Body, FormPart, KeyValue, RawLanguage, Settings, Variable,
+    ApiKeyLocation, Auth, Body, FormPart, Item, KeyValue, RawLanguage, Settings, Variable,
 };
 use relay_engine::{DEFAULT_TIMEOUT_MS, ExecuteOptions};
 use relay_http::{MultipartPart, MultipartValue, PreparedBody, RequestOptions};
@@ -734,4 +734,109 @@ fn s10_no_match_fails() {
             format!("no request matches {selector}")
         );
     }
+}
+
+// S5 (request-editing): preparing a draft.
+
+#[test]
+fn s5_draft_url_params_headers_auth_and_body_are_the_ones_prepared() {
+    let ws = single(get("https://stored/{{a}}"));
+    let mut draft = post("https://draft/{{b}}");
+    draft.params = vec![KeyValue::new("q", "{{c}}")];
+    draft.headers = vec![KeyValue::new("X-Draft", "{{d}}")];
+    draft.auth = Auth::Bearer {
+        token: "{{t}}".to_owned(),
+    };
+    draft.body = raw(RawLanguage::Text, "hello {{e}}");
+    let prepared = prepare_draft_with(
+        &ws,
+        "c/r",
+        &draft,
+        &options(
+            None,
+            &[("b", "B"), ("c", "C"), ("d", "D"), ("e", "E"), ("t", "T")],
+        ),
+    );
+    assert_eq!(prepared.request.method, "POST");
+    assert_eq!(prepared.request.url, "https://draft/B?q=C");
+    assert_eq!(
+        prepared.request.headers,
+        headers(&[("X-Draft", "D"), ("Authorization", "Bearer T")])
+    );
+    assert_eq!(prepared.request.body, bytes(Some("text/plain"), "hello E"));
+    let stored = ws
+        .collections
+        .iter()
+        .flat_map(|node| &node.items)
+        .find_map(|item| match item {
+            Item::Request(node) => Some(&node.request),
+            Item::Folder(_) => None,
+        });
+    let Some(stored) = stored else {
+        panic!("the stored request disappeared");
+    };
+    assert_eq!(stored.method.as_str(), "GET");
+    assert_eq!(stored.url, "https://stored/{{a}}");
+    assert_eq!(stored.params, Vec::<KeyValue>::new());
+    assert_eq!(stored.headers, Vec::<KeyValue>::new());
+    assert_eq!(stored.auth, Auth::Inherit);
+    assert_eq!(stored.body, Body::None);
+}
+
+#[test]
+fn s5_draft_inherits_variables_auth_and_the_environment_allowlist() {
+    let mut node = collection(
+        "c",
+        vec![folder(
+            "f",
+            bearer("folder"),
+            vec![request("r", get("https://h"))],
+        )],
+    );
+    node.collection.variables = vec![Variable::new("cv", "from-collection")];
+    node.collection.auth = bearer("collection");
+    node.collection.environments = vec![id(1)];
+    let mut ws = workspace(Vec::new(), vec![node]);
+    ws.environments
+        .push(environment(1, "dev", vec![Variable::new("ev", "env")]));
+    ws.environments
+        .push(environment(2, "prod", vec![Variable::new("ev", "prod")]));
+    let draft = get("https://{{cv}}/{{ev}}");
+    let prepared = prepare_draft_with(&ws, "c/f/r", &draft, &options(Some("dev"), &[]));
+    assert_eq!(prepared.request.url, "https://from-collection/env");
+    assert_eq!(
+        prepared.request.headers,
+        headers(&[("Authorization", "Bearer folder")])
+    );
+    assert_eq!(
+        prepare_draft_err(&ws, "c/f/r", &draft, &options(Some("prod"), &[])),
+        "environment prod is not allowed for collection c name"
+    );
+}
+
+#[test]
+fn s5_draft_with_an_unknown_selector_still_fails() {
+    let ws = single(get("https://h"));
+    assert_eq!(
+        prepare_draft_err(&ws, "c/x", &get("https://h"), &ExecuteOptions::default()),
+        "no request matches c/x"
+    );
+}
+
+#[test]
+fn s5_draft_with_invalid_graphql_variables_reports_the_stored_error() {
+    let mut draft = post("https://h");
+    draft.body = Body::Graphql {
+        query: "{ me }".to_owned(),
+        variables: "{oops".to_owned(),
+    };
+    assert_eq!(
+        prepare_draft_err(
+            &single(get("https://h")),
+            "c/r",
+            &draft,
+            &ExecuteOptions::default()
+        ),
+        "graphql variables are not valid JSON: key must be a string at line 1 column 2"
+    );
 }

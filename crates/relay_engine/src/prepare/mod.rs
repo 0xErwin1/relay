@@ -9,12 +9,14 @@ mod url;
 use std::path::Path;
 use std::time::Duration;
 
-use relay_core::model::{CollectionNode, EnvironmentNode, KeyValue, Settings, Variable, Workspace};
+use relay_core::model::{
+    CollectionNode, EnvironmentNode, KeyValue, Request, Settings, Variable, Workspace,
+};
 use relay_core::template::{DynamicSource, Scope, ScopeEntry, ScopeKind, Scopes};
 use relay_http::{PreparedRequest, RequestOptions};
 
 use crate::error::ExecuteError;
-use crate::select;
+use crate::select::{self, Target};
 use resolver::Resolver;
 
 pub use inspect::{Inspection, Span, inspect};
@@ -63,17 +65,59 @@ pub fn prepare(
     dynamic: &mut impl DynamicSource,
 ) -> Result<Prepared, ExecuteError> {
     let target = select::find(workspace, selector)?;
+    prepare_request(
+        workspace,
+        &target,
+        &target.request.request,
+        root,
+        options,
+        dynamic,
+    )
+}
+
+/// Prepares `draft` in the place of the request `selector` selects, without any IO
+/// (request-editing S5).
+///
+/// The draft replaces only the request document. Its parents are the ones the workspace has
+/// for the selected request, so the collection variables, the inherited folder and
+/// collection auth, the environment allowlist and the settings defaults behave exactly as
+/// for the stored request. Resolution works as in [`prepare`].
+///
+/// # Errors
+///
+/// The errors of [`prepare`] for the same `workspace`, `selector`, `options` and `draft`.
+pub fn prepare_draft(
+    workspace: &Workspace,
+    root: &Path,
+    selector: &str,
+    draft: &Request,
+    options: &ExecuteOptions,
+    dynamic: &mut impl DynamicSource,
+) -> Result<Prepared, ExecuteError> {
+    let target = select::find(workspace, selector)?;
+    prepare_request(workspace, &target, draft, root, options, dynamic)
+}
+
+/// The one resolution path; `request` is the document to prepare, stored or draft, and
+/// `target` supplies the parents the scopes, allowlist and inherited auth come from.
+fn prepare_request(
+    workspace: &Workspace,
+    target: &Target<'_>,
+    request: &Request,
+    root: &Path,
+    options: &ExecuteOptions,
+    dynamic: &mut impl DynamicSource,
+) -> Result<Prepared, ExecuteError> {
     let environment = select_environment(workspace, target.collection, options)?;
     let mut resolver = Resolver::new(
         scopes(workspace, target.collection, environment, options),
         dynamic,
     );
-    let request = &target.request.request;
 
     let base = resolver.text(&request.url);
     let mut query = resolver.pairs(&request.params);
     let mut headers = resolver.pairs(&request.headers);
-    let auth = auth::effective(&target);
+    let auth = auth::effective(request, target);
     auth::apply(auth, &mut resolver, &mut headers, &mut query)?;
     let body = body::prepare(&request.body, root, &headers, &mut resolver)?;
 

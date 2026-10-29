@@ -8,8 +8,9 @@
 //! [`PreparedRequest`](relay_http::PreparedRequest): it selects the request (by id or slug
 //! path), checks the environment, resolves `{{variables}}`, builds the query string, applies
 //! the effective auth, builds the body and fills in default settings. [`prepare`] is the same
-//! step as a pure function, with no IO and no network. [`Engine::send`] sends a prepared
-//! request; [`Engine::execute`] does both.
+//! step as a pure function, with no IO and no network. [`prepare_draft`] does the same for
+//! a draft request document in the place of the stored one, keeping its parents.
+//! [`Engine::send`] sends a prepared request; [`Engine::execute`] does both.
 //!
 //! # Threading model
 //!
@@ -36,7 +37,7 @@ pub mod state;
 pub use engine::{Engine, Executed, Execution};
 pub use error::{ExecuteError, OpenError};
 pub use prepare::{
-    DEFAULT_TIMEOUT_MS, ExecuteOptions, Inspection, Prepared, Span, inspect, prepare,
+    DEFAULT_TIMEOUT_MS, ExecuteOptions, Inspection, Prepared, Span, inspect, prepare, prepare_draft,
 };
 /// The transport types front ends read, re-exported so they depend on the engine only.
 pub use relay_http::{HttpError, PreparedBody, PreparedRequest, Response};
