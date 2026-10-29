@@ -32,7 +32,12 @@ pub(crate) struct Cli {
 pub(crate) enum Command {
     /// Send one request of a workspace and write the response body to stdout.
     Run(RunArgs),
+    /// Serve the MCP tools that drive the running app, over stdio.
+    Mcp(McpArgs),
 }
+
+/// The application id the window reports, and the default `--app-id`.
+pub(crate) const DEFAULT_APP_ID: &str = "relay";
 
 const RUN_AFTER_HELP: &str = "\
 Output:
@@ -70,6 +75,33 @@ pub(crate) struct RunArgs {
     pub(crate) include: bool,
 }
 
+const MCP_AFTER_HELP: &str = "\
+The server speaks MCP on stdout, so stdout carries only protocol frames; logs go to stderr.
+
+Tools, all driving a running Relay window through its gpui-mcp bridge:
+  ui_list_targets, ui_select_target, ui_ping
+  ui_tree, ui_find, ui_element, ui_element_bounds, ui_wait_for_element
+  ui_click, ui_type, ui_key, ui_focus, ui_scroll
+
+Policy, approvals and audit are not implemented yet: every tool runs.
+
+Exit codes:
+  0  the client closed the connection
+  1  the server could not start or the bridge could not be served
+  2  usage error: bad arguments or an invalid application id";
+
+/// Arguments of `relay mcp`.
+#[derive(Debug, Args)]
+#[command(after_help = MCP_AFTER_HELP)]
+pub(crate) struct McpArgs {
+    /// The workspace directory. The ui_* tools do not read it yet.
+    #[arg(long, value_name = "DIR")]
+    pub(crate) workspace: Option<PathBuf>,
+    /// The application id of the windows to drive.
+    #[arg(long, value_name = "ID", default_value = DEFAULT_APP_ID)]
+    pub(crate) app_id: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -103,6 +135,38 @@ mod tests {
             panic!("expected relay run");
         };
         assert_eq!(args.request, "x");
+    }
+
+    #[test]
+    fn mcp_defaults_to_the_relay_app_id() {
+        let cli = parse(&["relay", "mcp"]);
+        let Some(Command::Mcp(args)) = cli.command else {
+            panic!("expected relay mcp");
+        };
+        assert_eq!(args.app_id, DEFAULT_APP_ID);
+        assert_eq!(args.workspace, None);
+    }
+
+    #[test]
+    fn mcp_takes_an_app_id_and_a_workspace() {
+        let cli = parse(&["relay", "mcp", "--app-id", "other", "--workspace", "w"]);
+        let Some(Command::Mcp(args)) = cli.command else {
+            panic!("expected relay mcp");
+        };
+        assert_eq!(args.app_id, "other");
+        assert_eq!(args.workspace, Some(PathBuf::from("w")));
+    }
+
+    #[test]
+    fn mcp_help_documents_its_tools_and_stream() {
+        let help = Cli::command()
+            .find_subcommand_mut("mcp")
+            .map_or_else(String::new, |command| {
+                command.render_long_help().to_string()
+            });
+        for expected in ["ui_tree", "ui_select_target", "stdout", "Exit codes"] {
+            assert!(help.contains(expected), "{expected} missing: {help}");
+        }
     }
 
     /// A directory literally named `run` is the subcommand; `./run` opens it.

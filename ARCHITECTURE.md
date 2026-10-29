@@ -402,7 +402,18 @@ git needs no export at all.
 
 ## MCP
 
-`relay mcp --workspace <path>` runs an rmcp stdio server over `relay_engine`.
+`relay mcp [--workspace <path>] [--app-id <id>]` runs an rmcp stdio server. Today it serves
+the `ui_*` tools of "UI automation"; the engine tools below are the plan.
+
+What exists: `relay_mcp` reads the bridge endpoint descriptors under the runtime directory
+and speaks the framed wire protocol to one window (`relay_mcp::bridge`), and serves thirteen
+`ui_*` tools over stdio (`relay_mcp::server`). A session talks to the only live target, asks
+for `ui_select_target` when several are running, and reports a target that died instead of
+switching. Stdout carries only protocol frames; logs go to stderr. Text the bridge withholds
+as redacted stays withheld, and a bridge failure is a tool error, never a panic.
+
+Not yet: policy, approvals and audit. Every tool runs unpoliced, which adds no exposure the
+bridge does not already have (see the trust model below), and the help text says so.
 
 - **Tools**, grouped with one `#[tool_router]` per group: workspace (list, open, inspect),
   collection and folder (list, get, create, update, move, delete), request (get, create,
@@ -549,9 +560,15 @@ Trust model, and what it costs:
 - `gpui-mcp` supports `gpui-pre` 0.3.5 to 0.3.7, which caps Relay at `gpui-component` 0.7.0
   until upstream supports a newer release.
 
-Until `relay mcp` exists, `scripts/gpui-mcp.sh` builds and runs upstream's server at the same
-rev (`scripts/gpui-mcp.sh install`, then `scripts/gpui-mcp.sh --app-id relay`). It is a
-development stopgap that disappears with the `ui_*` tools.
+`relay mcp` serves these tools itself: `ui_list_targets`, `ui_select_target`, `ui_ping`,
+`ui_tree`, `ui_find`, `ui_element`, `ui_element_bounds`, `ui_wait_for_element`, `ui_click`,
+`ui_type`, `ui_key`, `ui_focus` and `ui_scroll`. Relay reimplements discovery, descriptor
+validation and the framing instead of depending on upstream's server, whose client is private,
+so `scripts/gpui-mcp.sh` is no longer needed to drive the app.
+
+The protocol crate gives the types; the transport, the size caps (1 MiB per request, 24 MiB
+per response) and the 10 s I/O timeout are Relay's. A request carries the descriptor's token
+and a fresh request id, and a response must match both the id and the protocol version.
 
 ## Lessons from DBFlux
 

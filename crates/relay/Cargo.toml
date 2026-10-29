@@ -19,12 +19,14 @@ workspace = true
 anyhow.workspace = true
 clap.workspace = true
 relay_engine.workspace = true
+relay_mcp.workspace = true
 env_logger.workspace = true
 gpui.workspace = true
 gpui-platform.workspace = true
 log.workspace = true
 relay_ui.workspace = true
 signal-hook.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
 pretty_assertions.workspace = true

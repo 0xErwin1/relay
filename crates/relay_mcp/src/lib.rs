@@ -3,3 +3,6 @@
 pub mod bridge;
 pub mod server;
 pub mod tools;
+
+/// The application identifier a window reports and a client asks for.
+pub use gpui_mcp_protocol::AppId;

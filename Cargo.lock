@@ -6123,6 +6123,7 @@ dependencies = [
  "log",
  "pretty_assertions",
  "relay_engine",
+ "relay_mcp",
  "relay_ui",
  "signal-hook",
  "tempfile",
