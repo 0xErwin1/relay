@@ -7,6 +7,8 @@
 mod client;
 mod descriptor;
 mod discover;
+#[cfg(all(test, unix))]
+pub(crate) mod fake;
 mod session;
 #[cfg(all(test, unix))]
 mod tests;
