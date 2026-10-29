@@ -5,6 +5,7 @@ mod action_strip;
 mod diamond;
 mod document;
 mod documents;
+mod drafts;
 mod environment_menu;
 mod last_request;
 mod path_bar;
@@ -19,6 +20,7 @@ mod tabs;
 mod text;
 mod title_bar;
 mod tree_model;
+mod url_edit;
 
 use std::collections::HashMap;
 
@@ -27,13 +29,16 @@ use gpui::{
     App, Context, Div, ElementId, Entity, FocusHandle, IntoElement, ParentElement, Render, Role,
     Stateful, Styled, Subscription, Window, div, prelude::*,
 };
+use relay_engine::state::AppState;
 
 use self::documents::Documents;
+use self::drafts::Drafts;
 use self::last_request::LastSend;
 use self::request::{RequestState, SubTab};
-use self::send::{CancelRequest, RequestSend, SHELL_CONTEXT, SendRequest};
+use self::send::{CancelRequest, RequestSend, SHELL_CONTEXT, SaveRequest, SendRequest};
 use self::sidebar::{OpenRequest, Sidebar};
 use self::tree_model::Node;
+use self::url_edit::UrlEdit;
 
 use crate::workspace::OpenedWorkspace;
 
@@ -60,6 +65,16 @@ pub(crate) struct Shell {
     sends: HashMap<String, RequestSend>,
     /// The request the window sent last, for the status bar.
     last_send: Option<LastSend>,
+    /// The draft of each edited request, by request id; restored from the app state and
+    /// persisted on every edit.
+    drafts: Drafts,
+    /// The URL field of the request under edit, while it has focus.
+    url_edit: Option<UrlEdit>,
+    /// The per-user app state the drafts persist in; `None` when it could not be opened,
+    /// which keeps drafts in memory only.
+    state: Option<AppState>,
+    /// The id of the loaded workspace, the key drafts are stored under.
+    workspace_id: Option<String>,
     /// The slug of the window's active environment; `None` is No environment.
     active_environment: Option<String>,
     /// Whether the title bar environment menu is open; not kept across restarts.
@@ -73,16 +88,34 @@ pub(crate) struct Shell {
 }
 
 impl Shell {
+    /// A shell without the app state, for tests: drafts work but stay in memory. The app
+    /// opens the state once and builds the shell through [`Shell::with_state`].
+    #[cfg(test)]
     pub(crate) fn new(workspace: OpenedWorkspace, cx: &mut Context<Self>) -> Self {
+        Self::with_state(workspace, None, cx)
+    }
+
+    /// Builds the shell over `state`, the per-user app state the drafts persist in. The
+    /// app opens it once and passes it in; tests pass their own file so no test touches
+    /// the user's state.
+    pub(crate) fn with_state(
+        workspace: OpenedWorkspace,
+        state: Option<AppState>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let sidebar = cx.new(|cx| Sidebar::new(&workspace, cx));
         let roots = match &workspace {
             OpenedWorkspace::Loaded(engine) => tree_model::nodes(engine.workspace()),
             OpenedWorkspace::None | OpenedWorkspace::Failed { .. } => Vec::new(),
         };
+        let workspace_id = match &workspace {
+            OpenedWorkspace::Loaded(engine) => Some(engine.workspace().manifest.id.to_string()),
+            OpenedWorkspace::None | OpenedWorkspace::Failed { .. } => None,
+        };
         let open_requests = cx.subscribe(&sidebar, |this, _, OpenRequest(id), cx| {
             this.open_document(id, cx);
         });
-        Self {
+        let mut shell = Self {
             workspace,
             sidebar,
             roots,
@@ -90,17 +123,24 @@ impl Shell {
             requests: HashMap::new(),
             sends: HashMap::new(),
             last_send: None,
+            drafts: HashMap::new(),
+            url_edit: None,
+            state,
+            workspace_id,
             active_environment: None,
             environment_menu_open: false,
             environment_menu_focus: cx.focus_handle(),
             focus: cx.focus_handle(),
             _open_requests: open_requests,
-        }
+        };
+        shell.load_drafts();
+        shell
     }
 
     /// Opens the request `id` in a tab, inspecting it when it was not open.
     fn open_document(&mut self, id: &str, cx: &mut Context<Self>) {
         self.documents.open(id);
+        self.drop_stale_url_edit(id);
         if !self.requests.contains_key(id)
             && let OpenedWorkspace::Loaded(engine) = &self.workspace
         {
@@ -119,6 +159,12 @@ impl Shell {
     /// keeping its sub-tab; a request that can no longer be inspected is dropped.
     pub(super) fn set_environment(&mut self, slug: Option<String>, cx: &mut Context<Self>) {
         self.active_environment = slug;
+        self.inspect_open_requests(cx);
+    }
+
+    /// Inspects every open request again against the active environment, keeping its
+    /// sub-tab; a request that can no longer be inspected is dropped.
+    pub(super) fn inspect_open_requests(&mut self, cx: &mut Context<Self>) {
         if let OpenedWorkspace::Loaded(engine) = &self.workspace {
             let environment = self.active_environment.as_deref();
             self.requests
@@ -182,14 +228,17 @@ impl Shell {
     /// Activates the tab of the request `id`.
     fn activate_document(&mut self, id: &str, cx: &mut Context<Self>) {
         self.documents.activate(id);
+        self.drop_stale_url_edit(id);
         cx.notify();
     }
 
-    /// Closes the tab of the request `id`, cancelling its send in flight.
+    /// Closes the tab of the request `id`, cancelling its send in flight. Its draft, if it
+    /// has one, stays in the app state and marks the tab when it is opened again.
     fn close_document(&mut self, id: &str, cx: &mut Context<Self>) {
         self.documents.close(id);
         self.requests.remove(id);
         self.sends.remove(id);
+        self.drop_url_edit_of(id);
         cx.notify();
     }
 }
@@ -204,6 +253,9 @@ impl Render for Shell {
             .on_action(cx.listener(|this, _: &SendRequest, _, cx| this.send_active(cx)))
             .on_action(cx.listener(|this, _: &CancelRequest, window, cx| {
                 this.cancel_active(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &SaveRequest, window, cx| {
+                this.save_active(window, cx);
             }))
             .size_full()
             .flex()
@@ -240,6 +292,8 @@ fn text_region(id: &'static str) -> Stateful<Div> {
 
 #[cfg(test)]
 mod document_tests;
+#[cfg(test)]
+mod draft_tests;
 #[cfg(test)]
 mod environment_tests;
 #[cfg(test)]

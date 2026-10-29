@@ -1,12 +1,15 @@
-//! The request line: the read-only method chip, the URL with its references styled, and the
-//! Send split button, which sends the request, or the Cancel button while it is in flight.
-//! The send options do nothing yet.
+//! The request line: the read-only method chip, the URL with its references styled, and
+//! the Send split button, which sends the request, or the Cancel button while it is in
+//! flight. Clicking the URL swaps it for an editable field; the send options do nothing yet.
 
 use bolt::chamfer::Chamfer;
 use bolt::controls::Keycap;
 use bolt::tokens::{border, chrome, cut, family, icon, space};
 use bolt::{Icon, IconName};
-use gpui::{App, Context, Div, FontWeight, ParentElement, Role, Stateful, Styled, div, prelude::*};
+use gpui::{
+    App, Context, Div, Entity, FontWeight, ParentElement, Role, Stateful, Styled, div, prelude::*,
+};
+use gpui_component::input::{Enter, Escape, Input, InputState};
 
 use super::model::RequestState;
 use super::spans;
@@ -18,6 +21,7 @@ pub(super) fn render(
     id: &str,
     state: &RequestState,
     sending: bool,
+    shell: &Shell,
     cx: &mut Context<Shell>,
 ) -> Stateful<Div> {
     let action = if sending {
@@ -34,7 +38,7 @@ pub(super) fn render(
         .pl(space::MD)
         .pr(space::MD)
         .child(method(state, cx))
-        .child(url(state, cx))
+        .child(url(id, state, shell, cx))
         .child(action)
 }
 
@@ -109,10 +113,16 @@ fn method(state: &RequestState, cx: &App) -> Stateful<Div> {
         )
 }
 
-/// The URL field, element id `request-url`, labelled with the URL as written.
-fn url(state: &RequestState, cx: &App) -> Stateful<Div> {
+/// The URL field, element id `request-url`: the URL as written, styled by its references,
+/// which a click swaps for the editable field `request-url-input`. While the field of this
+/// request is open, it takes the URL's place and takes Enter and Escape while focused.
+fn url(id: &str, state: &RequestState, shell: &Shell, cx: &mut Context<Shell>) -> Stateful<Div> {
+    if let Some(edit) = shell.url_edit.as_ref().filter(|edit| edit.request_id == id) {
+        return editing_url(edit.input.clone(), cx);
+    }
     let colors = bolt::colors(cx);
-    let url = state.inspection.url.clone();
+    let url = shell.displayed_url(id);
+    let request = id.to_owned();
     region("request-url")
         .role(Role::Label)
         .aria_label(url.clone())
@@ -129,12 +139,62 @@ fn url(state: &RequestState, cx: &App) -> Stateful<Div> {
         .font_family(family::MONO)
         .text_size(tokens::URL_TEXT)
         .text_color(colors.strong)
+        .cursor_text()
         .child(
             Chamfer::new(cut::CONTROL)
                 .fill(colors.background)
                 .edge(colors.line, border::THIN),
         )
         .children(spans::render(&state.inspection, &url, cx))
+        .on_click(cx.listener(move |this, _event, window, cx| {
+            this.start_url_edit(&request, window, cx);
+        }))
+}
+
+/// The editable URL field, element id `request-url-input`, over the input `input`.
+fn editing_url(input: Entity<InputState>, cx: &mut Context<Shell>) -> Stateful<Div> {
+    let colors = bolt::colors(cx);
+    region("request-url")
+        .role(Role::TextInput)
+        .relative()
+        .flex_1()
+        .min_w_0()
+        .h(tokens::URL_FIELD)
+        .flex()
+        .items_center()
+        .pl(space::MD)
+        .pr(space::MD)
+        .font_family(family::MONO)
+        .text_size(tokens::URL_TEXT)
+        .text_color(colors.strong)
+        .child(
+            Chamfer::new(cut::CONTROL)
+                .fill(colors.background)
+                .edge(colors.line, border::THIN),
+        )
+        .on_action(cx.listener(|this, action: &Enter, window, cx| {
+            // Ctrl+Enter maps to the input's `secondary-enter` while the field has focus:
+            // it sends instead of committing.
+            if action.secondary {
+                this.send_active(cx);
+            } else {
+                this.commit_url_edit(window, cx);
+            }
+        }))
+        .on_action(cx.listener(|this, _: &Escape, window, cx| {
+            this.discard_url_edit(window, cx);
+        }))
+        .child(
+            Input::new(&input)
+                .id("request-url-input")
+                .appearance(false)
+                .bordered(false)
+                .flex_1()
+                .min_w_0()
+                .text_size(tokens::URL_TEXT)
+                .font_family(family::MONO)
+                .text_color(colors.strong),
+        )
 }
 
 /// The Send split button: `request-send`, which sends the request `id`, then

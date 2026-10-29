@@ -136,6 +136,12 @@ impl TreeState {
         }
     }
 
+    /// Replaces the tree's roots, keeping the expansion and the selection; ids that no
+    /// longer exist simply never match again.
+    pub(crate) fn set_roots(&mut self, roots: Vec<Node>) {
+        self.roots = roots;
+    }
+
     /// The number of requests in every collection.
     pub(crate) fn request_count(&self) -> usize {
         self.roots.iter().map(Node::request_count).sum()

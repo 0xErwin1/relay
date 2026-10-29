@@ -36,20 +36,20 @@ pub(super) fn render(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement
                 .min_w_0()
                 .flex()
                 .flex_col();
-            let state = shell
-                .documents
-                .active()
-                .and_then(|id| shell.requests.get(id).map(|state| (id, state)));
-            body.child(action_strip::render(cx)).child(match state {
-                Some((id, state)) => {
-                    let send = shell.sends.get(id);
-                    let sending = send.is_some_and(|send| send.state.is_sending());
-                    content
-                        .children(request::render(id, state, sending, cx))
-                        .child(response::render(id, send, cx))
-                }
-                None => content,
-            })
+            let active_id = shell.documents.active();
+            let drafted = active_id.is_some_and(|id| shell.drafts.contains_key(id));
+            let state = active_id.and_then(|id| shell.requests.get(id).map(|state| (id, state)));
+            body.child(action_strip::render(active_id, drafted, cx))
+                .child(match state {
+                    Some((id, state)) => {
+                        let send = shell.sends.get(id);
+                        let sending = send.is_some_and(|send| send.state.is_sending());
+                        content
+                            .children(request::render(id, state, sending, shell, cx))
+                            .child(response::render(id, send, cx))
+                    }
+                    None => content,
+                })
         }
         (None, None) => body.child(region("document-content").flex_1()),
     };

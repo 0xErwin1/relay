@@ -25,15 +25,18 @@ actions!(
         SendRequest,
         /// Cancels the send in flight of the active request.
         CancelRequest,
+        /// Saves the draft of the active request.
+        SaveRequest,
     ]
 );
 
-/// Binds Ctrl+Enter and Escape in [`SHELL_CONTEXT`].
+/// Binds Ctrl+Enter, Escape and Ctrl+S in [`SHELL_CONTEXT`].
 pub(super) fn bind_keys(cx: &mut App) {
     let context = Some(SHELL_CONTEXT);
     cx.bind_keys([
         KeyBinding::new("ctrl-enter", SendRequest, context),
         KeyBinding::new("escape", CancelRequest, context),
+        KeyBinding::new("ctrl-s", SaveRequest, context),
     ]);
 }
 
@@ -78,6 +81,13 @@ impl Shell {
         }
     }
 
+    /// Ctrl+S: saves the draft of the active request.
+    pub(super) fn save_active(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(id) = self.documents.active().map(str::to_owned) {
+            self.save(&id, window, cx);
+        }
+    }
+
     /// Sends the request `id` with the active environment, cancelling its send in flight. A
     /// request the engine cannot prepare fails at once.
     pub(super) fn send(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -91,7 +101,12 @@ impl Shell {
             environment: self.active_environment.clone(),
             ..ExecuteOptions::default()
         };
-        let executed = engine.execute(id, &options);
+        // A request with a draft sends the draft, not the file on disk.
+        let drafted = self.drafts.get(id).map(|draft| draft.request.clone());
+        let executed = match drafted {
+            Some(draft) => engine.execute_draft(id, &draft, &options),
+            None => engine.execute(id, &options),
+        };
         let (method, url) = match &executed {
             Ok(execution) => (execution.method.clone(), execution.url.clone()),
             Err(_) => self

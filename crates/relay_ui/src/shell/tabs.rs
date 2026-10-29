@@ -7,9 +7,10 @@ use bolt::{Icon, IconName};
 use gpui::{Context, Div, FontWeight, ParentElement, Role, Stateful, Styled, div, prelude::*};
 
 use super::documents::{Location, locate};
+use super::drafts::RequestDraft;
 use super::rows::part;
 use super::{Shell, region, text as text_role};
-use crate::tokens::{self, method_color};
+use crate::tokens::{self, DIRTY_DOT, method_color};
 
 /// The tab row, element id `document-tabs`.
 pub(super) fn render(shell: &Shell, cx: &mut Context<Shell>) -> Stateful<Div> {
@@ -32,13 +33,22 @@ pub(super) fn render(shell: &Shell, cx: &mut Context<Shell>) -> Stateful<Div> {
         .overflow_hidden()
         .children(tabs.into_iter().map(|(id, location)| {
             let is_active = active.as_deref() == Some(id.as_str());
-            tab(id, &location, is_active, cx)
+            let drafted = shell.drafts.get(&id);
+            tab(id, &location, is_active, drafted, cx)
         }))
 }
 
 /// The tab of the request `id`: element id `doc-tab-<id>`, label `<METHOD> <name>`, selected
-/// when active; its close button is `doc-tab-close-<id>`.
-fn tab(id: String, location: &Location, active: bool, cx: &mut Context<Shell>) -> Stateful<Div> {
+/// when active; its close button is `doc-tab-close-<id>`. A draft marks the tab unsaved with
+/// a dot at its top-right, `doc-tab-dirty-<id>`: the brand tint, or the warning color when
+/// the saved file moved underneath the draft, with the label `doc-tab-conflict-<id>`.
+fn tab(
+    id: String,
+    location: &Location,
+    active: bool,
+    draft: Option<&RequestDraft>,
+    cx: &mut Context<Shell>,
+) -> Stateful<Div> {
     let colors = bolt::colors(cx);
     let name_color = if active { colors.strong } else { colors.muted };
     let weight = if active {
@@ -62,6 +72,14 @@ fn tab(id: String, location: &Location, active: bool, cx: &mut Context<Shell>) -
             cx.stop_propagation();
             this.close_document(&close_id, cx);
         }));
+
+    let conflicted = draft.is_some_and(|draft| draft.conflicted);
+    let drafted = draft.is_some();
+    let dot_color = if conflicted {
+        colors.warning
+    } else {
+        bolt::brand(cx).accent_tint
+    };
 
     let activate_id = id.clone();
     let label = format!("{} {}", location.method, location.name);
@@ -97,7 +115,30 @@ fn tab(id: String, location: &Location, active: bool, cx: &mut Context<Shell>) -
                 .font_weight(weight)
                 .child(location.name.clone()),
         )
+        .when(conflicted, |tab| {
+            tab.child(
+                part(format!("doc-tab-conflict-{id}"))
+                    .role(Role::Label)
+                    .aria_label("File changed on disk")
+                    .flex_none()
+                    .whitespace_nowrap()
+                    .text_size(tokens::NOTICE_TEXT)
+                    .text_color(colors.danger)
+                    .child("File changed on disk"),
+            )
+        })
         .child(close)
+        .when(drafted, |tab| {
+            tab.child(
+                part(format!("doc-tab-dirty-{id}"))
+                    .absolute()
+                    .top(tokens::DIRTY_DOT)
+                    .right(tokens::DIRTY_DOT)
+                    .size(DIRTY_DOT)
+                    .rounded_full()
+                    .bg(dot_color),
+            )
+        })
         .on_click(cx.listener(move |this, _event, _window, cx| {
             this.activate_document(&activate_id, cx);
         }))

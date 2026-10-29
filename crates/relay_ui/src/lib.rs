@@ -12,6 +12,7 @@ use std::path::PathBuf;
 
 use gpui::{App, AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions};
 use gpui_component::Root;
+use relay_engine::state::AppState;
 
 use crate::shell::Shell;
 use crate::workspace::OpenedWorkspace;
@@ -43,9 +44,16 @@ pub fn open_main_window(workspace: Option<PathBuf>, cx: &mut App) -> anyhow::Res
     };
 
     let workspace = OpenedWorkspace::open(workspace);
+    let state = match AppState::open_default() {
+        Ok(state) => Some(state),
+        Err(error) => {
+            log::warn!("cannot open the app state; drafts stay in memory: {error}");
+            None
+        }
+    };
     cx.open_window(options, |window, cx| {
         ui_automation::install(window, cx);
-        let shell = cx.new(|cx| Shell::new(workspace, cx));
+        let shell = cx.new(|cx| Shell::with_state(workspace, state, cx));
         cx.new(|cx| Root::new(shell, window, cx))
     })?;
 

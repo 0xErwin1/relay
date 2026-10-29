@@ -32,10 +32,11 @@ pub(super) fn render(
     id: &str,
     state: &RequestState,
     sending: bool,
+    shell: &Shell,
     cx: &mut Context<Shell>,
 ) -> [Stateful<Div>; 3] {
     [
-        line::render(id, state, sending, cx),
+        line::render(id, state, sending, shell, cx),
         sub_tabs::render(id, state, cx),
         pane(state, cx),
     ]

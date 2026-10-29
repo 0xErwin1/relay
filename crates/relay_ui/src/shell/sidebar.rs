@@ -17,7 +17,7 @@ use gpui::{
     KeyBinding, ParentElement, Render, Styled, Window, actions, div, prelude::*,
 };
 
-use super::tree_model::{self, TreeState};
+use super::tree_model::{self, Node, TreeState};
 use super::{region, rows, text as text_role, text_region};
 use crate::tokens;
 use crate::workspace::OpenedWorkspace;
@@ -103,6 +103,12 @@ impl Sidebar {
             change(tree);
             cx.notify();
         }
+    }
+
+    /// Replaces the tree's roots after the workspace was reloaded from disk, keeping the
+    /// expansion and selection the tree had.
+    pub(crate) fn set_roots(&mut self, roots: Vec<Node>, cx: &mut Context<Self>) {
+        self.update_tree(cx, |tree| tree.set_roots(roots));
     }
 
     /// Selects the row `id` and focuses the tree; `toggle` also expands or collapses it.

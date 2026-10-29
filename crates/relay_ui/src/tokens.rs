@@ -107,6 +107,9 @@ pub(crate) const METHOD_CHIP_WIDTH: Pixels = px(96.0);
 /// The height of the URL field and the Send button.
 pub(crate) const URL_FIELD: Pixels = px(32.0);
 
+/// The side of the draft marker dot on a document tab.
+pub(crate) const DIRTY_DOT: Pixels = px(5.0);
+
 /// The width of the options part of the Send split button.
 pub(crate) const SEND_OPTIONS_WIDTH: Pixels = px(28.0);
 
