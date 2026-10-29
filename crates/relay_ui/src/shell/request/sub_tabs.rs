@@ -1,10 +1,13 @@
 //! The sub-tab bar: Params, Headers, Body, Auth, Scripts and Settings, with the row counts of
-//! Params and Headers, and at the right the unresolved variables notice.
+//! Params and Headers, and at the right the problem of the inspection or else the unresolved
+//! variables notice.
 
 use bolt::chamfer::Chamfer;
 use bolt::tokens::{border, chrome, cut, family, icon, space, text};
 use bolt::{Icon, IconName};
-use gpui::{Context, Div, FontWeight, ParentElement, Role, Stateful, Styled, div, prelude::*};
+use gpui::{
+    Context, Div, FontWeight, Hsla, ParentElement, Role, Stateful, Styled, div, prelude::*,
+};
 
 use super::model::{RequestState, SubTab, unresolved_text};
 use crate::shell::rows::part;
@@ -14,24 +17,11 @@ use crate::tokens;
 /// The bar, element id `request-tabs`, for the request `id`.
 pub(super) fn render(id: &str, state: &RequestState, cx: &mut Context<Shell>) -> Stateful<Div> {
     let colors = bolt::colors(cx);
-    let notice = unresolved_text(state.inspection.unresolved.len()).map(|label| {
-        region("request-unresolved")
-            .role(Role::Label)
-            .aria_label(label.clone())
-            .flex_none()
-            .flex()
-            .items_center()
-            .gap(space::HALF)
-            .whitespace_nowrap()
-            .text_size(tokens::NOTICE_TEXT)
-            .text_color(colors.warning)
-            .child(
-                Icon::new(IconName::TriangleAlert)
-                    .size(icon::CHIP)
-                    .color(colors.warning),
-            )
-            .child(label)
-    });
+    let notice = match &state.inspection.problem {
+        Some(problem) => Some(notice("request-problem", problem.clone(), colors.danger)),
+        None => unresolved_text(state.inspection.unresolved.len())
+            .map(|label| notice("request-unresolved", label, colors.warning)),
+    };
     region("request-tabs")
         .flex_none()
         .h(tokens::SUB_TAB_BAR)
@@ -45,6 +35,26 @@ pub(super) fn render(id: &str, state: &RequestState, cx: &mut Context<Shell>) ->
         .children(SubTab::ALL.map(|tab| sub_tab(id, state, tab, cx)))
         .child(div().flex_1())
         .children(notice)
+}
+
+/// A notice at the right of the bar, element id `id`, in `color`.
+fn notice(id: &'static str, label: String, color: Hsla) -> Stateful<Div> {
+    region(id)
+        .role(Role::Label)
+        .aria_label(label.clone())
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(space::HALF)
+        .whitespace_nowrap()
+        .text_size(tokens::NOTICE_TEXT)
+        .text_color(color)
+        .child(
+            Icon::new(IconName::TriangleAlert)
+                .size(icon::CHIP)
+                .color(color),
+        )
+        .child(label)
 }
 
 fn icon_of(tab: SubTab) -> IconName {

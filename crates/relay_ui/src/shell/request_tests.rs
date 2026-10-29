@@ -1,5 +1,5 @@
 //! The request line (S4), the sub-tab bar (S5), the unresolved notice (S6) and their
-//! automation ids (S7).
+//! automation ids (S7), and the active environment of the window.
 
 use gpui::{Entity, Modifiers, TestAppContext, VisualTestContext};
 use tempfile::TempDir;
@@ -13,11 +13,15 @@ const COLLECTION: &str = "01J00000000000000000000011";
 const INVOICE: &str = "01J00000000000000000000012";
 const PLAIN: &str = "01J00000000000000000000013";
 const RICH: &str = "01J00000000000000000000014";
+const OAUTH: &str = "01J00000000000000000000015";
+const DEV: &str = "01J00000000000000000000016";
 
 /// `Demo` with collection `API`, which declares `base`, holding `GET Invoice` at
 /// `{{base}}/v1/{{missing}}` with enabled and disabled params and headers, a header that
 /// uses the secret `token` and one with the unresolved `tenant`, `GET Plain` with nothing
-/// else and `POST Rich` with a raw JSON body, bearer auth, a pre-request script and a timeout.
+/// else, `POST Rich` with a raw JSON body, bearer auth, a pre-request script and a timeout,
+/// `GET OAuth` with an auth type the engine does not send, and the environment `dev`, which
+/// defines `missing` and `tenant`.
 fn request_workspace() -> TempDir {
     let dir = demo_workspace();
     let root = dir.path();
@@ -61,6 +65,23 @@ fn request_workspace() -> TempDir {
         ),
     );
     write(root, "collections/api/rich.pre.js", "console.log(1);\n");
+    write(
+        root,
+        "collections/api/oauth.req.toml",
+        &format!(
+            "id = \"{OAUTH}\"\nname = \"OAuth\"\nmethod = \"GET\"\nurl = \"{{{{missing}}}}\"\n\n\
+             [auth]\ntype = \"oauth2\"\n"
+        ),
+    );
+    write(
+        root,
+        "environments/dev.env.toml",
+        &format!(
+            "id = \"{DEV}\"\nname = \"dev\"\n\n\
+             [[variables]]\nkey = \"missing\"\nvalue = \"m\"\n\n\
+             [[variables]]\nkey = \"tenant\"\nvalue = \"t\"\n"
+        ),
+    );
     dir
 }
 
@@ -258,4 +279,56 @@ fn a_request_without_body_or_scripts_shows_empty_states(cx: &mut TestAppContext)
         cx,
         &["request-script-pre-empty", "request-script-test-empty"],
     );
+}
+
+fn unresolved(cx: &mut VisualTestContext, shell: &Entity<Shell>, id: &str) -> Option<usize> {
+    cx.update(|_, cx| {
+        shell
+            .read(cx)
+            .requests
+            .get(id)
+            .map(|state| state.inspection.unresolved.len())
+    })
+}
+
+#[gpui::test]
+fn an_environment_resolves_open_requests_and_keeps_their_sub_tab(cx: &mut TestAppContext) {
+    let (shell, cx) = render(cx);
+    click(cx, &format!("tree-row-{INVOICE}"));
+    click(cx, "request-tab-body");
+    assert_eq!(unresolved(cx, &shell, INVOICE), Some(3));
+    assert!(bounds(cx, "request-unresolved").is_some());
+
+    shell.update(cx, |shell, cx| {
+        shell.set_environment(Some("dev".to_owned()), cx)
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        unresolved(cx, &shell, INVOICE),
+        Some(1),
+        "the valueless secret token"
+    );
+    assert_eq!(selected_tab(cx, &shell, INVOICE), Some(SubTab::Body));
+
+    shell.update(cx, |shell, cx| shell.set_environment(None, cx));
+    cx.run_until_parked();
+    assert_eq!(unresolved(cx, &shell, INVOICE), Some(3));
+}
+
+#[gpui::test]
+fn a_request_opened_after_choosing_an_environment_uses_it(cx: &mut TestAppContext) {
+    let (shell, cx) = render(cx);
+    shell.update(cx, |shell, cx| {
+        shell.set_environment(Some("dev".to_owned()), cx)
+    });
+    click(cx, &format!("tree-row-{INVOICE}"));
+    assert_eq!(unresolved(cx, &shell, INVOICE), Some(1));
+}
+
+#[gpui::test]
+fn a_request_that_cannot_be_prepared_shows_the_problem(cx: &mut TestAppContext) {
+    let (_shell, cx) = render(cx);
+    click(cx, &format!("tree-row-{OAUTH}"));
+    assert!(bounds(cx, "request-problem").is_some());
+    assert!(bounds(cx, "request-unresolved").is_none());
 }

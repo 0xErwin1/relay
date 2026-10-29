@@ -46,6 +46,8 @@ pub(crate) struct Shell {
     documents: Documents,
     /// The state of each open request that the engine could inspect, by request id.
     requests: HashMap<String, RequestState>,
+    /// The slug of the window's active environment; `None` is No environment.
+    active_environment: Option<String>,
     _open_requests: Subscription,
 }
 
@@ -65,6 +67,7 @@ impl Shell {
             roots,
             documents: Documents::default(),
             requests: HashMap::new(),
+            active_environment: None,
             _open_requests: open_requests,
         }
     }
@@ -75,13 +78,38 @@ impl Shell {
         if !self.requests.contains_key(id)
             && let OpenedWorkspace::Loaded(engine) = &self.workspace
         {
-            match engine.inspect(id) {
+            match engine.inspect(id, self.active_environment.as_deref()) {
                 Ok(inspection) => {
                     self.requests
                         .insert(id.to_owned(), RequestState::new(inspection));
                 }
                 Err(error) => log::warn!("cannot inspect request {id}: {error}"),
             }
+        }
+        cx.notify();
+    }
+
+    /// Makes `slug` the active environment and inspects every open request again against it,
+    /// keeping its sub-tab; a request that can no longer be inspected is dropped.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "the title bar environment menu calls it next")
+    )]
+    pub(super) fn set_environment(&mut self, slug: Option<String>, cx: &mut Context<Self>) {
+        self.active_environment = slug;
+        if let OpenedWorkspace::Loaded(engine) = &self.workspace {
+            let environment = self.active_environment.as_deref();
+            self.requests
+                .retain(|id, state| match engine.inspect(id, environment) {
+                    Ok(inspection) => {
+                        state.inspection = inspection;
+                        true
+                    }
+                    Err(error) => {
+                        log::warn!("cannot inspect request {id}: {error}");
+                        false
+                    }
+                });
         }
         cx.notify();
     }
