@@ -111,18 +111,18 @@ button{font:inherit;white-space:nowrap}
 
   <!-- Title bar: centered command search with the global environment selector, approvals bell -->
   <header style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;height:44px;padding:0 14px;flex-shrink:0">
-    <span></span>
+    <!-- Environment: global context, aligned with the sidebar column, mirroring the bell -->
+    <button aria-label="Environment: staging" title="Environment" class="c6" style="justify-self:start;display:flex;align-items:center;gap:8px;height:30px;margin-left:55px;padding:0 10px;border:0;background:transparent;color:#C6C3CC;font:inherit;font-size:12.5px">
+      <span class="dia" style="background:#FFC23D"></span>
+      <span style="color:#8E8996">Environment</span>
+      <span style="color:#F7F4F7;font-weight:600">staging</span>
+      <svg class="ico" style="width:12px;height:12px;color:#8E8996"><use href="#i-down"/></svg>
+    </button>
     <div style="display:flex;align-items:center;gap:8px">
       <div class="c6 field" style="width:420px">
         <svg class="ico" style="width:14px;height:14px;color:#8E8996"><use href="#i-search"/></svg>
         <span style="flex-grow:1;color:#8E8996">Search or run a command</span>
         <span class="c4 kc">Ctrl Shift P</span>
-      </div>
-      <div class="c6 sel" aria-label="Environment" title="Environment">
-        <span class="dia" style="background:#FFC23D"></span>
-        <span>staging</span>
-        <span class="c4" style="padding:1px 6px;background:rgba(255,194,61,.16);color:#FFC23D;font-size:10px;font-weight:700;letter-spacing:.08em">STAGE</span>
-        <svg class="ico" style="width:12px;height:12px;color:#8E8996"><use href="#i-down"/></svg>
       </div>
     </div>
     <span style="position:relative;display:flex;justify-self:end">
