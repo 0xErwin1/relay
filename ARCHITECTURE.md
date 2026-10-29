@@ -429,15 +429,29 @@ appears (a slow disk delays the window). The window is the Bolt shell of
 the command search in the middle and the approvals bell on the right; the activity rail
 (Collections, History, Environments, MCP approvals, Audit log, Settings); a sidebar island with
 the collection tree (icons, indent guides, child counts, method labels in Bolt's semantic
-colors) and a request and collection count; a document island with its tab row and path bar;
-and a status bar that shows load warnings. Only the tree is interactive so far: the arrow keys
-move the selection, Enter or the chevron toggles a folder. Icons are Lucide, from
-`gpui-kit-assets`, installed by the binary as the application's asset source.
+colors) and a request and collection count; a document island; and a status bar that shows
+load warnings. In the tree the arrow keys move the selection, Enter or the chevron toggles a
+folder, and a click or Enter on a request opens it in a document tab, or focuses its tab.
+Icons are Lucide, from `gpui-kit-assets`, installed by the binary as the application's asset
+source.
+
+The document island shows the open requests as tabs, the path bar of the active one
+(collection, folders, request), and the request read-only: an action strip (Save, Revert,
+Undo, Redo, Split, disabled until editing exists), the request line (method, URL with the
+enabled params, Send, visual only until sending exists), and the Params, Headers, Body, Auth,
+Scripts and Settings sub-tabs. What it shows comes from `Engine::inspect` with no environment:
+variables are styled as resolved or unresolved, the number of unresolved ones is shown in the
+sub-tab bar, and a value that references a secret, a password, a token, an API key value or
+any field of an auth type the engine does not support is masked as `••••••••` on screen and
+in the automation tree.
 
 Every region and tree row has a stable element id (`title-bar`, `sidebar`, `document`,
-`status-bar`, `tree-row-<id>`), and text that automation must read carries a label role,
+`status-bar`, `tree-row-<id>`, `doc-tab-<id>`, `request-tab-<name>`,
+`request-<params|headers>-row-<n>`), and text that automation must read carries a label role,
 because the gpui-mcp bridge only reports text for nodes with a text role. Tree rows report
-`selected` and `expanded`.
+`selected` and `expanded`; tabs and sub-tabs report `selected`. On Wayland a window renders
+and handles input only while its workspace is on screen, so automation needs the window
+visible.
 
 The plan:
 
