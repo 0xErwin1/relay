@@ -35,7 +35,7 @@ mod select;
 pub mod state;
 
 pub use engine::{Engine, Executed, Execution};
-pub use error::{ExecuteError, OpenError};
+pub use error::{ExecuteError, OpenError, SaveError};
 pub use prepare::{
     DEFAULT_TIMEOUT_MS, ExecuteOptions, Inspection, Prepared, Span, inspect, prepare, prepare_draft,
 };

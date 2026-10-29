@@ -252,7 +252,10 @@ Saving is explicit, as in Postman: an edit never touches the workspace file unti
   join later. A draft stores the whole entity document as TOML, so later editable surfaces
   need no new storage.
 - **Sending** a request with a draft sends the draft. History records what was sent.
-- **Saving** writes the entity file (atomic, hash-checked) and discards the draft.
+- **Saving** writes the entity file (atomic, hash-checked) and discards the draft. The
+  engine entry points are `Engine::save_request`, which writes the request document back
+  and returns the new file hash, and `Engine::request_base_hash`, which reports the hash
+  the file had when the workspace was loaded.
 - **Reverting** discards the draft.
 - When the file changes underneath a draft (a `git pull`, an agent's write tool, another
   editor), the draft is kept and its tab shows that the saved version moved. Saving then

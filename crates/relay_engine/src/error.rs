@@ -1,5 +1,7 @@
 //! Engine errors.
 
+use std::path::PathBuf;
+
 use relay_http::HttpError;
 use relay_store::StoreError;
 
@@ -43,6 +45,23 @@ pub enum ExecuteError {
     /// The execution task panicked or was aborted.
     #[error("execution task failed: {0}")]
     Task(String),
+}
+
+/// Why a request document could not be saved back to its file.
+#[derive(Debug, thiserror::Error)]
+pub enum SaveError {
+    /// The file changed since the workspace was loaded; the draft is kept (S6).
+    #[error("{} changed on disk since the workspace was loaded", path.display())]
+    Conflict {
+        /// The file that was left untouched.
+        path: PathBuf,
+    },
+    /// No request has this id or slug path; nothing was written.
+    #[error("no request matches {0}")]
+    UnknownRequest(String),
+    /// The store failed for any other reason.
+    #[error(transparent)]
+    Store(#[from] StoreError),
 }
 
 impl ExecuteError {

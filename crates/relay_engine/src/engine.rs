@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 use relay_core::model::{Request, Workspace};
 use relay_core::template::SystemDynamicSource;
 use relay_http::{HttpClient, HttpError, PreparedRequest, Response};
-use relay_store::{Loaded, Warning};
+use relay_store::{ContentHash, Loaded, StoreError, Warning};
 use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::error::{ExecuteError, OpenError};
+use crate::error::{ExecuteError, OpenError, SaveError};
 use crate::prepare::{ExecuteOptions, Inspection, Prepared, inspect, prepare, prepare_draft};
 
 /// A loaded workspace that executes its requests. See the crate docs for the threading
@@ -144,6 +144,48 @@ impl Engine {
         environment: Option<&str>,
     ) -> Result<Inspection, ExecuteError> {
         inspect(self.workspace(), &self.root, selector, environment)
+    }
+
+    /// The content hash of the request `selector`'s file as it was loaded, the base hash a
+    /// draft on it carries so [`Engine::save_request`] can detect a moved file.
+    ///
+    /// # Errors
+    ///
+    /// No request has this id or slug path.
+    pub fn request_base_hash(&self, selector: &str) -> Result<Option<ContentHash>, ExecuteError> {
+        let target = crate::select::find(self.workspace(), selector)?;
+        let file = relay_store::request_file(&self.root, &target.parent(), &target.request.slug);
+        Ok(self.loaded.hash(&file))
+    }
+
+    /// Saves `request` as the document of the request `selector`'s file, atomically and
+    /// hash-checked, and returns the new file hash.
+    ///
+    /// # Errors
+    ///
+    /// [`SaveError::Conflict`] when the file no longer matches `expected`: the draft is
+    /// kept and the file is left as the other edit wrote it. [`SaveError::UnknownRequest`]
+    /// when no request has this id or slug path. [`SaveError::Store`] for any other store
+    /// error.
+    pub fn save_request(
+        &self,
+        selector: &str,
+        request: &Request,
+        expected: Option<ContentHash>,
+    ) -> Result<ContentHash, SaveError> {
+        let target = crate::select::find(self.workspace(), selector)
+            .map_err(|_| SaveError::UnknownRequest(selector.to_owned()))?;
+        relay_store::save_request(
+            &self.root,
+            &target.parent(),
+            &target.request.slug,
+            request,
+            expected,
+        )
+        .map_err(|error| match error {
+            StoreError::Conflict { path } => SaveError::Conflict { path },
+            other => SaveError::Store(other),
+        })
     }
 
     /// Spawns a task on the engine runtime that sends `prepared`.

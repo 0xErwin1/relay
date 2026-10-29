@@ -1,6 +1,7 @@
 //! Request selection by id or slug path (S10).
 
 use relay_core::model::{CollectionNode, FolderNode, Item, RequestNode, Workspace};
+use relay_store::Parent;
 
 use crate::error::ExecuteError;
 
@@ -87,4 +88,18 @@ fn by_path<'a>(workspace: &'a Workspace, path: &str) -> Option<Target<'a>> {
         folders,
         request,
     })
+}
+
+impl Target<'_> {
+    /// The store parent of the request: its collection and folder slugs, outermost first.
+    pub(crate) fn parent(&self) -> Parent {
+        Parent {
+            collection: self.collection.slug.clone(),
+            folders: self
+                .folders
+                .iter()
+                .map(|folder| folder.slug.clone())
+                .collect(),
+        }
+    }
 }
