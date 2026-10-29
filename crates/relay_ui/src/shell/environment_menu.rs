@@ -75,8 +75,8 @@ fn option(
         .when(selected, |row| {
             row.child(Icon::new(IconName::Check).size(icon::MD).color(tint))
         })
-        .on_click(cx.listener(move |this, _event, _window, cx| {
-            this.environment_menu_open = false;
+        .on_click(cx.listener(move |this, _event, window, cx| {
+            this.close_environment_menu(window, cx);
             this.set_environment(slug.clone(), cx);
         }))
 }
@@ -114,9 +114,9 @@ pub(super) fn render(shell: &Shell, window: &Window, cx: &mut Context<Shell>) ->
             active.is_none(),
             cx,
         ))
-        .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
+        .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
             if event.keystroke.key == "escape" {
-                this.close_environment_menu(cx);
+                this.close_environment_menu(window, cx);
             }
         }));
     for (slug, name) in environments(&shell.workspace) {
@@ -129,7 +129,7 @@ pub(super) fn render(shell: &Shell, window: &Window, cx: &mut Context<Shell>) ->
         .h(window.viewport_size().height)
         .on_mouse_down(
             MouseButton::Left,
-            cx.listener(|this, _event, _window, cx| this.close_environment_menu(cx)),
+            cx.listener(|this, _event, window, cx| this.close_environment_menu(window, cx)),
         );
     div()
         .absolute()

@@ -6,7 +6,7 @@ use std::net::{TcpListener, TcpStream};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use gpui::{Entity, Modifiers, TestAppContext, VisualTestContext};
+use gpui::{AppContext as _, Entity, Modifiers, TestAppContext, VisualTestContext};
 
 use super::Shell;
 use crate::workspace::OpenedWorkspace;
@@ -88,6 +88,16 @@ pub(super) fn render(
     cx: &mut TestAppContext,
     port: u16,
 ) -> (Entity<Shell>, &mut VisualTestContext) {
+    render_in(cx, port, false)
+}
+
+/// [`render`], with the shell inside gpui-component's `Root` when `rooted`, as the app's
+/// window has it.
+fn render_in(
+    cx: &mut TestAppContext,
+    port: u16,
+    rooted: bool,
+) -> (Entity<Shell>, &mut VisualTestContext) {
     // The engine wakes the awaiting task from its own threads.
     cx.executor().allow_parking();
     cx.update(super::bind_keys);
@@ -107,7 +117,19 @@ pub(super) fn render(
     );
     let workspace = OpenedWorkspace::open(Some(root.to_path_buf()));
     drop(dir);
-    let (shell, cx) = cx.add_window_view(|_, cx| Shell::new(workspace, cx));
+    let (shell, cx) = if rooted {
+        let (root, cx) = cx.add_window_view(|window, cx| {
+            let shell = cx.new(|cx| Shell::new(workspace, cx));
+            gpui_component::Root::new(shell, window, cx)
+        });
+        let shell = cx.update(|_, cx| root.read(cx).view().clone().downcast::<Shell>());
+        match shell {
+            Ok(shell) => (shell, cx),
+            Err(_) => panic!("the root view is not the shell"),
+        }
+    } else {
+        cx.add_window_view(|_, cx| Shell::new(workspace, cx))
+    };
     cx.run_until_parked();
     click_owned(cx, &format!("tree-row-{PING}"));
     (shell, cx)
@@ -238,4 +260,53 @@ fn closing_the_tab_drops_its_send(cx: &mut TestAppContext) {
     thread::sleep(Duration::from_millis(50));
     cx.run_until_parked();
     assert!(cx.update(|_, cx| !shell.read(cx).sends.contains_key(PING)));
+}
+
+/// Opens the environment menu and closes it with Escape.
+fn open_and_escape_the_menu(cx: &mut VisualTestContext) {
+    click(cx, "environment-selector");
+    assert!(cx.debug_bounds("environment-menu").is_some());
+    cx.simulate_keystrokes("escape");
+    cx.run_until_parked();
+    assert!(cx.debug_bounds("environment-menu").is_none());
+}
+
+#[gpui::test]
+fn ctrl_enter_sends_after_the_environment_menu_closes(cx: &mut TestAppContext) {
+    let (shell, cx) = render(cx, serve(Server::Ok));
+    open_and_escape_the_menu(cx);
+    cx.simulate_keystrokes("ctrl-enter");
+    assert_eq!(settle(cx, &shell, PING).as_deref(), Some("200 OK"));
+}
+
+#[gpui::test]
+fn escape_cancels_after_an_environment_is_chosen(cx: &mut TestAppContext) {
+    let (shell, cx) = render(cx, serve(Server::Silent));
+    click(cx, "environment-selector");
+    click(cx, "environment-none");
+    click(cx, "request-send");
+    cx.simulate_keystrokes("escape");
+    assert_eq!(
+        settle(cx, &shell, PING).as_deref(),
+        Some("Failed: request cancelled")
+    );
+}
+
+#[gpui::test]
+fn sending_again_on_a_silent_server_stays_in_flight(cx: &mut TestAppContext) {
+    let (shell, cx) = render(cx, serve(Server::Silent));
+    cx.simulate_keystrokes("ctrl-enter");
+    cx.run_until_parked();
+    cx.simulate_keystrokes("ctrl-enter");
+    thread::sleep(Duration::from_millis(100));
+    cx.run_until_parked();
+    assert_eq!(response(cx, &shell, PING).as_deref(), Some("Sending"));
+}
+
+#[gpui::test]
+fn ctrl_enter_sends_after_the_menu_closes_in_the_app_root(cx: &mut TestAppContext) {
+    let (shell, cx) = render_in(cx, serve(Server::Ok), true);
+    open_and_escape_the_menu(cx);
+    cx.simulate_keystrokes("ctrl-enter");
+    assert_eq!(settle(cx, &shell, PING).as_deref(), Some("200 OK"));
 }

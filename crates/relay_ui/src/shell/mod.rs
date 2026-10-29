@@ -62,6 +62,9 @@ pub(crate) struct Shell {
     environment_menu_open: bool,
     /// Focused while the environment menu is open, so Escape reaches it.
     environment_menu_focus: FocusHandle,
+    /// The shell's own focus, given back when the environment menu closes, so the window's
+    /// keys (Ctrl+Enter, Escape) keep reaching the shell's key context.
+    focus: FocusHandle,
     _open_requests: Subscription,
 }
 
@@ -85,6 +88,7 @@ impl Shell {
             active_environment: None,
             environment_menu_open: false,
             environment_menu_focus: cx.focus_handle(),
+            focus: cx.focus_handle(),
             _open_requests: open_requests,
         }
     }
@@ -154,9 +158,11 @@ impl Shell {
         }
     }
 
-    /// Closes the environment menu without changing the active environment.
-    fn close_environment_menu(&mut self, cx: &mut Context<Self>) {
+    /// Closes the environment menu without changing the active environment and gives the
+    /// focus back to the shell; the menu's focus handle is no longer rendered.
+    fn close_environment_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.environment_menu_open = false;
+        self.focus.focus(window, cx);
         cx.notify();
     }
 
@@ -189,8 +195,11 @@ impl Render for Shell {
 
         div()
             .key_context(SHELL_CONTEXT)
+            .track_focus(&self.focus)
             .on_action(cx.listener(|this, _: &SendRequest, _, cx| this.send_active(cx)))
-            .on_action(cx.listener(|this, _: &CancelRequest, _, cx| this.cancel_active(cx)))
+            .on_action(cx.listener(|this, _: &CancelRequest, window, cx| {
+                this.cancel_active(window, cx);
+            }))
             .size_full()
             .flex()
             .flex_col()

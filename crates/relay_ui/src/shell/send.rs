@@ -3,7 +3,7 @@
 
 use std::time::{Duration, Instant};
 
-use gpui::{App, Context, KeyBinding, Task, actions};
+use gpui::{App, Context, KeyBinding, Task, Window, actions};
 use relay_engine::{CancellationToken, ExecuteOptions, Execution};
 
 use super::Shell;
@@ -69,9 +69,9 @@ impl Shell {
 
     /// Escape: closes the environment menu when it is open, else cancels the send in flight
     /// of the active request. The binding takes Escape before the menu's own key handler.
-    pub(super) fn cancel_active(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn cancel_active(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.environment_menu_open {
-            self.close_environment_menu(cx);
+            self.close_environment_menu(window, cx);
         } else if let Some(id) = self.documents.active().map(str::to_owned) {
             self.cancel(&id, cx);
         }
