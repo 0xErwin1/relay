@@ -6137,7 +6137,15 @@ dependencies = [
 name = "relay_mcp"
 version = "0.1.0-dev.0"
 dependencies = [
+ "gpui-mcp-protocol",
+ "interprocess",
+ "log",
  "relay_engine",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
 ]
 
 [[package]]
