@@ -16,6 +16,12 @@ use gpui_component::Root;
 use crate::shell::Shell;
 use crate::workspace::OpenedWorkspace;
 
+/// The asset source the main window needs: the icons Bolt draws. Pass it to
+/// `Application::with_assets` before [`open_main_window`]; without it, icons paint nothing.
+pub fn assets() -> impl gpui::AssetSource {
+    bolt::assets()
+}
+
 /// Installs Bolt with Relay's brand and opens the main window on the workspace at
 /// `workspace`, or on the empty state when it is `None`.
 ///

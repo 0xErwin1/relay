@@ -86,6 +86,8 @@ pub mod chrome {
     pub const ISLAND_GAP: Pixels = px(8.0);
     /// Sidebar island width.
     pub const SIDEBAR_WIDTH: Pixels = px(290.0);
+    /// Activity rail width, on the desk at the left of the sidebar island.
+    pub const RAIL_WIDTH: Pixels = px(46.0);
 }
 
 /// Icon metrics.
@@ -181,6 +183,7 @@ mod tests {
         assert_eq!(chrome::CONTROL_LARGE, px(44.0));
         assert_eq!(chrome::ISLAND_GAP, px(8.0));
         assert_eq!(chrome::SIDEBAR_WIDTH, px(290.0));
+        assert_eq!(chrome::RAIL_WIDTH, px(46.0));
         assert_eq!(motion::FAST.as_millis(), 150);
     }
 

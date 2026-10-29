@@ -23,13 +23,15 @@ pub(crate) fn open(workspace: Option<PathBuf>) -> ExitCode {
     let startup_error: Rc<RefCell<Option<anyhow::Error>>> = Rc::default();
 
     let error_slot = Rc::clone(&startup_error);
-    gpui_platform::application().run(move |cx: &mut App| {
-        crate::signals::quit_on_termination(cx);
-        if let Err(error) = relay_ui::open_main_window(workspace.clone(), cx) {
-            error_slot.replace(Some(error));
-            cx.quit();
-        }
-    });
+    gpui_platform::application()
+        .with_assets(relay_ui::assets())
+        .run(move |cx: &mut App| {
+            crate::signals::quit_on_termination(cx);
+            if let Err(error) = relay_ui::open_main_window(workspace.clone(), cx) {
+                error_slot.replace(Some(error));
+                cx.quit();
+            }
+        });
 
     match startup_error.take() {
         None => ExitCode::SUCCESS,
