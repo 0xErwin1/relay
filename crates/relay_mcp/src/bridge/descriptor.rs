@@ -153,6 +153,8 @@ pub struct TargetSummary {
     pub pid: u32,
     /// Supported operations.
     pub capabilities: Capabilities,
+    /// Whether the session's `ui_*` tools talk to this target.
+    pub selected: bool,
 }
 
 impl TargetSummary {
@@ -163,6 +165,7 @@ impl TargetSummary {
             app_name: descriptor.app_name.clone(),
             pid: descriptor.pid.get(),
             capabilities: descriptor.capabilities.clone(),
+            selected: false,
         }
     }
 }

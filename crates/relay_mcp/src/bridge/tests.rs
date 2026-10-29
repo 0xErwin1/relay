@@ -25,6 +25,7 @@ use tokio::task::JoinHandle;
 use super::client::{BridgeClient, CallError, IO_TIMEOUT};
 use super::descriptor::{InvalidTargetId, TargetId};
 use super::discover::discover;
+use super::session::BridgeSession;
 
 /// A process id no process can have: above Linux's `pid_max`.
 const DEAD_PID: u32 = 0x7FFF_FFFC;
@@ -50,6 +51,7 @@ enum Behavior {
 struct StartedBridge {
     target_id: TargetId,
     descriptor_path: PathBuf,
+    socket_path: PathBuf,
     server: JoinHandle<()>,
 }
 
@@ -97,6 +99,7 @@ fn start_in(dir: &Path, app_id: &str, instance: u64, behavior: Behavior) -> Star
     StartedBridge {
         target_id: TargetId::from_str(&format!("{app_id}-{instance:016x}")).unwrap(),
         descriptor_path,
+        socket_path: socket,
         server,
     }
 }
@@ -377,4 +380,80 @@ async fn a_silent_server_times_out() {
     let client = bridge.client(TEST_TIMEOUT).await;
     let error = client.call(Operation::Ping).await.unwrap_err();
     assert!(matches!(error, CallError::ResponseTimeout), "{error}");
+}
+
+// The session: which target the `ui_*` tools talk to (S3, S4).
+
+fn session(dir: &Path) -> BridgeSession {
+    BridgeSession::new(dir.to_path_buf(), AppId::new("relay").unwrap())
+}
+
+#[tokio::test]
+async fn a_session_selects_the_only_target() {
+    let dir = TempDir::new().unwrap();
+    let bridge = start_in(dir.path(), "relay", 0x01, Behavior::Respond(Arc::new(pong)));
+    let mut session = session(dir.path());
+
+    let targets = session.list_targets().await.unwrap();
+    assert_eq!(targets.len(), 1);
+    assert!(targets[0].selected, "the only target is selected");
+    assert_eq!(
+        session.client().await.unwrap().target_id(),
+        bridge.target_id
+    );
+}
+
+#[tokio::test]
+async fn a_session_without_a_target_names_the_app() {
+    let dir = TempDir::new().unwrap();
+    let error = session(dir.path()).client().await.unwrap_err();
+    assert!(error.to_string().contains("relay"), "{error}");
+}
+
+#[tokio::test]
+async fn a_session_asks_which_target_when_several_are_running() {
+    let dir = TempDir::new().unwrap();
+    let _first = start_in(dir.path(), "relay", 0x01, Behavior::Respond(Arc::new(pong)));
+    let second = start_in(dir.path(), "relay", 0x02, Behavior::Respond(Arc::new(pong)));
+    let mut session = session(dir.path());
+
+    let error = session.client().await.unwrap_err();
+    assert!(error.to_string().contains("ui_select_target"), "{error}");
+
+    session.select_target(&second.target_id).await.unwrap();
+    assert_eq!(
+        session.client().await.unwrap().target_id(),
+        second.target_id
+    );
+    let targets = session.list_targets().await.unwrap();
+    let selected: Vec<_> = targets
+        .iter()
+        .filter(|target| target.selected)
+        .map(|target| target.target_id.clone())
+        .collect();
+    assert_eq!(selected.as_slice(), std::slice::from_ref(&second.target_id));
+}
+
+#[tokio::test]
+async fn a_selected_target_that_died_is_reported() {
+    let dir = TempDir::new().unwrap();
+    let first = start_in(dir.path(), "relay", 0x01, Behavior::Respond(Arc::new(pong)));
+    let _second = start_in(dir.path(), "relay", 0x02, Behavior::Respond(Arc::new(pong)));
+    let mut session = session(dir.path());
+    session.select_target(&first.target_id).await.unwrap();
+    fs::remove_file(&first.socket_path).unwrap();
+
+    let error = session.client().await.unwrap_err();
+    assert!(
+        error.to_string().contains(first.target_id.as_str()),
+        "{error}"
+    );
+}
+
+#[tokio::test]
+async fn selecting_an_unknown_target_is_an_error() {
+    let dir = TempDir::new().unwrap();
+    let _bridge = start_in(dir.path(), "relay", 0x01, Behavior::Respond(Arc::new(pong)));
+    let unknown = TargetId::from_str("relay-00000000000000ff").unwrap();
+    assert!(session(dir.path()).select_target(&unknown).await.is_err());
 }

@@ -7,6 +7,7 @@
 mod client;
 mod descriptor;
 mod discover;
+mod session;
 #[cfg(all(test, unix))]
 mod tests;
 
@@ -16,3 +17,4 @@ pub use descriptor::{
     ValidatedTarget, read_and_validate,
 };
 pub use discover::{DiscoveryError, MAX_DISCOVERY_CANDIDATES, default_endpoint_dir, discover};
+pub use session::{BridgeSession, SessionError};
