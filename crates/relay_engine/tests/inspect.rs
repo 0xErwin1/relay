@@ -159,6 +159,34 @@ fn an_environment_the_collection_does_not_allow_is_a_problem() {
 }
 
 #[test]
+fn an_allowed_environment_still_resolves_when_the_auth_is_the_problem() {
+    let mut ws = with_dev_environment();
+    if let Some(request_doc) = ws
+        .collections
+        .first_mut()
+        .and_then(|node| node.items.first_mut())
+        .and_then(|item| match item {
+            relay_core::model::Item::Request(node) => Some(&mut node.request),
+            relay_core::model::Item::Folder(_) => None,
+        })
+    {
+        request_doc.auth = Auth::Other {
+            kind: "oauth2".to_owned(),
+            fields: toml::Table::new(),
+        };
+    }
+    let inspection = inspect_in(&ws, Some("dev"));
+    assert_eq!(
+        inspection.problem.as_deref(),
+        Some("auth type oauth2 is not supported yet")
+    );
+    assert_eq!(
+        inspection.spans("{{env_only}}"),
+        vec![reference("env_only", true, false)]
+    );
+}
+
+#[test]
 fn an_unknown_environment_is_a_problem() {
     let inspection = inspect_in(&with_dev_environment(), Some("nope"));
     assert_eq!(

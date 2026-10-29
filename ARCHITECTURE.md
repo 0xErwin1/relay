@@ -350,7 +350,8 @@ references marked as resolving (globals, collection, environment or dynamic vari
 secret (secret in the globals, the collection or an environment the collection allows). When
 `prepare` fails with that environment (unknown environment, environment not allowed for the
 collection, unsupported auth, invalid GraphQL variables), `problem` carries its error text,
-`unresolved` is empty and the spans resolve with no environment.
+`unresolved` is empty, and the spans still resolve with the environment when the collection
+allows it and without one otherwise.
 
 ## Scripting
 

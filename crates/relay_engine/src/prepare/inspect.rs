@@ -21,8 +21,8 @@ pub struct Inspection {
     /// when the request cannot be prepared, for example with an auth type the engine does
     /// not send yet.
     pub unresolved: Vec<String>,
-    /// Why [`prepare`] fails with the environment, as its error text; the spans then resolve
-    /// with no environment.
+    /// Why [`prepare`] fails with the environment, as its error text. The spans still resolve
+    /// with the environment when the collection allows it, and without one otherwise.
     pub problem: Option<String>,
     scopes: Scopes,
     secrets: Vec<String>,
@@ -79,7 +79,8 @@ impl Inspection {
 /// against the environment slug `environment`, without any IO.
 ///
 /// When [`prepare`] fails with that environment, the inspection carries the error text in
-/// [`Inspection::problem`] and resolves with no environment.
+/// [`Inspection::problem`]; its spans resolve with the environment when the collection allows
+/// it and without one otherwise.
 ///
 /// # Errors
 ///
@@ -108,14 +109,15 @@ pub fn inspect(
         &options,
         &mut SequentialDynamicSource::default(),
     );
-    let (unresolved, problem, selected) = match prepared {
-        Ok(prepared) => (
-            prepared.unresolved,
-            None,
-            select_environment(workspace, target.collection, &options)?,
-        ),
-        Err(error) => (Vec::new(), Some(error.to_string()), None),
+    let (unresolved, problem) = match prepared {
+        Ok(prepared) => (prepared.unresolved, None),
+        Err(error) => (Vec::new(), Some(error.to_string())),
     };
+    // The spans follow the environment whenever the collection allows it, also when
+    // something else, such as the auth, keeps the request from being prepared.
+    let selected = select_environment(workspace, target.collection, &options)
+        .ok()
+        .flatten();
 
     let environments = workspace
         .environments
