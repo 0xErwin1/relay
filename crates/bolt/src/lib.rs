@@ -12,6 +12,7 @@
 //! roles through [`colors`], [`brand`], [`accent_washes`] and the constants in [`tokens`].
 
 mod brand;
+pub mod chamfer;
 pub mod fonts;
 mod theme;
 pub mod tokens;
