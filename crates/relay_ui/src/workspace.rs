@@ -1,5 +1,4 @@
 use gpui::{Context, IntoElement, ParentElement, Render, Styled, Window, div};
-use gpui_component::ActiveTheme as _;
 
 /// The root view of the main window.
 #[derive(Debug)]
@@ -13,15 +12,15 @@ impl Workspace {
 
 impl Render for Workspace {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
+        let colors = bolt::colors(cx);
 
         div()
             .size_full()
             .flex()
             .items_center()
             .justify_center()
-            .bg(theme.background)
-            .text_color(theme.muted_foreground)
-            .child("Relay")
+            .bg(colors.desk)
+            .text_color(colors.muted)
+            .child(bolt::brand(cx).name.clone())
     }
 }
