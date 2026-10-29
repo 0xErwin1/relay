@@ -1,11 +1,13 @@
-//! The sidebar island: the collection tree under `COLLECTIONS` and the environment names
-//! under `ENVIRONMENTS`.
+//! The sidebar island: the `COLLECTIONS` header with the new-request button, the filter
+//! field, the collection tree and a footer with the request and collection counts. The
+//! button and the filter do nothing yet.
 //!
 //! The tree keeps keyboard focus as a whole; its rows are not focusable. Navigation runs
 //! through the actions below, bound in the `SidebarTree` key context.
 
-use bolt::Island;
+use bolt::controls::{Field, IconButton};
 use bolt::tokens::{chrome, space, text};
+use bolt::{IconName, Island};
 use gpui::{
     App, Context, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
     ParentElement, Render, Styled, Window, actions, div, prelude::*,
@@ -47,46 +49,36 @@ pub(crate) fn bind_keys(cx: &mut App) {
     ]);
 }
 
-/// An environment as the sidebar lists it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct EnvironmentRow {
-    id: String,
-    name: String,
-    variables: usize,
+/// The footer text: `<n> requests · <m> collections`, singular for one.
+pub(crate) fn footer_text(requests: usize, collections: usize) -> String {
+    let plural = |count: usize, noun: &str| match count {
+        1 => format!("1 {noun}"),
+        count => format!("{count} {noun}s"),
+    };
+    format!(
+        "{} · {}",
+        plural(requests, "request"),
+        plural(collections, "collection")
+    )
 }
 
 /// The sidebar view.
 pub(crate) struct Sidebar {
     /// `None` when no workspace is loaded: the island stays empty.
     tree: Option<TreeState>,
-    environments: Vec<EnvironmentRow>,
     focus: FocusHandle,
 }
 
 impl Sidebar {
     pub(crate) fn new(workspace: &OpenedWorkspace, cx: &mut Context<Self>) -> Self {
-        let (tree, environments) = match workspace {
+        let tree = match workspace {
             OpenedWorkspace::Loaded(engine) => {
-                let workspace = engine.workspace();
-                let environments = workspace
-                    .environments
-                    .iter()
-                    .map(|node| EnvironmentRow {
-                        id: node.environment.id.to_string(),
-                        name: node.environment.name.clone(),
-                        variables: node.environment.variables.len(),
-                    })
-                    .collect();
-                (
-                    Some(TreeState::new(tree_model::nodes(workspace))),
-                    environments,
-                )
+                Some(TreeState::new(tree_model::nodes(engine.workspace())))
             }
-            OpenedWorkspace::None | OpenedWorkspace::Failed { .. } => (None, Vec::new()),
+            OpenedWorkspace::None | OpenedWorkspace::Failed { .. } => None,
         };
         Self {
             tree,
-            environments,
             focus: cx.focus_handle(),
         }
     }
@@ -122,14 +114,46 @@ impl Focusable for Sidebar {
     }
 }
 
-fn section_header(id: &'static str, label: &'static str, cx: &App) -> impl IntoElement {
-    text_role::role(text_region(id), text::LABEL, cx)
+fn header(cx: &App) -> impl IntoElement {
+    region("collections-header")
         .flex_none()
-        .h(tokens::SECTION_HEADER)
+        .h(tokens::SIDEBAR_HEADER)
         .flex()
         .items_center()
+        .gap(space::SM)
+        .pl(space::LG)
+        .pr(space::MD)
+        .child(
+            text_role::role(text_region("collections-label"), text::LABEL, cx).child("COLLECTIONS"),
+        )
+        .child(div().flex_1())
+        .child(IconButton::new("new-request", IconName::Plus, "New request").raised())
+}
+
+fn filter() -> impl IntoElement {
+    div()
+        .flex_none()
         .pl(space::MD)
-        .child(label)
+        .pr(space::MD)
+        .pb(tokens::SIDEBAR_FILTER_BOTTOM)
+        .child(
+            Field::new("tree-filter", "Filter requests")
+                .leading_icon(IconName::ListFilter)
+                .trailing_keycap("/")
+                .w_full(),
+        )
+}
+
+fn footer(tree: &TreeState, cx: &App) -> impl IntoElement {
+    text_role::role(text_region("sidebar-footer"), text::CAPTION, cx)
+        .flex_none()
+        .h(tokens::SIDEBAR_FOOTER)
+        .flex()
+        .items_center()
+        .pl(space::LG)
+        .pr(space::LG)
+        .whitespace_nowrap()
+        .child(footer_text(tree.request_count(), tree.collection_count()))
 }
 
 impl Render for Sidebar {
@@ -149,7 +173,8 @@ impl Render for Sidebar {
                 ))
             });
             content = content
-                .child(section_header("collections-label", "COLLECTIONS", cx))
+                .child(header(cx))
+                .child(filter())
                 .child(
                     region("collection-tree")
                         .track_focus(&self.focus)
@@ -169,20 +194,14 @@ impl Render for Sidebar {
                         .on_action(cx.listener(|this, _: &ToggleSelected, _, cx| {
                             this.update_tree(cx, TreeState::toggle_selected);
                         }))
+                        .flex_1()
+                        .min_h_0()
+                        .overflow_hidden()
                         .flex()
                         .flex_col()
                         .children(tree_rows),
                 )
-                .child(div().h(space::MD).flex_none())
-                .child(section_header("environments-label", "ENVIRONMENTS", cx))
-                .children(self.environments.iter().map(|environment| {
-                    rows::environment_row(
-                        format!("env-row-{}", environment.id),
-                        &environment.name,
-                        environment.variables,
-                        cx,
-                    )
-                }));
+                .child(footer(tree, cx));
         }
 
         region("sidebar")

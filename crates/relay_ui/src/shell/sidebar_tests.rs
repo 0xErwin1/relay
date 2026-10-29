@@ -1,10 +1,12 @@
-//! The sidebar tree and environments (S8), the warnings count and keyboard navigation (S9).
+//! The sidebar header, filter, tree and footer (S5), the warnings chip (S7) and keyboard
+//! navigation (S8).
 
 use gpui::{Entity, Focusable, TestAppContext, VisualTestContext, px};
 use tempfile::TempDir;
 
 use super::Shell;
 use super::sidebar::Sidebar;
+use super::sidebar::footer_text;
 use super::status_bar::warnings_label;
 use crate::workspace::OpenedWorkspace;
 use crate::workspace_tests::{demo_workspace, write};
@@ -102,33 +104,91 @@ fn selected(cx: &mut VisualTestContext, sidebar: &Entity<Sidebar>) -> Option<Str
     cx.update(|_, cx| sidebar.read(cx).selected().map(str::to_owned))
 }
 
+fn bounds_of(cx: &mut VisualTestContext, selector: &str) -> gpui::Bounds<gpui::Pixels> {
+    match cx.debug_bounds(Box::leak(selector.to_owned().into_boxed_str())) {
+        Some(bounds) => bounds,
+        None => panic!("{selector} is missing"),
+    }
+}
+
 #[gpui::test]
-fn sidebar_shows_sections_rows_and_environments(cx: &mut TestAppContext) {
+fn sidebar_shows_header_filter_rows_and_footer(cx: &mut TestAppContext) {
     let dir = sidebar_workspace();
     let (_sidebar, cx) = render(cx, &dir);
 
-    for selector in ["collections-label", "environments-label", "status-warnings"] {
+    for selector in [
+        "collections-label",
+        "new-request",
+        "tree-filter",
+        "tree-filter-keycap",
+        "sidebar-footer",
+        "status-warnings",
+    ] {
         assert!(present(cx, selector), "{selector} is missing");
+    }
+    for selector in [
+        "environments-label",
+        &format!("env-row-{DEV}"),
+        &format!("env-row-{PROD}"),
+    ] {
+        assert!(!present(cx, selector), "{selector} should be gone");
     }
     for id in [API, USERS, HEALTH, AUTH, TOKEN] {
         assert!(present(cx, &row(id)), "row {id} is missing");
     }
     assert!(!present(cx, &row(LIST)), "folders start collapsed");
-    for id in [DEV, PROD] {
-        assert!(present(cx, &format!("env-row-{id}")), "environment {id}");
+
+    let sidebar = bounds_of(cx, "sidebar");
+    let header = bounds_of(cx, "collections-header");
+    assert_eq!(header.size.height, px(46.0));
+    let filter = bounds_of(cx, "tree-filter");
+    assert_eq!(filter.size.height, px(30.0));
+    assert!(filter.origin.y >= header.origin.y + header.size.height);
+    let footer = bounds_of(cx, "sidebar-footer");
+    assert_eq!(footer.size.height, px(40.0));
+    assert!(sidebar.contains(&footer.origin));
+
+    for (id, icon) in [(API, "box"), (USERS, "folder"), (AUTH, "box")] {
+        assert!(
+            present(cx, &format!("tree-icon-{id}")),
+            "{icon} icon of {id}"
+        );
+        assert!(present(cx, &format!("tree-count-{id}")), "count of {id}");
     }
+    for id in [HEALTH, TOKEN] {
+        assert!(present(cx, &format!("tree-method-{id}")), "method of {id}");
+        assert!(
+            !present(cx, &format!("tree-count-{id}")),
+            "no count on {id}"
+        );
+    }
+    assert!(
+        present(cx, &format!("tree-guide-{USERS}-0")),
+        "one guide at depth 1"
+    );
+    assert!(!present(cx, &format!("tree-guide-{USERS}-1")));
+    assert!(
+        !present(cx, &format!("tree-guide-{API}-0")),
+        "no guide at depth 0"
+    );
 
     let order: Vec<_> = [API, USERS, HEALTH, AUTH, TOKEN]
         .iter()
-        .filter_map(|id| cx.debug_bounds(Box::leak(row(id).into_boxed_str())))
+        .map(|id| bounds_of(cx, &row(id)))
         .collect();
-    assert_eq!(order.len(), 5);
     for pair in order.windows(2) {
         if let [above, below] = pair {
             assert_eq!(below.origin.y, above.origin.y + px(26.0), "store order");
             assert_eq!(above.size.height, px(26.0));
         }
     }
+}
+
+#[test]
+fn footer_counts_requests_and_collections() {
+    assert_eq!(footer_text(3, 2), "3 requests · 2 collections");
+    assert_eq!(footer_text(1, 1), "1 request · 1 collection");
+    assert_eq!(footer_text(0, 0), "0 requests · 0 collections");
 }
 
 #[test]
@@ -147,6 +207,7 @@ fn status_bar_has_no_warnings_without_load_warnings(cx: &mut TestAppContext) {
     let (_sidebar, cx) = render(cx, &dir);
     assert!(!present(cx, "status-warnings"));
     assert!(present(cx, "collections-label"));
+    assert!(present(cx, "status-bar"));
 }
 
 #[gpui::test]

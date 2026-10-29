@@ -1,15 +1,17 @@
-//! Sidebar rows: tree rows (chevron or method column, then the name) and environment rows.
+//! Sidebar tree rows: a guide line per indent level, then the chevron and the collection or
+//! folder icon with the child count on the right, or the method label of a request; then
+//! the name.
 
-use bolt::tokens::{border, chrome, family, space, text};
-use bolt::{Chevron, ChevronDirection};
+use bolt::tokens::{border, chrome, family, icon, space, text};
+use bolt::{Chevron, ChevronDirection, Icon, IconName};
 use gpui::{
-    App, ClickEvent, Div, ElementId, FontWeight, InteractiveElement, IntoElement, ParentElement,
-    Role, Stateful, Styled, Window, div, prelude::*, transparent_black,
+    App, ClickEvent, Div, ElementId, FontWeight, InteractiveElement, ParentElement, Role, Stateful,
+    Styled, Window, div, prelude::*,
 };
 
 use super::text as text_role;
 use super::tree_model::{NodeKind, VisibleRow};
-use crate::tokens::{self, MethodColors};
+use crate::tokens::{self, method_color};
 
 /// A row element the UI automation tree reports by `id`, with `label` as its text.
 fn labeled_row(id: String, label: String) -> Stateful<Div> {
@@ -19,6 +21,14 @@ fn labeled_row(id: String, label: String) -> Stateful<Div> {
         .debug_selector(move || selector)
         .role(Role::Label)
         .aria_label(label)
+}
+
+/// A part of a row that tests find by `id`.
+fn part(id: String) -> Stateful<Div> {
+    let selector = id.clone();
+    div()
+        .id(ElementId::Name(id.into()))
+        .debug_selector(move || selector)
 }
 
 /// The tree row of `row`, with element id `tree-row-<entity id>`. A click on the chevron
@@ -39,105 +49,105 @@ pub(super) fn tree_row(
         cx,
     )
     .aria_selected(selected)
+    .relative()
     .h(chrome::TREE_ROW)
     .flex_none()
     .flex()
     .items_center()
-    .gap(space::HALF)
-    .pl(space::SM + chrome::TREE_INDENT * row.depth as f32)
+    .gap(tokens::TREE_ROW_GAP)
+    .pl(space::MD + chrome::TREE_INDENT * row.depth as f32)
     .pr(space::MD)
-    .border_l(border::THICK)
-    .border_color(transparent_black())
     .whitespace_nowrap()
-    .hover(|style| style.bg(colors.hover));
+    .hover(|style| style.bg(colors.hover))
+    .children((0..row.depth).map(|level| {
+        part(format!("tree-guide-{}-{level}", node.id))
+            .absolute()
+            .top_0()
+            .bottom_0()
+            .left(tokens::TREE_GUIDE_OFFSET + chrome::TREE_INDENT * level as f32)
+            .w(border::THIN)
+            .bg(colors.line)
+    }));
     if node.is_expandable() {
         element = element.aria_expanded(row.expanded);
     }
     if selected {
-        element = element
-            .bg(bolt::accent_washes(cx).selected_item)
-            .border_color(brand.accent_tint);
+        element = element.bg(bolt::accent_washes(cx).selected_item).child(
+            div()
+                .absolute()
+                .top_0()
+                .bottom_0()
+                .left_0()
+                .w(border::THICK)
+                .bg(brand.accent_tint),
+        );
     }
 
     let name_color = match (&node.kind, selected) {
         (_, true) => colors.strong,
-        (NodeKind::Folder, false) => colors.muted,
-        (NodeKind::Collection | NodeKind::Request { .. }, false) => colors.foreground,
+        (NodeKind::Collection, false) => colors.strong,
+        (NodeKind::Folder, false) if row.expanded => colors.strong,
+        (NodeKind::Folder | NodeKind::Request { .. }, false) => colors.foreground,
     };
-    let leading = match &node.kind {
-        NodeKind::Request { method } => {
-            let color = MethodColors::dark().of(method);
-            div()
-                .id(ElementId::Name(format!("tree-method-{}", node.id).into()))
-                .w(tokens::TREE_METHOD_COLUMN)
-                .flex_none()
-                .overflow_hidden()
-                .font_family(family::MONO)
-                .text_size(tokens::METHOD_LABEL_SIZE)
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(if selected { color.full } else { color.dim })
-                .child(method.clone())
+    let name = div()
+        .flex_1()
+        .min_w_0()
+        .overflow_hidden()
+        .text_ellipsis()
+        .text_color(name_color)
+        .child(node.name.clone());
+
+    match &node.kind {
+        NodeKind::Request { method } => element
+            .child(div().w(icon::SM).flex_none())
+            .child(
+                part(format!("tree-method-{}", node.id))
+                    .w(tokens::TREE_METHOD_COLUMN)
+                    .flex_none()
+                    .overflow_hidden()
+                    .font_family(family::MONO)
+                    .text_size(tokens::METHOD_LABEL_SIZE)
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(method_color(method, colors))
+                    .child(method.clone()),
+            )
+            .child(name),
+        NodeKind::Collection | NodeKind::Folder => {
+            let (icon_name, icon_color) = match node.kind {
+                NodeKind::Collection => (IconName::Box, brand.accent_tint),
+                NodeKind::Folder | NodeKind::Request { .. } => (IconName::Folder, colors.muted),
+            };
+            element
+                .child(
+                    part(format!("tree-chevron-{}", node.id))
+                        .on_click(move |event, window, cx| {
+                            cx.stop_propagation();
+                            on_toggle(event, window, cx);
+                        })
+                        .flex_none()
+                        .child(Chevron::new(
+                            if row.expanded {
+                                ChevronDirection::Down
+                            } else {
+                                ChevronDirection::Right
+                            },
+                            colors.muted,
+                        )),
+                )
+                .child(
+                    part(format!("tree-icon-{}", node.id))
+                        .flex_none()
+                        .child(Icon::new(icon_name).size(icon::ITEM).color(icon_color)),
+                )
+                .child(name)
+                .child(
+                    part(format!("tree-count-{}", node.id))
+                        .flex_none()
+                        .font_family(family::MONO)
+                        .text_size(tokens::TREE_COUNT_SIZE)
+                        .text_color(colors.muted)
+                        .children(node.child_count().map(|count| count.to_string())),
+                )
         }
-        NodeKind::Collection | NodeKind::Folder => div()
-            .id(ElementId::Name(format!("tree-chevron-{}", node.id).into()))
-            .on_click(move |event, window, cx| {
-                cx.stop_propagation();
-                on_toggle(event, window, cx);
-            })
-            .flex_none()
-            .child(Chevron::new(
-                if row.expanded {
-                    ChevronDirection::Down
-                } else {
-                    ChevronDirection::Right
-                },
-                colors.muted,
-            )),
-    };
-    let weight = match node.kind {
-        NodeKind::Collection => FontWeight::SEMIBOLD,
-        NodeKind::Folder | NodeKind::Request { .. } => text::BODY.weight,
-    };
-
-    element = element.child(leading).child(
-        div()
-            .flex_1()
-            .min_w_0()
-            .overflow_hidden()
-            .text_ellipsis()
-            .font_weight(weight)
-            .text_color(name_color)
-            .child(node.name.clone()),
-    );
-    element
-}
-
-/// An environment row: the name, and the muted count of its variables on the right.
-pub(super) fn environment_row(
-    id: String,
-    name: &str,
-    variables: usize,
-    cx: &App,
-) -> impl IntoElement {
-    let colors = bolt::colors(cx);
-    text_role::role(labeled_row(id, name.to_owned()), text::BODY, cx)
-        .h(chrome::TREE_ROW)
-        .flex_none()
-        .flex()
-        .items_center()
-        .gap(space::SM)
-        .pl(space::MD)
-        .pr(space::MD)
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .overflow_hidden()
-                .child(name.to_owned()),
-        )
-        .child(
-            text_role::role(div(), text::CAPTION, cx)
-                .text_color(colors.muted)
-                .child(variables.to_string()),
-        )
+    }
 }

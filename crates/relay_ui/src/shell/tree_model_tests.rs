@@ -196,3 +196,25 @@ fn enter_toggles_containers_and_ignores_requests() {
     state.toggle_selected();
     assert_eq!(state, before);
 }
+
+#[test]
+fn totals_count_every_request_and_the_collections() {
+    let state = tree();
+    assert_eq!(state.request_count(), 4);
+    assert_eq!(state.collection_count(), 3);
+    assert_eq!(TreeState::new(Vec::new()).request_count(), 0);
+}
+
+#[test]
+fn containers_count_their_direct_children() {
+    let state = tree();
+    let counts: Vec<_> = state
+        .visible_rows()
+        .iter()
+        .map(|row| (row.node.id.clone(), row.node.child_count()))
+        .collect();
+    assert_eq!(counts.first(), Some(&("api".to_owned(), Some(2))));
+    assert_eq!(counts.get(1), Some(&("users".to_owned(), Some(2))));
+    assert_eq!(counts.get(2), Some(&("health".to_owned(), None)));
+    assert_eq!(counts.last(), Some(&("empty".to_owned(), Some(0))));
+}

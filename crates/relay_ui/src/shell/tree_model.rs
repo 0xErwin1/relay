@@ -38,6 +38,21 @@ impl Node {
         !matches!(self.kind, NodeKind::Request { .. })
     }
 
+    /// The number of direct children of a collection or folder; `None` for a request.
+    pub(crate) fn child_count(&self) -> Option<usize> {
+        self.is_expandable().then_some(self.children.len())
+    }
+
+    /// The number of requests under the node, at any depth, the node included.
+    fn request_count(&self) -> usize {
+        match self.kind {
+            NodeKind::Request { .. } => 1,
+            NodeKind::Collection | NodeKind::Folder => {
+                self.children.iter().map(Node::request_count).sum()
+            }
+        }
+    }
+
     /// The text the UI automation tree reads for the row: the name, prefixed by the method
     /// for a request.
     pub(crate) fn label(&self) -> String {
@@ -119,6 +134,16 @@ impl TreeState {
             expanded,
             selected: None,
         }
+    }
+
+    /// The number of requests in every collection.
+    pub(crate) fn request_count(&self) -> usize {
+        self.roots.iter().map(Node::request_count).sum()
+    }
+
+    /// The number of collections.
+    pub(crate) fn collection_count(&self) -> usize {
+        self.roots.len()
     }
 
     /// The id of the selected node.

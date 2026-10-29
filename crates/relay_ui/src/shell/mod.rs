@@ -1,7 +1,9 @@
-//! The main window shell: title bar and status bar on the desk, the sidebar and document
-//! islands between them.
+//! The main window shell: title bar, activity rail and status bar on the desk, the sidebar
+//! and document islands between them.
 
+mod diamond;
 mod document;
+mod rail;
 mod rows;
 mod sidebar;
 mod status_bar;
@@ -52,6 +54,7 @@ impl Render for Shell {
                     .gap(chrome::ISLAND_GAP)
                     .pl(chrome::ISLAND_GAP)
                     .pr(chrome::ISLAND_GAP)
+                    .child(rail::render())
                     .child(self.sidebar.clone())
                     .child(document::render(&self.workspace, cx)),
             )

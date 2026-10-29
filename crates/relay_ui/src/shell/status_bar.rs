@@ -1,10 +1,12 @@
-//! The status bar: the workspace name on the left, then the load warnings count.
+//! The status bar: chips on the desk. With no request sent it only shows the load warnings
+//! count, and only when there are warnings.
 
+use bolt::IconName;
+use bolt::controls::StatusChip;
 use bolt::tokens::chrome;
 use gpui::{App, IntoElement, ParentElement, Styled};
 
-use super::title_bar::workspace_label;
-use super::{region, text_region};
+use super::region;
 use crate::workspace::OpenedWorkspace;
 
 /// `<n> warnings` for the load warnings, or `None` when there are none.
@@ -18,7 +20,6 @@ pub(crate) fn warnings_label(count: usize) -> Option<String> {
 
 pub(super) fn render(workspace: &OpenedWorkspace, cx: &App) -> impl IntoElement {
     let colors = bolt::colors(cx);
-    let label = workspace_label(workspace, bolt::brand(cx).name.as_ref()).to_owned();
 
     region("status-bar")
         .flex_none()
@@ -29,10 +30,9 @@ pub(super) fn render(workspace: &OpenedWorkspace, cx: &App) -> impl IntoElement 
         .gap(chrome::ISLAND_GAP)
         .pl(chrome::ISLAND_GAP)
         .pr(chrome::ISLAND_GAP)
-        .text_color(colors.muted)
-        .child(text_region("status-workspace").child(label))
-        .children(
-            warnings_label(workspace.warning_count())
-                .map(|warnings| text_region("status-warnings").child(warnings)),
-        )
+        .children(warnings_label(workspace.warning_count()).map(|warnings| {
+            StatusChip::new("status-warnings", warnings)
+                .icon(IconName::TriangleAlert)
+                .icon_color(colors.warning)
+        }))
 }
