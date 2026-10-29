@@ -1,6 +1,7 @@
 //! Sidebar rows: tree rows (chevron or method column, then the name) and environment rows.
 
 use bolt::tokens::{border, chrome, family, space, text};
+use bolt::{Chevron, ChevronDirection};
 use gpui::{
     App, ClickEvent, Div, ElementId, FontWeight, InteractiveElement, IntoElement, ParentElement,
     Role, Stateful, Styled, Window, div, prelude::*, transparent_black,
@@ -83,12 +84,15 @@ pub(super) fn tree_row(
                 cx.stop_propagation();
                 on_toggle(event, window, cx);
             })
-            .w(tokens::TREE_CHEVRON)
             .flex_none()
-            .font_family(family::MONO)
-            .text_size(tokens::METHOD_LABEL_SIZE)
-            .text_color(colors.muted)
-            .child(if row.expanded { "\u{25BE}" } else { "\u{25B8}" }),
+            .child(Chevron::new(
+                if row.expanded {
+                    ChevronDirection::Down
+                } else {
+                    ChevronDirection::Right
+                },
+                colors.muted,
+            )),
     };
     let weight = match node.kind {
         NodeKind::Collection => FontWeight::SEMIBOLD,

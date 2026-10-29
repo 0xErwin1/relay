@@ -95,14 +95,12 @@ pub(crate) fn draft() -> Hsla {
     hex(0xF28AC9)
 }
 
-/// The width of the method column of a tree row.
-pub(crate) const TREE_METHOD_COLUMN: Pixels = px(40.0);
+/// The width of the method column of a tree row: the longest standard verb, `OPTIONS`, in
+/// JetBrains Mono at `METHOD_LABEL_SIZE` (about 44 px) plus room before the name.
+pub(crate) const TREE_METHOD_COLUMN: Pixels = px(48.0);
 
 /// The size of a method label in a tree row or tab.
 pub(crate) const METHOD_LABEL_SIZE: Pixels = px(10.5);
-
-/// The width of the disclosure chevron of a tree row.
-pub(crate) const TREE_CHEVRON: Pixels = px(10.0);
 
 /// The height of a sidebar section header.
 pub(crate) const SECTION_HEADER: Pixels = px(30.0);
