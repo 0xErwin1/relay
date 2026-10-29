@@ -342,12 +342,15 @@ the request, checks the environment and resolves variables, auth, body and setti
 `JoinHandle` and a cancellation token. Auth types other than `inherit`, `none`, `basic`,
 `bearer` and `apikey` fail with `auth type <type> is not supported yet`.
 
-`Engine::inspect` is what a front end shows before sending, with no environment selected: the
-selected request with its scripts, the URL as written with the enabled params appended after
-the separator `prepare` uses, the names `prepare` reports unresolved, and `Inspection::spans`,
-which splits a text into literal runs and `{{name}}` references marked as resolving (globals,
-collection or dynamic variables) and as secret (secret in the globals, the collection or an
-environment the collection allows).
+`Engine::inspect` is what a front end shows before sending, against the active environment or
+none: the selected request with its scripts, the URL as written with the enabled params
+appended after the separator `prepare` uses, the names `prepare` reports unresolved with that
+environment, and `Inspection::spans`, which splits a text into literal runs and `{{name}}`
+references marked as resolving (globals, collection, environment or dynamic variables) and as
+secret (secret in the globals, the collection or an environment the collection allows). When
+`prepare` fails with that environment (unknown environment, environment not allowed for the
+collection, unsupported auth, invalid GraphQL variables), `problem` carries its error text,
+`unresolved` is empty and the spans resolve with no environment.
 
 ## Scripting
 
@@ -439,9 +442,11 @@ The document island shows the open requests as tabs, the path bar of the active 
 (collection, folders, request), and the request read-only: an action strip (Save, Revert,
 Undo, Redo, Split, disabled until editing exists), the request line (method, URL with the
 enabled params, Send, visual only until sending exists), and the Params, Headers, Body, Auth,
-Scripts and Settings sub-tabs. What it shows comes from `Engine::inspect` with no environment:
-variables are styled as resolved or unresolved, the number of unresolved ones is shown in the
-sub-tab bar, and a value that references a secret, a password, a token, an API key value or
+Scripts and Settings sub-tabs. What it shows comes from `Engine::inspect` with the window's
+active environment, which lives in memory, starts as none and re-inspects every open request
+when it changes, keeping its sub-tab: variables are styled as resolved or unresolved, the
+number of unresolved ones is shown in the sub-tab bar, or the inspection `problem` in its
+place (`request-problem`), and a value that references a secret, a password, a token, an API key value or
 any field of an auth type the engine does not support is masked as `••••••••` on screen and
 in the automation tree.
 

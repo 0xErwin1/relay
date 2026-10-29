@@ -1,15 +1,15 @@
-//! What a front end shows about a request before it is sent, with no environment selected.
+//! What a front end shows about a request before it is sent, against the active environment.
 
 use std::path::Path;
 
 use relay_core::model::{RequestNode, Variable, Workspace};
 use relay_core::template::{DynamicVariable, Scopes, Segment, SequentialDynamicSource, segments};
 
-use super::{ExecuteOptions, enabled, prepare, scopes, url};
+use super::{ExecuteOptions, enabled, prepare, scopes, select_environment, url};
 use crate::error::ExecuteError;
 use crate::select;
 
-/// A request as a front end shows it before sending it, with no environment selected.
+/// A request as a front end shows it before sending it, against the active environment.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Inspection {
     /// The selected request with its scripts, as stored.
@@ -17,10 +17,13 @@ pub struct Inspection {
     /// The request URL as written, with the enabled params appended as written after the
     /// separator [`prepare`] uses.
     pub url: String,
-    /// The names [`prepare`] reports unresolved with no environment, in its order. Empty
+    /// The names [`prepare`] reports unresolved with the environment, in its order. Empty
     /// when the request cannot be prepared, for example with an auth type the engine does
     /// not send yet.
     pub unresolved: Vec<String>,
+    /// Why [`prepare`] fails with the environment, as its error text; the spans then resolve
+    /// with no environment.
+    pub problem: Option<String>,
     scopes: Scopes,
     secrets: Vec<String>,
 }
@@ -36,8 +39,8 @@ pub enum Span {
         raw: String,
         /// The trimmed name.
         name: String,
-        /// Whether the name resolves with no environment: a variable of the globals or the
-        /// collection, or a dynamic variable such as `$guid`.
+        /// Whether the name resolves: a variable of the globals, the collection or the
+        /// environment, or a dynamic variable such as `$guid`.
         resolves: bool,
         /// Whether a variable with this name is secret in the globals, the collection or an
         /// environment the collection allows.
@@ -73,7 +76,10 @@ impl Inspection {
 }
 
 /// Inspects the request `selector` of `workspace`, whose file paths resolve against `root`,
-/// without any IO.
+/// against the environment slug `environment`, without any IO.
+///
+/// When [`prepare`] fails with that environment, the inspection carries the error text in
+/// [`Inspection::problem`] and resolves with no environment.
 ///
 /// # Errors
 ///
@@ -82,6 +88,7 @@ pub fn inspect(
     workspace: &Workspace,
     root: &Path,
     selector: &str,
+    environment: Option<&str>,
 ) -> Result<Inspection, ExecuteError> {
     let target = select::find(workspace, selector)?;
     let request = &target.request.request;
@@ -90,16 +97,25 @@ pub fn inspect(
     let params: Vec<(String, String)> = enabled(&request.params)
         .map(|row| (row.key.clone(), row.value.clone()))
         .collect();
-    let options = ExecuteOptions::default();
-    let unresolved = prepare(
+    let options = ExecuteOptions {
+        environment: environment.map(str::to_owned),
+        ..ExecuteOptions::default()
+    };
+    let prepared = prepare(
         workspace,
         root,
         selector,
         &options,
         &mut SequentialDynamicSource::default(),
-    )
-    .map(|prepared| prepared.unresolved)
-    .unwrap_or_default();
+    );
+    let (unresolved, problem, selected) = match prepared {
+        Ok(prepared) => (
+            prepared.unresolved,
+            None,
+            select_environment(workspace, target.collection, &options)?,
+        ),
+        Err(error) => (Vec::new(), Some(error.to_string()), None),
+    };
 
     let environments = workspace
         .environments
@@ -121,7 +137,8 @@ pub fn inspect(
         request: target.request.clone(),
         url: url::append(request.url.clone(), &params),
         unresolved,
-        scopes: scopes(workspace, target.collection, None, &options),
+        problem,
+        scopes: scopes(workspace, target.collection, selected, &options),
         secrets,
     })
 }

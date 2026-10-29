@@ -110,13 +110,18 @@ impl Engine {
         )
     }
 
-    /// Inspects the request `selector` with no environment. See [`inspect`].
+    /// Inspects the request `selector` against the environment slug `environment`. See
+    /// [`inspect`].
     ///
     /// # Errors
     ///
     /// The errors of [`inspect`].
-    pub fn inspect(&self, selector: &str) -> Result<Inspection, ExecuteError> {
-        inspect(self.workspace(), &self.root, selector)
+    pub fn inspect(
+        &self,
+        selector: &str,
+        environment: Option<&str>,
+    ) -> Result<Inspection, ExecuteError> {
+        inspect(self.workspace(), &self.root, selector, environment)
     }
 
     /// Spawns a task on the engine runtime that sends `prepared`.

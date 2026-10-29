@@ -1,4 +1,4 @@
-//! What a front end shows about a request before sending it, without an environment.
+//! What a front end shows about a request before sending it, with or without an environment.
 
 #![allow(clippy::panic, reason = "test helpers fail the calling test")]
 
@@ -12,7 +12,11 @@ use relay_core::model::{Auth, KeyValue, Variable, Workspace};
 use relay_engine::{Inspection, Span};
 
 fn inspect(workspace: &Workspace) -> Inspection {
-    match relay_engine::inspect(workspace, Path::new(ROOT), "c/r") {
+    inspect_in(workspace, None)
+}
+
+fn inspect_in(workspace: &Workspace, environment: Option<&str>) -> Inspection {
+    match relay_engine::inspect(workspace, Path::new(ROOT), "c/r", environment) {
         Ok(inspection) => inspection,
         Err(error) => panic!("inspect failed: {error}"),
     }
@@ -96,6 +100,76 @@ fn unresolved_is_empty_when_the_request_cannot_be_prepared() {
     let inspection = inspect(&single(request_doc));
     assert_eq!(inspection.unresolved, Vec::<String>::new());
     assert_eq!(inspection.url, "{{missing}}");
+    assert_eq!(
+        inspection.problem.as_deref(),
+        Some("auth type oauth2 is not supported yet")
+    );
+}
+
+#[test]
+fn a_preparable_request_has_no_problem() {
+    assert_eq!(inspect(&single(get("u"))).problem, None);
+}
+
+/// `c/r` at `{{base}}/{{env_only}}/{{missing}}` with `base` in the collection and
+/// `env_only` in the environment `dev`.
+fn with_dev_environment() -> Workspace {
+    let mut ws = with_collection_variables(
+        "{{base}}/{{env_only}}/{{missing}}",
+        vec![Variable::new("base", "b")],
+    );
+    ws.environments
+        .push(environment(1, "dev", vec![Variable::new("env_only", "e")]));
+    ws
+}
+
+#[test]
+fn an_environment_resolves_its_variables_in_spans_and_unresolved() {
+    let inspection = inspect_in(&with_dev_environment(), Some("dev"));
+    assert_eq!(inspection.unresolved, vec!["missing"]);
+    assert_eq!(inspection.problem, None);
+    assert_eq!(
+        inspection.spans("{{env_only}}{{missing}}"),
+        vec![
+            reference("env_only", true, false),
+            reference("missing", false, false),
+        ]
+    );
+}
+
+#[test]
+fn an_environment_the_collection_does_not_allow_is_a_problem() {
+    let mut ws = with_dev_environment();
+    if let Some(node) = ws.collections.first_mut() {
+        node.collection.environments = vec![id(2)];
+    }
+    let inspection = inspect_in(&ws, Some("dev"));
+    assert_eq!(
+        inspection.problem.as_deref(),
+        Some("environment dev is not allowed for collection c name")
+    );
+    assert_eq!(inspection.unresolved, Vec::<String>::new());
+    assert_eq!(
+        inspection.spans("{{base}}{{env_only}}"),
+        vec![
+            reference("base", true, false),
+            reference("env_only", false, false)
+        ]
+    );
+}
+
+#[test]
+fn an_unknown_environment_is_a_problem() {
+    let inspection = inspect_in(&with_dev_environment(), Some("nope"));
+    assert_eq!(
+        inspection.problem.as_deref(),
+        Some("unknown environment nope")
+    );
+    assert_eq!(inspection.unresolved, Vec::<String>::new());
+    assert_eq!(
+        inspection.spans("{{env_only}}"),
+        vec![reference("env_only", false, false)]
+    );
 }
 
 #[test]
@@ -162,7 +236,7 @@ fn references_secret_tells_whether_any_reference_is_secret() {
 
 #[test]
 fn an_unknown_selector_is_an_error() {
-    match relay_engine::inspect(&single(get("u")), Path::new(ROOT), "c/none") {
+    match relay_engine::inspect(&single(get("u")), Path::new(ROOT), "c/none", None) {
         Ok(inspection) => panic!("inspect unexpectedly succeeded: {inspection:?}"),
         Err(error) => assert_eq!(error.to_string(), "no request matches c/none"),
     }
