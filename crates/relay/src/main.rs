@@ -4,6 +4,7 @@
 mod cli;
 mod gui;
 mod run;
+mod signals;
 
 use std::process::ExitCode;
 

@@ -22,7 +22,9 @@ relay_engine.workspace = true
 env_logger.workspace = true
 gpui.workspace = true
 gpui-platform.workspace = true
+log.workspace = true
 relay_ui.workspace = true
+signal-hook.workspace = true
 
 [dev-dependencies]
 pretty_assertions.workspace = true
