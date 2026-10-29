@@ -1,11 +1,6 @@
 //! Relay's own tokens, on top of Bolt: method labels, the draft marker, syntax colors and
 //! the main window size. The only `relay_ui` file besides `brand.rs` that holds raw values.
 
-#![allow(
-    dead_code,
-    reason = "the method, draft and syntax tokens are read by the sidebar and editor screens"
-)]
-
 use bolt::tokens::hex;
 use gpui::{Hsla, Pixels, Size, px, size};
 
@@ -48,9 +43,25 @@ impl MethodColors {
             other: method(0xB4AEC0, 0x938E9D),
         }
     }
+
+    /// The color of the uppercase `verb`.
+    pub(crate) fn of(&self, verb: &str) -> MethodColor {
+        match verb {
+            "GET" => self.get,
+            "POST" => self.post,
+            "PUT" => self.put,
+            "PATCH" => self.patch,
+            "DELETE" => self.delete,
+            _ => self.other,
+        }
+    }
 }
 
 /// Body syntax colors: quiet keys, values carry the data.
+#[allow(
+    dead_code,
+    reason = "read by the response body view, which does not exist yet"
+)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct SyntaxColors {
     pub(crate) key: Hsla,
@@ -60,6 +71,10 @@ pub(crate) struct SyntaxColors {
     pub(crate) punct: Hsla,
 }
 
+#[allow(
+    dead_code,
+    reason = "read by the response body view, which does not exist yet"
+)]
 impl SyntaxColors {
     pub(crate) fn dark() -> Self {
         Self {
@@ -72,9 +87,25 @@ impl SyntaxColors {
 }
 
 /// The unsaved draft marker, and nothing else.
+#[allow(
+    dead_code,
+    reason = "read by the request tabs and tree once drafts exist"
+)]
 pub(crate) fn draft() -> Hsla {
     hex(0xF28AC9)
 }
+
+/// The width of the method column of a tree row.
+pub(crate) const TREE_METHOD_COLUMN: Pixels = px(40.0);
+
+/// The size of a method label in a tree row or tab.
+pub(crate) const METHOD_LABEL_SIZE: Pixels = px(10.5);
+
+/// The width of the disclosure chevron of a tree row.
+pub(crate) const TREE_CHEVRON: Pixels = px(10.0);
+
+/// The height of a sidebar section header.
+pub(crate) const SECTION_HEADER: Pixels = px(30.0);
 
 /// The size the main window opens at.
 pub(crate) const MAIN_WINDOW_SIZE: Size<Pixels> = size(px(1200.0), px(800.0));
@@ -107,6 +138,14 @@ pub(crate) mod tests {
             assert_eq!(rgb_of(color.full), full, "{full:06X}");
             assert_eq!(rgb_of(color.dim), dim, "{dim:06X}");
         }
+    }
+
+    #[test]
+    fn unknown_verbs_use_the_other_color() {
+        let methods = MethodColors::dark();
+        assert_eq!(methods.of("PATCH"), methods.patch);
+        assert_eq!(methods.of("HEAD"), methods.other);
+        assert_eq!(methods.of("PURGE"), methods.other);
     }
 
     #[test]

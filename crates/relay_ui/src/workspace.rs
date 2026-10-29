@@ -53,6 +53,14 @@ impl OpenedWorkspace {
         }
     }
 
+    /// The number of non-fatal warnings the workspace load reported.
+    pub(crate) fn warning_count(&self) -> usize {
+        match self {
+            Self::Loaded(engine) => engine.warnings().len(),
+            Self::None | Self::Failed { .. } => 0,
+        }
+    }
+
     /// The text the document island shows in place of a document, if any.
     pub(crate) fn document_message(&self) -> Option<String> {
         match self {

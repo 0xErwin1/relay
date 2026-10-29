@@ -1,31 +1,36 @@
 //! The main window shell: title bar and status bar on the desk, the sidebar and document
 //! islands between them.
 
-// Used by the sidebar view in the next change.
-#[allow(dead_code)]
-mod tree_model;
 mod document;
+mod rows;
 mod sidebar;
 mod status_bar;
+mod text;
 mod title_bar;
+mod tree_model;
+
+pub(crate) use sidebar::bind_keys;
 
 use bolt::tokens::chrome;
 use gpui::{
-    Context, Div, ElementId, IntoElement, ParentElement, Render, Role, Stateful, Styled, Window,
-    div, prelude::*,
+    Context, Div, ElementId, Entity, IntoElement, ParentElement, Render, Role, Stateful, Styled,
+    Window, div, prelude::*,
 };
+
+use self::sidebar::Sidebar;
 
 use crate::workspace::OpenedWorkspace;
 
 /// The root view of the main window.
-#[derive(Debug)]
 pub(crate) struct Shell {
     workspace: OpenedWorkspace,
+    sidebar: Entity<Sidebar>,
 }
 
 impl Shell {
-    pub(crate) fn new(workspace: OpenedWorkspace) -> Self {
-        Self { workspace }
+    pub(crate) fn new(workspace: OpenedWorkspace, cx: &mut Context<Self>) -> Self {
+        let sidebar = cx.new(|cx| Sidebar::new(&workspace, cx));
+        Self { workspace, sidebar }
     }
 }
 
@@ -47,7 +52,7 @@ impl Render for Shell {
                     .gap(chrome::ISLAND_GAP)
                     .pl(chrome::ISLAND_GAP)
                     .pr(chrome::ISLAND_GAP)
-                    .child(sidebar::render())
+                    .child(self.sidebar.clone())
                     .child(document::render(&self.workspace, cx)),
             )
             .child(status_bar::render(&self.workspace, cx))
@@ -66,5 +71,7 @@ fn text_region(id: &'static str) -> Stateful<Div> {
     region(id).role(Role::Label)
 }
 
+#[cfg(test)]
+mod sidebar_tests;
 #[cfg(test)]
 mod tests;

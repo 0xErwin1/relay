@@ -7,7 +7,7 @@ use tempfile::TempDir;
 
 use crate::workspace::OpenedWorkspace;
 
-fn write(root: &Path, relative: &str, content: &str) {
+pub(crate) fn write(root: &Path, relative: &str, content: &str) {
     let path = root.join(relative);
     if let Some(parent) = path.parent()
         && let Err(error) = fs::create_dir_all(parent)

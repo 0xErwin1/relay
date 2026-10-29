@@ -14,7 +14,7 @@ fn bounds(cx: &mut VisualTestContext, selector: &'static str) -> Bounds<Pixels> 
 }
 
 fn render(cx: &mut TestAppContext, workspace: OpenedWorkspace) -> &mut VisualTestContext {
-    let (_shell, cx) = cx.add_window_view(|_, _| Shell::new(workspace));
+    let (_shell, cx) = cx.add_window_view(|_, cx| Shell::new(workspace, cx));
     cx.run_until_parked();
     cx
 }

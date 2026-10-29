@@ -23,6 +23,7 @@ use crate::workspace::OpenedWorkspace;
 /// the window, not returned.
 pub fn open_main_window(workspace: Option<PathBuf>, cx: &mut App) -> anyhow::Result<()> {
     bolt::install(brand::relay(), cx);
+    shell::bind_keys(cx);
 
     let bounds = Bounds::centered(None, tokens::MAIN_WINDOW_SIZE, cx);
     let options = WindowOptions {
@@ -38,7 +39,7 @@ pub fn open_main_window(workspace: Option<PathBuf>, cx: &mut App) -> anyhow::Res
     let workspace = OpenedWorkspace::open(workspace);
     cx.open_window(options, |window, cx| {
         ui_automation::install(window, cx);
-        let shell = cx.new(|_cx| Shell::new(workspace));
+        let shell = cx.new(|cx| Shell::new(workspace, cx));
         cx.new(|cx| Root::new(shell, window, cx))
     })?;
 
