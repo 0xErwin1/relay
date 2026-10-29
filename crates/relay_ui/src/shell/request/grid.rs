@@ -15,12 +15,14 @@ use super::spans;
 use crate::shell::rows::{labeled_row, part};
 use crate::tokens;
 
-/// The grid of `rows`, a `table` of `kind` (`params` and `param`, or `headers` and `header`).
+/// The grid of `rows`, a `table` of `kind` (`params` and `param`, `headers` and `header`, or
+/// `body`). A row whose entry in `files` is true holds a file path and shows a File icon.
 pub(super) fn render(
     inspection: &Inspection,
     table: &str,
     kind: &'static str,
     rows: &[KeyValue],
+    files: &[bool],
     cx: &App,
 ) -> AnyElement {
     let colors = bolt::colors(cx);
@@ -37,11 +39,10 @@ pub(super) fn render(
         .flex()
         .flex_col()
         .child(header(kind, colors))
-        .children(
-            rows.iter()
-                .enumerate()
-                .map(|(index, row)| data_row(inspection, table, index + 1, row, cx)),
-        )
+        .children(rows.iter().enumerate().map(|(index, row)| {
+            let file = files.get(index).copied().unwrap_or(false);
+            data_row(inspection, table, index + 1, row, file, cx)
+        }))
         .into_any_element()
 }
 
@@ -77,6 +78,7 @@ fn data_row(
     table: &str,
     n: usize,
     row: &KeyValue,
+    file: bool,
     cx: &App,
 ) -> AnyElement {
     let colors = bolt::colors(cx);
@@ -95,7 +97,14 @@ fn data_row(
         .flex()
         .items_center()
         .gap(space::SM)
-        .text_color(tone(colors.foreground));
+        .text_color(tone(colors.foreground))
+        .when(file, |this| {
+            this.child(
+                Icon::new(IconName::File)
+                    .size(tokens::GRID_TEXT)
+                    .color(colors.muted),
+            )
+        });
     let value = if secret {
         value
             .child(masked_text(&value_spans))
@@ -139,7 +148,7 @@ fn data_row(
         .into_any_element()
 }
 
-fn secret_badge(colors: &Colors) -> Div {
+pub(super) fn secret_badge(colors: &Colors) -> Div {
     div()
         .relative()
         .flex()

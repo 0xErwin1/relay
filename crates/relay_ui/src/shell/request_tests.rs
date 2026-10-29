@@ -12,10 +12,12 @@ use crate::workspace_tests::{demo_workspace, write};
 const COLLECTION: &str = "01J00000000000000000000011";
 const INVOICE: &str = "01J00000000000000000000012";
 const PLAIN: &str = "01J00000000000000000000013";
+const RICH: &str = "01J00000000000000000000014";
 
 /// `Demo` with collection `API`, which declares `base`, holding `GET Invoice` at
 /// `{{base}}/v1/{{missing}}` with enabled and disabled params and headers, a header that
-/// uses the secret `token` and one with the unresolved `tenant`, and `GET Plain`.
+/// uses the secret `token` and one with the unresolved `tenant`, `GET Plain` with nothing
+/// else and `POST Rich` with a raw JSON body, bearer auth, a pre-request script and a timeout.
 fn request_workspace() -> TempDir {
     let dir = demo_workspace();
     let root = dir.path();
@@ -48,6 +50,17 @@ fn request_workspace() -> TempDir {
             "id = \"{PLAIN}\"\nname = \"Plain\"\nmethod = \"GET\"\nurl = \"{{{{base}}}}/ok\"\n"
         ),
     );
+    write(
+        root,
+        "collections/api/rich.req.toml",
+        &format!(
+            "id = \"{RICH}\"\nname = \"Rich\"\nmethod = \"POST\"\nurl = \"{{{{base}}}}/rich\"\n\n\
+             [auth]\ntype = \"bearer\"\ntoken = \"plain-token\"\n\n\
+             [body]\nmode = \"raw\"\nlanguage = \"json\"\ntext = \"{{\\n  \\\"a\\\": \\\"{{{{base}}}}\\\"\\n}}\"\n\n\
+             [settings]\ntimeout_ms = 5000\n"
+        ),
+    );
+    write(root, "collections/api/rich.pre.js", "console.log(1);\n");
     dir
 }
 
@@ -190,4 +203,59 @@ fn an_empty_table_shows_the_empty_state(cx: &mut TestAppContext) {
     assert!(rows(cx, "headers").is_empty());
     let pane = present(cx, "request-pane");
     assert!(pane.contains(&present(cx, "request-grid-empty").origin));
+}
+
+fn inside_pane(cx: &mut VisualTestContext, ids: &[&str]) {
+    let pane = present(cx, "request-pane");
+    for id in ids {
+        assert!(pane.contains(&present(cx, id).origin), "{id} in the pane");
+    }
+}
+
+#[gpui::test]
+fn the_body_pane_shows_the_raw_text_line_by_line(cx: &mut TestAppContext) {
+    let (_shell, cx) = render(cx);
+    click(cx, &format!("tree-row-{RICH}"));
+    click(cx, "request-tab-body");
+    inside_pane(cx, &["request-body-mode", "request-body-code"]);
+    let lines: Vec<_> = (1..=5)
+        .map_while(|n| bounds(cx, &format!("request-body-line-{n}")))
+        .collect();
+    assert_eq!(lines.len(), 3);
+    assert!(lines.windows(2).all(|pair| match pair {
+        [above, below] => above.origin.y < below.origin.y,
+        _ => false,
+    }));
+}
+
+#[gpui::test]
+fn the_other_panes_show_their_content(cx: &mut TestAppContext) {
+    let (_shell, cx) = render(cx);
+    click(cx, &format!("tree-row-{RICH}"));
+    click(cx, "request-tab-auth");
+    inside_pane(cx, &["request-auth-type", "request-auth-field-token"]);
+    click(cx, "request-tab-scripts");
+    inside_pane(cx, &["request-script-pre", "request-script-test-empty"]);
+    click(cx, "request-tab-settings");
+    inside_pane(
+        cx,
+        &[
+            "request-setting-timeout",
+            "request-setting-redirects",
+            "request-setting-tls",
+        ],
+    );
+}
+
+#[gpui::test]
+fn a_request_without_body_or_scripts_shows_empty_states(cx: &mut TestAppContext) {
+    let (_shell, cx) = render(cx);
+    click(cx, &format!("tree-row-{PLAIN}"));
+    click(cx, "request-tab-body");
+    inside_pane(cx, &["request-body-mode", "request-body-empty"]);
+    click(cx, "request-tab-scripts");
+    inside_pane(
+        cx,
+        &["request-script-pre-empty", "request-script-test-empty"],
+    );
 }

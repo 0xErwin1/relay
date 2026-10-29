@@ -158,6 +158,12 @@ pub(crate) const GRID_VALUE_COLUMN: Pixels = px(420.0);
 /// The text and icon size of the SECRET badge.
 pub(crate) const BADGE_TEXT: Pixels = px(10.0);
 
+/// The height of a code line in the Body and Scripts panes.
+pub(crate) const CODE_LINE: Pixels = px(20.0);
+
+/// The width of the label column of the Auth and Settings rows.
+pub(crate) const PANE_LABEL_COLUMN: Pixels = px(160.0);
+
 /// The opacity of the warning wash on a grid row with an unresolved reference.
 const UNRESOLVED_ROW_WASH: f32 = 0.05;
 
