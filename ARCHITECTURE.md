@@ -267,13 +267,18 @@ What the window does today: clicking the URL of an open request swaps it for a f
 (`request-url-input`); typing stores a draft on every keystroke, Enter commits it to the
 draft and Escape drops what was typed. In the Params and Headers grids, each row carries an
 enable box (`request-<params|headers>-enabled-<n>`) whose click toggles the row's `enabled`
-state in the same draft on the spot, and the grid shows the draft's rows while a draft
-exists. A drafted tab carries a tint dot, Save and Revert
+state in the same draft on the spot, the grid shows the draft's rows while a draft exists,
+and clicking a row's key or value cell (`request-<table>-<key|value>-<n>`) swaps the cell
+for a field (`request-cell-input`) seeded with the cell's text; Enter commits it to that
+cell of the same draft, Escape drops what was typed, and clicking another cell commits the
+open field first, like a spreadsheet. A value that references a secret is never seeded: the
+field opens empty with a `Secret value` placeholder and an empty commit keeps the stored
+reference. A drafted tab carries a tint dot, Save and Revert
 wake up, `Ctrl+S` saves and reloads the workspace so the tree and later sends see the file,
 and a moved file shows `File changed on disk` with the draft kept until Revert. Sending a
-drafted request goes through `Engine::execute_draft`. Still read-only are the cell keys and
-values, the body, the auth and the settings: they are the next slices, and each lands in
-the same draft record. Undo, Redo and Split stay disabled.
+drafted request goes through `Engine::execute_draft`. Still read-only are the body, the
+auth and the settings: they are the next slices, and each lands in the same draft record.
+Undo, Redo and Split stay disabled.
 
 Drafts stay out of the workspace directory so that a commit never picks one up.
 

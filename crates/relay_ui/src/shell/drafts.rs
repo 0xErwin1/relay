@@ -10,6 +10,7 @@ use relay_engine::state::Draft;
 use relay_engine::{Engine, SaveError};
 
 use super::Shell;
+use super::cell_edit::CellField;
 use super::tree_model;
 use crate::workspace::OpenedWorkspace;
 
@@ -110,6 +111,60 @@ impl Shell {
         );
     }
 
+    /// Puts `value` into the cell (`table`, 1-based row `n`, `field`) of the draft of the
+    /// request `id`, creating the draft from the saved request when there is none, and
+    /// persists it. An empty commit on a cell whose value references a secret keeps the
+    /// stored reference, and committing the text the cell already shows, without a draft,
+    /// creates none.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn set_draft_cell(
+        &mut self,
+        id: &str,
+        table: &str,
+        n: usize,
+        field: CellField,
+        value: String,
+        secret: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if secret && value.is_empty() {
+            return;
+        }
+        if !self.drafts.contains_key(id) {
+            let current = self.requests.get(id).and_then(|state| {
+                let request = self.displayed_request(id, &state.inspection.request.request);
+                let rows = match table {
+                    "params" => &request.params,
+                    _ => &request.headers,
+                };
+                let row = n.checked_sub(1).and_then(|index| rows.get(index))?;
+                Some(match field {
+                    CellField::Key => row.key.clone(),
+                    CellField::Value => row.value.clone(),
+                })
+            });
+            if current.as_deref() == Some(value.as_str()) {
+                return;
+            }
+        }
+        self.edit_draft(
+            id,
+            move |request| {
+                let rows = match table {
+                    "params" => &mut request.params,
+                    _ => &mut request.headers,
+                };
+                if let Some(row) = n.checked_sub(1).and_then(|index| rows.get_mut(index)) {
+                    match field {
+                        CellField::Key => row.key = value,
+                        CellField::Value => row.value = value,
+                    }
+                }
+            },
+            cx,
+        );
+    }
+
     /// Edits the draft of the request `id` with `edit`, creating the draft from the saved
     /// request when there is none, and persists it in the app state.
     fn edit_draft(&mut self, id: &str, edit: impl FnOnce(&mut Request), cx: &mut Context<Self>) {
@@ -204,6 +259,7 @@ impl Shell {
     /// the tree, the request view and later sends see the saved file.
     pub(super) fn save(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.drop_url_edit_of(id);
+        self.drop_cell_edit_of(id);
         let Some(draft) = self.drafts.get(id).cloned() else {
             return;
         };
@@ -249,6 +305,7 @@ impl Shell {
     /// the workspace is reloaded for.
     pub(super) fn revert(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.drop_url_edit_of(id);
+        self.drop_cell_edit_of(id);
         if self.drafts.remove(id).is_some() {
             self.delete_stored_draft(id);
             self.reload_workspace(cx);

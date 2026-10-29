@@ -212,6 +212,176 @@ fn draftless_body_has_no_rows(cx: &mut VisualTestContext) -> bool {
     bounds(cx, "request-body-empty").is_some()
 }
 
+/// The text the open cell field holds, if one is open.
+fn field_text(cx: &mut TestAppContext, shell: &Entity<Shell>) -> Option<String> {
+    cx.update(|cx| {
+        shell
+            .read(cx)
+            .cell_edit
+            .as_ref()
+            .map(|edit| edit.input.read(cx).value().to_string())
+    })
+}
+
+/// Replaces the text of the open cell field with `text`: selects all and types.
+fn type_cell(cx: &mut VisualTestContext, text: &str) {
+    cx.simulate_keystrokes("ctrl-a");
+    let typed = text
+        .chars()
+        .map(|character| character.to_string())
+        .collect::<Vec<_>>()
+        .join(" ");
+    cx.simulate_keystrokes(&typed);
+    cx.run_until_parked();
+}
+
+#[gpui::test]
+fn clicking_a_header_value_cell_opens_the_field_and_enter_persists(cx: &mut TestAppContext) {
+    let dir = grid_workspace();
+    let (_state_dir, state_path) = state_file();
+    let (shell, cx) = render(cx, &dir, &state_path);
+    open_grid(cx);
+    assert!(draft_request(cx, &shell, GRID).is_none(), "no draft yet");
+
+    click(cx, "request-headers-value-1");
+    assert!(field_text(cx, &shell).is_some(), "the field is open");
+    assert_eq!(
+        field_text(cx, &shell).as_deref(),
+        Some("1"),
+        "seeded with the stored text"
+    );
+
+    type_cell(cx, "42");
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    assert!(field_text(cx, &shell).is_none(), "the field closed");
+    assert!(marker(cx, GRID), "Enter marks the tab dirty");
+    let draft = draft_request(cx, &shell, GRID).expect("Enter created the draft");
+    assert_eq!(draft.headers[0].value, "42");
+    assert_eq!(draft.headers[0].key, "X-One", "the key is untouched");
+
+    // The grid shows the new value: clicking the cell again seeds it from the draft.
+    click(cx, "request-headers-value-1");
+    assert_eq!(field_text(cx, &shell).as_deref(), Some("42"));
+    cx.simulate_keystrokes("escape");
+    cx.run_until_parked();
+
+    // A second shell over the same workspace and state file finds it persisted.
+    let (_shell_2, _cx_2) = render(cx, &dir, &state_path);
+    let stored = stored_request(&state_path, GRID).expect("the draft was persisted");
+    assert_eq!(stored.headers[0].value, "42");
+}
+
+#[gpui::test]
+fn a_param_key_edit_lands_in_the_same_draft_as_a_header_value_edit(cx: &mut TestAppContext) {
+    let dir = grid_workspace();
+    let (_state_dir, state_path) = state_file();
+    let (shell, cx) = render(cx, &dir, &state_path);
+    open_grid(cx);
+
+    click(cx, "request-headers-value-1");
+    type_cell(cx, "42");
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    click(cx, "request-tab-params");
+    click(cx, "request-params-key-1");
+    assert_eq!(
+        field_text(cx, &shell).as_deref(),
+        Some("page"),
+        "seeded with the stored key"
+    );
+    type_cell(cx, "page_size");
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+
+    let draft = draft_request(cx, &shell, GRID).expect("one draft holds both edits");
+    assert_eq!(draft.headers[0].value, "42", "the header edit is kept");
+    assert_eq!(draft.params[0].key, "page_size");
+    assert_eq!(draft.params[0].value, "1", "the value is untouched");
+}
+
+#[gpui::test]
+fn escape_in_the_cell_drops_the_text_and_creates_no_draft(cx: &mut TestAppContext) {
+    let dir = grid_workspace();
+    let (_state_dir, state_path) = state_file();
+    let (shell, cx) = render(cx, &dir, &state_path);
+    open_grid(cx);
+
+    click(cx, "request-headers-value-1");
+    type_cell(cx, "junk");
+    cx.simulate_keystrokes("escape");
+    cx.run_until_parked();
+
+    assert!(field_text(cx, &shell).is_none(), "the field closed");
+    assert!(draft_request(cx, &shell, GRID).is_none(), "no draft");
+    assert!(!marker(cx, GRID), "no marker without a draft");
+
+    // The stored value is unchanged: the cell seeds from the file again.
+    click(cx, "request-headers-value-1");
+    assert_eq!(field_text(cx, &shell).as_deref(), Some("1"));
+    cx.simulate_keystrokes("escape");
+    cx.run_until_parked();
+}
+
+#[gpui::test]
+fn a_secret_value_cell_opens_empty_and_keeps_the_reference(cx: &mut TestAppContext) {
+    let dir = grid_workspace();
+    let (_state_dir, state_path) = state_file();
+    let (shell, cx) = render(cx, &dir, &state_path);
+    open_grid(cx);
+
+    click(cx, "request-headers-value-2");
+    assert!(field_text(cx, &shell).is_some(), "the field is open");
+    assert_eq!(
+        field_text(cx, &shell).as_deref(),
+        Some(""),
+        "a secret value is never seeded"
+    );
+    assert!(
+        bounds(cx, "request-headers-secret-2").is_some(),
+        "the badge"
+    );
+
+    // Committing without typing keeps the stored reference and creates no draft.
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    assert!(field_text(cx, &shell).is_none(), "the field closed");
+    assert!(draft_request(cx, &shell, GRID).is_none(), "no draft");
+    assert!(bounds(cx, "request-headers-secret-2").is_some(), "masked");
+    let stored = stored_request(&state_path, GRID);
+    assert!(stored.is_none(), "nothing was persisted");
+
+    // Typing a replacement commits it.
+    click(cx, "request-headers-value-2");
+    type_cell(cx, "x");
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    let draft = draft_request(cx, &shell, GRID).expect("the replacement");
+    assert_eq!(draft.headers[1].value, "x");
+}
+
+#[gpui::test]
+fn clicking_another_cell_commits_the_open_edit(cx: &mut TestAppContext) {
+    let dir = grid_workspace();
+    let (_state_dir, state_path) = state_file();
+    let (shell, cx) = render(cx, &dir, &state_path);
+    open_grid(cx);
+
+    click(cx, "request-headers-value-1");
+    type_cell(cx, "42");
+    click(cx, "request-headers-key-1");
+
+    let draft = draft_request(cx, &shell, GRID).expect("the first edit landed");
+    assert_eq!(draft.headers[0].value, "42", "no lost edit");
+    assert_eq!(
+        field_text(cx, &shell).as_deref(),
+        Some("X-One"),
+        "the key cell is open now"
+    );
+    cx.simulate_keystrokes("escape");
+    cx.run_until_parked();
+}
+
 #[gpui::test]
 fn the_sub_tab_count_follows_the_draft(cx: &mut TestAppContext) {
     let dir = grid_workspace();

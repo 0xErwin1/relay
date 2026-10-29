@@ -2,6 +2,7 @@
 //! and document islands between them.
 
 mod action_strip;
+mod cell_edit;
 mod diamond;
 mod document;
 mod documents;
@@ -31,6 +32,7 @@ use gpui::{
 };
 use relay_engine::state::AppState;
 
+use self::cell_edit::CellEdit;
 use self::documents::Documents;
 use self::drafts::Drafts;
 use self::last_request::LastSend;
@@ -70,6 +72,8 @@ pub(crate) struct Shell {
     drafts: Drafts,
     /// The URL field of the request under edit, while it has focus.
     url_edit: Option<UrlEdit>,
+    /// The cell field of the Params or Headers grid under edit, while it has focus.
+    cell_edit: Option<CellEdit>,
     /// The per-user app state the drafts persist in; `None` when it could not be opened,
     /// which keeps drafts in memory only.
     state: Option<AppState>,
@@ -125,6 +129,7 @@ impl Shell {
             last_send: None,
             drafts: HashMap::new(),
             url_edit: None,
+            cell_edit: None,
             state,
             workspace_id,
             active_environment: None,
@@ -141,6 +146,7 @@ impl Shell {
     fn open_document(&mut self, id: &str, cx: &mut Context<Self>) {
         self.documents.open(id);
         self.drop_stale_url_edit(id);
+        self.drop_stale_cell_edit(id);
         if !self.requests.contains_key(id)
             && let OpenedWorkspace::Loaded(engine) = &self.workspace
         {
@@ -229,6 +235,7 @@ impl Shell {
     fn activate_document(&mut self, id: &str, cx: &mut Context<Self>) {
         self.documents.activate(id);
         self.drop_stale_url_edit(id);
+        self.drop_stale_cell_edit(id);
         cx.notify();
     }
 
@@ -239,6 +246,7 @@ impl Shell {
         self.requests.remove(id);
         self.sends.remove(id);
         self.drop_url_edit_of(id);
+        self.drop_cell_edit_of(id);
         cx.notify();
     }
 }

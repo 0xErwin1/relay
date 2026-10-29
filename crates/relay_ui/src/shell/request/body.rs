@@ -13,7 +13,11 @@ use crate::shell::Shell;
 use crate::shell::rows::{labeled_row, part};
 use crate::tokens;
 
-pub(super) fn render(inspection: &Inspection, cx: &mut gpui::Context<Shell>) -> Vec<AnyElement> {
+pub(super) fn render(
+    inspection: &Inspection,
+    shell: &Shell,
+    cx: &mut gpui::Context<Shell>,
+) -> Vec<AnyElement> {
     let body = &inspection.request.request.body;
     let mode = labeled_row("request-body-mode".to_owned(), body_mode(body))
         .pl(space::MD)
@@ -58,13 +62,14 @@ pub(super) fn render(inspection: &Inspection, cx: &mut gpui::Context<Shell>) -> 
                 fields,
                 &[],
                 None,
+                shell,
                 cx,
             )]
         }
         Body::FormData { parts } => {
             let (rows, files): (Vec<KeyValue>, Vec<bool>) = parts.iter().map(form_row).unzip();
             vec![grid::render(
-                inspection, "body", "part", &rows, &files, None, cx,
+                inspection, "body", "part", &rows, &files, None, shell, cx,
             )]
         }
         Body::Binary { path } => vec![

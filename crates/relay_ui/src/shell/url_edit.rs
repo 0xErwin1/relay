@@ -28,6 +28,10 @@ impl Shell {
     /// Swaps the read-only URL of the request `id` for a focused field seeded with its URL
     /// as written.
     pub(super) fn start_url_edit(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        // A cell field that is open commits first, like a spreadsheet, so no edit is lost.
+        if self.cell_edit.is_some() {
+            self.commit_cell_edit(window, cx);
+        }
         if self
             .url_edit
             .as_ref()

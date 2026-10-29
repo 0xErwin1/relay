@@ -2,28 +2,33 @@
 //! with its enable box, the 1-based number, the key, the value with its references styled
 //! and the description. Disabled rows are muted, rows with an unresolved reference carry a
 //! warning wash, and a value that references a secret shows `••••••••` with a SECRET badge.
-//! Clicking a row's enable box toggles the row in the draft; the body grid stays read-only.
+//! Clicking a row's enable box toggles the row in the draft; clicking its key or value cell
+//! swaps the cell for a text field; the body grid stays read-only.
 
 use bolt::chamfer::Chamfer;
 use bolt::tokens::{Colors, border, cut, family, space};
 use bolt::{Icon, IconName};
 use gpui::{
-    AnyElement, Context, Div, FontWeight, Hsla, ParentElement, Role, Stateful, Styled, Toggled,
-    div, prelude::*,
+    AnyElement, Context, Div, FontWeight, Hsla, ParentElement, Pixels, Role, Stateful, Styled,
+    Toggled, div, prelude::*,
 };
+use gpui_component::input::{Enter, Escape, Input};
 use relay_core::model::KeyValue;
 use relay_engine::Inspection;
 
 use super::grid_model::{has_unresolved, masked_text, row_id, row_label};
 use super::spans;
 use crate::shell::Shell;
+use crate::shell::cell_edit::{CellEdit, CellField};
 use crate::shell::rows::{labeled_row, part};
 use crate::tokens;
 
 /// The grid of `rows`, a `table` of `kind` (`params` and `param`, `headers` and `header`, or
 /// `body`). A row whose entry in `files` is true holds a file path and shows a File icon.
 /// When `request_id` is `Some`, every row starts with an enable box that toggles the row in
-/// the request's draft; the body grid passes `None` and stays read-only.
+/// the request's draft, and its key and value cells open the editable cell field; the body
+/// grid passes `None` and stays read-only.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn render(
     inspection: &Inspection,
     table: &str,
@@ -31,6 +36,7 @@ pub(super) fn render(
     rows: &[KeyValue],
     files: &[bool],
     request_id: Option<&str>,
+    shell: &Shell,
     cx: &mut Context<Shell>,
 ) -> AnyElement {
     if rows.is_empty() {
@@ -50,7 +56,16 @@ pub(super) fn render(
         .child(header)
         .children(rows.iter().enumerate().map(|(index, row)| {
             let file = files.get(index).copied().unwrap_or(false);
-            data_row(inspection, table, request_id, index + 1, row, file, cx)
+            data_row(
+                inspection,
+                table,
+                request_id,
+                index + 1,
+                row,
+                file,
+                shell,
+                cx,
+            )
         }))
         .into_any_element()
 }
@@ -90,41 +105,85 @@ fn data_row(
     n: usize,
     row: &KeyValue,
     file: bool,
+    shell: &Shell,
     cx: &mut Context<Shell>,
 ) -> AnyElement {
     // The box first: it takes the context mutably for its click listener, before the row
     // borrows it for the colors.
     let enable = request_id.map(|id| enable_box(id, table, n, &row.key, row.enabled, cx));
-    let colors = bolt::colors(cx);
     let value_spans = inspection.spans(&row.value);
     let unresolved = has_unresolved(&value_spans) || has_unresolved(&inspection.spans(&row.key));
     let secret = inspection.references_secret(&row.value);
     let off = !row.enabled;
-    let tone = |on: Hsla| if off { colors.line_2 } else { on };
+    let tone = |colors: &Colors, on: Hsla| if off { colors.line_2 } else { on };
+    let editing = request_id.and_then(|id| {
+        shell.cell_edit.as_ref().and_then(|edit| {
+            (edit.request_id == id && edit.table == table && edit.n == n).then_some(edit)
+        })
+    });
+
+    // The cells take the context mutably for their listeners, before the row borrows it
+    // for the colors; each arm styles itself with its own colors borrow.
+    let key_cell: AnyElement = match editing.filter(|edit| edit.field == CellField::Key) {
+        Some(edit) => editing_cell(edit, cx).into_any_element(),
+        None => {
+            let cell = cell_part(
+                tokens::GRID_KEY_COLUMN,
+                format!("request-{table}-key-{n}"),
+                request_id,
+                table,
+                n,
+                CellField::Key,
+                cx,
+            );
+            let colors = bolt::colors(cx);
+            cell.text_color(tone(colors, colors.strong))
+                .child(row.key.clone())
+                .into_any_element()
+        }
+    };
+
+    let value_cell: AnyElement = match editing.filter(|edit| edit.field == CellField::Value) {
+        Some(edit) => editing_cell(edit, cx).into_any_element(),
+        None => {
+            let cell = cell_part(
+                tokens::GRID_VALUE_COLUMN,
+                format!("request-{table}-value-{n}"),
+                request_id,
+                table,
+                n,
+                CellField::Value,
+                cx,
+            )
+            .flex()
+            .items_center()
+            .gap(space::SM);
+            let colors = bolt::colors(cx);
+            let value = cell
+                .text_color(tone(colors, colors.foreground))
+                .when(file, |this| {
+                    this.child(
+                        Icon::new(IconName::File)
+                            .size(tokens::GRID_TEXT)
+                            .color(colors.muted),
+                    )
+                });
+            let value = if secret {
+                value
+                    .child(masked_text(&value_spans))
+                    .child(part(format!("request-{table}-secret-{n}")).child(secret_badge(colors)))
+            } else {
+                value.children(spans::render(inspection, &row.value, cx))
+            };
+            value.into_any_element()
+        }
+    };
+
+    let colors = bolt::colors(cx);
     let number_color = if unresolved {
         colors.warning
     } else {
         colors.line_2
-    };
-
-    let value = cell(tokens::GRID_VALUE_COLUMN)
-        .flex()
-        .items_center()
-        .gap(space::SM)
-        .text_color(tone(colors.foreground))
-        .when(file, |this| {
-            this.child(
-                Icon::new(IconName::File)
-                    .size(tokens::GRID_TEXT)
-                    .color(colors.muted),
-            )
-        });
-    let value = if secret {
-        value
-            .child(masked_text(&value_spans))
-            .child(part(format!("request-{table}-secret-{n}")).child(secret_badge(colors)))
-    } else {
-        value.children(spans::render(inspection, &row.value, cx))
     };
 
     labeled_row(row_id(table, n), row_label(&row.key, &row.value, secret))
@@ -148,19 +207,107 @@ fn data_row(
                 .text_color(number_color)
                 .child(n.to_string()),
         )
-        .child(
-            cell(tokens::GRID_KEY_COLUMN)
-                .text_color(tone(colors.strong))
-                .child(row.key.clone()),
-        )
-        .child(value)
+        .child(key_cell)
+        .child(value_cell)
         .child(
             cell_fill()
                 .font_family(family::INTERFACE)
-                .text_color(tone(colors.muted))
+                .text_color(tone(colors, colors.muted))
                 .child(row.description.clone().unwrap_or_default()),
         )
         .into_any_element()
+}
+
+/// The key or value cell of the 1-based row `n` of `table`, element id
+/// `request-<table>-<field>-<n>`. When `request_id` is `Some`, clicking it opens the
+/// editable cell field over the cell; the body grid's cells have no id and no click.
+#[allow(clippy::too_many_arguments)]
+fn cell_part(
+    width: Pixels,
+    id: String,
+    request_id: Option<&str>,
+    table: &str,
+    n: usize,
+    field: CellField,
+    cx: &mut Context<Shell>,
+) -> Stateful<Div> {
+    let cell = part(id)
+        .w(width)
+        .flex_none()
+        .pl(space::MD)
+        .pr(space::MD)
+        .min_w_0()
+        .overflow_hidden()
+        .whitespace_nowrap();
+    match request_id {
+        Some(request) => {
+            let request = request.to_owned();
+            let table = table.to_owned();
+            cell.cursor_text()
+                .on_click(cx.listener(move |this, _event, window, cx| {
+                    this.start_cell_edit(&request, &table, n, field, window, cx);
+                }))
+        }
+        None => cell,
+    }
+}
+
+/// The open field over the cell `edit` replaces, element id `request-cell-input` on the
+/// input; the cell keeps its width and its place in the row. Enter commits the text into
+/// the draft and Escape drops what was typed, as the URL field does. A secret value keeps
+/// its badge next to the field, which opens empty with a placeholder.
+fn editing_cell(edit: &CellEdit, cx: &mut Context<Shell>) -> Stateful<Div> {
+    let colors = bolt::colors(cx);
+    let (width, id) = match edit.field {
+        CellField::Key => (
+            tokens::GRID_KEY_COLUMN,
+            format!("request-{}-key-{}", edit.table, edit.n),
+        ),
+        CellField::Value => (
+            tokens::GRID_VALUE_COLUMN,
+            format!("request-{}-value-{}", edit.table, edit.n),
+        ),
+    };
+    part(id)
+        .w(width)
+        .flex_none()
+        .min_w_0()
+        .pl(space::MD)
+        .pr(space::MD)
+        .flex()
+        .items_center()
+        .font_family(family::MONO)
+        .text_size(tokens::GRID_TEXT)
+        .text_color(colors.foreground)
+        .on_action(cx.listener(|this, action: &Enter, window, cx| {
+            // Ctrl+Enter maps to the input's `secondary-enter` while the field has focus:
+            // it sends instead of committing.
+            if action.secondary {
+                this.send_active(cx);
+            } else {
+                this.commit_cell_edit(window, cx);
+            }
+        }))
+        .on_action(cx.listener(|this, _: &Escape, window, cx| {
+            this.discard_cell_edit(window, cx);
+        }))
+        .child(
+            Input::new(&edit.input)
+                .id("request-cell-input")
+                .appearance(false)
+                .bordered(false)
+                .flex_1()
+                .min_w_0()
+                .text_size(tokens::GRID_TEXT)
+                .font_family(family::MONO)
+                .text_color(colors.foreground),
+        )
+        .when(edit.secret, |this| {
+            this.child(
+                part(format!("request-{}-secret-{}", edit.table, edit.n))
+                    .child(secret_badge(colors)),
+            )
+        })
 }
 
 /// The enable box at the start of the 1-based row `n` of `table`, element id
@@ -233,7 +380,7 @@ pub(super) fn secret_badge(colors: &Colors) -> Div {
         .child("SECRET")
 }
 
-fn cell(width: gpui::Pixels) -> Div {
+fn cell(width: Pixels) -> Div {
     div()
         .w(width)
         .flex_none()
