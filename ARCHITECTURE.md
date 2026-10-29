@@ -263,6 +263,15 @@ Saving is explicit, as in Postman: an edit never touches the workspace file unti
 - Agent write tools write files directly; they never create or read drafts. An agent and the
   user editing the same request meet at that conflict, not at a silent overwrite.
 
+What the window does today: clicking the URL of an open request swaps it for a field
+(`request-url-input`); typing stores a draft on every keystroke, Enter commits it to the
+draft and Escape drops what was typed. A drafted tab carries a tint dot, Save and Revert
+wake up, `Ctrl+S` saves and reloads the workspace so the tree and later sends see the file,
+and a moved file shows `File changed on disk` with the draft kept until Revert. Sending a
+drafted request goes through `Engine::execute_draft`. Only the URL is editable so far:
+params, headers, body, auth and settings are the next slices, and each lands in the same
+draft record. Undo, Redo and Split stay disabled.
+
 Drafts stay out of the workspace directory so that a commit never picks one up.
 
 ## Crate map
