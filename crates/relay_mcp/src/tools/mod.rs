@@ -337,8 +337,8 @@ pub async fn click(state: &mut ServerState, args: ClickArgs) -> Result<String, T
             )?;
         }
     }
-    settle(&client).await?;
-    Ok(ack("clicked"))
+    let settled = settle(&client).await;
+    Ok(ack("clicked", settled))
 }
 
 /// Type text into the focused field; the bridge refuses redacted ones (S7).
@@ -356,8 +356,8 @@ pub async fn type_text(state: &mut ServerState, args: TextArgs) -> Result<String
             .await?,
         "ack",
     )?;
-    settle(&client).await?;
-    Ok(ack("typed"))
+    let settled = settle(&client).await;
+    Ok(ack("typed", settled))
 }
 
 /// Dispatch one GPUI keystroke.
@@ -377,8 +377,8 @@ pub async fn key(state: &mut ServerState, args: KeyArgs) -> Result<String, ToolE
             .await?,
         "ack",
     )?;
-    settle(&client).await?;
-    Ok(ack("key"))
+    let settled = settle(&client).await;
+    Ok(ack("key", settled))
 }
 
 /// Move focus to one element.
@@ -392,8 +392,8 @@ pub async fn focus(state: &mut ServerState, args: IdArgs) -> Result<String, Tool
         client.call(Operation::Focus { node_id: args.id }).await?,
         "ack",
     )?;
-    settle(&client).await?;
-    Ok(ack("focused"))
+    let settled = settle(&client).await;
+    Ok(ack("focused", settled))
 }
 
 /// Scroll at an element's center or at coordinates.
@@ -431,8 +431,8 @@ pub async fn scroll(state: &mut ServerState, args: ScrollArgs) -> Result<String,
             .await?,
         "ack",
     )?;
-    settle(&client).await?;
-    Ok(ack("scrolled"))
+    let settled = settle(&client).await;
+    Ok(ack("scrolled", settled))
 }
 
 /// How long an input may take to reach a completed frame before the tool stops waiting.
@@ -444,18 +444,18 @@ const MAX_SETTLE_FRAMES: usize = 8;
 /// Wait until the app has drawn the frames an input queued, as upstream's server does:
 /// without it a tool answers before the app has processed the click or the keystroke, so
 /// the next read still sees the state from before the input.
-async fn settle(client: &BridgeClient) -> Result<(), ToolError> {
+///
+/// Reports whether the UI settled. A failure here never fails the tool: the input was
+/// already delivered, and an error would invite a retry that duplicates the click or the
+/// text.
+async fn settle(client: &BridgeClient) -> bool {
     for _ in 0..MAX_SETTLE_FRAMES {
-        let pending = match client.call(Operation::GetPendingFrame).await? {
-            BridgeResult::PendingFrame(pending) => pending,
-            _ => {
-                return Err(ToolError::UnexpectedResult(
-                    "another result for the pending frame",
-                ));
-            }
+        let pending = match client.call(Operation::GetPendingFrame).await {
+            Ok(BridgeResult::PendingFrame(pending)) => pending,
+            Ok(_) | Err(_) => return false,
         };
         if !pending.pending {
-            return Ok(());
+            return true;
         }
         let timeout_ms = u64::try_from(SETTLE_TIMEOUT.as_millis()).unwrap_or(0);
         match client
@@ -463,23 +463,25 @@ async fn settle(client: &BridgeClient) -> Result<(), ToolError> {
                 after_frame_count: pending.completed.frame_count,
                 timeout_ms,
             })
-            .await?
+            .await
         {
-            BridgeResult::FrameStats(_) => {}
-            _ => {
-                return Err(ToolError::UnexpectedResult(
-                    "another result for the frame wait",
-                ));
-            }
+            Ok(BridgeResult::FrameStats(_)) => {}
+            Ok(_) | Err(_) => return false,
         }
     }
-    Ok(())
+    false
 }
 
-/// The JSON text of a successful input action.
-fn ack(action: &str) -> String {
-    serde_json::to_string(&serde_json::json!({ "ok": true, "action": action }))
-        .unwrap_or_else(|_| format!("{{\"ok\": true, \"action\": \"{action}\"}}"))
+/// The JSON text of a successful input action, saying whether the UI settled afterwards.
+fn ack(action: &str, settled: bool) -> String {
+    serde_json::to_string(&serde_json::json!({
+        "ok": true,
+        "action": action,
+        "settled": settled,
+    }))
+    .unwrap_or_else(|_| {
+        format!("{{\"ok\": true, \"action\": \"{action}\", \"settled\": {settled}}}")
+    })
 }
 
 /// Require the bridge's result to be a plain acknowledgement.

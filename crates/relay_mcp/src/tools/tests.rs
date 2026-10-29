@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use gpui_mcp_protocol::{
     BridgeResult, InputCommand, NodeState, Operation, Point, PointerCommand, PointerScrollDelta,
-    Rect, Role, TextInfo, UiNode, UiTree, ValueInfo,
+    Rect, Role, TextInfo, UiNode, UiTree, ValueInfo, WireRequest,
 };
 
 use super::{
@@ -878,4 +878,43 @@ async fn json_results_carry_the_documented_fields() {
     for field in ["id", "bounds"] {
         assert!(value.get(field).is_some(), "bounds result has {field}");
     }
+}
+
+#[tokio::test]
+async fn an_input_that_settles_badly_is_still_delivered() {
+    let log = OperationLog::default();
+    let bridge = FakeBridge::new(
+        "relay",
+        0x01,
+        recording(
+            log.clone(),
+            Arc::new(|request: &WireRequest| match &request.operation {
+                Operation::GetTree => result(request, BridgeResult::Tree(canned_tree())),
+                Operation::GetPendingFrame => failure(request, "the bridge is shutting down"),
+                _ => result(request, BridgeResult::Ack),
+            }),
+        ),
+    );
+    let mut state = ServerState::new(bridge.session("relay"));
+    let value = found(
+        type_text(
+            &mut state,
+            TextArgs {
+                text: "hello".to_owned(),
+            },
+        )
+        .await,
+    );
+    assert_eq!(value["ok"], serde_json::json!(true));
+    assert_eq!(value["settled"], serde_json::json!(false));
+    let ops = log.lock().unwrap().clone();
+    assert!(
+        ops.iter().any(|operation| matches!(
+            operation,
+            Operation::Input {
+                command: InputCommand::TypeText { .. }
+            }
+        )),
+        "the text reached the bridge: {ops:?}"
+    );
 }
