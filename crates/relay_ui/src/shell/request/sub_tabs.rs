@@ -138,6 +138,8 @@ fn sub_tab(
                 text::LABEL,
                 cx,
             )
+            .role(Role::Label)
+            .aria_label(rows.to_string())
             .font_family(family::MONO)
             .text_size(tokens::SMALL_MONO_TEXT)
             .text_color(colors.muted)
