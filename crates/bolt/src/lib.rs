@@ -8,6 +8,7 @@
 //! This crate must never name a product, a protocol or a product type, so it can move to
 //! its own repository without changes. See "Design system" in ARCHITECTURE.md.
 
+pub mod fonts;
 pub mod tokens;
 
 #[cfg(test)]
