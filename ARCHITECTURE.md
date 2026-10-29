@@ -343,10 +343,11 @@ the request, checks the environment and resolves variables, auth, body and setti
 `bearer` and `apikey` fail with `auth type <type> is not supported yet`.
 
 `Engine::inspect` is what a front end shows before sending, with no environment selected: the
-URL as written with the enabled params appended after the separator `prepare` uses, the names
-`prepare` reports unresolved, and `Inspection::spans`, which splits a text into literal runs
-and `{{name}}` references marked as resolving (globals, collection or dynamic variables) and
-as secret (secret in the globals, the collection or an environment the collection allows).
+selected request with its scripts, the URL as written with the enabled params appended after
+the separator `prepare` uses, the names `prepare` reports unresolved, and `Inspection::spans`,
+which splits a text into literal runs and `{{name}}` references marked as resolving (globals,
+collection or dynamic variables) and as secret (secret in the globals, the collection or an
+environment the collection allows).
 
 ## Scripting
 

@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use relay_core::model::{Variable, Workspace};
+use relay_core::model::{RequestNode, Variable, Workspace};
 use relay_core::template::{DynamicVariable, Scopes, Segment, SequentialDynamicSource, segments};
 
 use super::{ExecuteOptions, enabled, prepare, scopes, url};
@@ -10,8 +10,10 @@ use crate::error::ExecuteError;
 use crate::select;
 
 /// A request as a front end shows it before sending it, with no environment selected.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Inspection {
+    /// The selected request with its scripts, as stored.
+    pub request: RequestNode,
     /// The request URL as written, with the enabled params appended as written after the
     /// separator [`prepare`] uses.
     pub url: String,
@@ -116,6 +118,7 @@ pub fn inspect(
     .collect();
 
     Ok(Inspection {
+        request: target.request.clone(),
         url: url::append(request.url.clone(), &params),
         unresolved,
         scopes: scopes(workspace, target.collection, None, &options),

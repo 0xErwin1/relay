@@ -6,7 +6,7 @@ mod common;
 
 use std::path::Path;
 
-use common::{ROOT, collection, disabled, environment, get, id, request, single, workspace};
+use common::{ROOT, collection, disabled, environment, get, id, post, request, single, workspace};
 use pretty_assertions::assert_eq;
 use relay_core::model::{Auth, KeyValue, Variable, Workspace};
 use relay_engine::{Inspection, Span};
@@ -166,4 +166,21 @@ fn an_unknown_selector_is_an_error() {
         Ok(inspection) => panic!("inspect unexpectedly succeeded: {inspection:?}"),
         Err(error) => assert_eq!(error.to_string(), "no request matches c/none"),
     }
+}
+
+#[test]
+fn the_inspected_request_is_the_selected_one() {
+    let ws = workspace(
+        Vec::new(),
+        vec![collection(
+            "c",
+            vec![
+                request("q", post("https://q")),
+                request("r", get("https://r")),
+            ],
+        )],
+    );
+    let inspection = inspect(&ws);
+    assert_eq!(inspection.request.slug, "r");
+    assert_eq!(inspection.request.request.url, "https://r");
 }
