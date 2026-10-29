@@ -417,11 +417,15 @@ database, which was DBFlux's most expensive structural mistake.
 ## UI
 
 What exists today: `relay [<dir>]` opens a workspace through `relay_engine` before the window
-appears (a slow disk delays the window). The window is the Bolt shell: title bar and status bar
-on the desk, a 290 px sidebar island and a document island. The sidebar lists collections,
-folders and requests (collections expanded, folders collapsed) and the environments; the
-arrow keys move the selection, Enter or the chevron toggles a folder, and the status bar counts
-load warnings. The document island shows the open hint or the load error; documents come next.
+appears (a slow disk delays the window). The window is the Bolt shell of
+`design/bolt-v2/01-main.html`: a title bar with the workspace and environment on the left,
+the command search in the middle and the approvals bell on the right; the activity rail
+(Collections, History, Environments, MCP approvals, Audit log, Settings); a sidebar island with
+the collection tree (icons, indent guides, child counts, method labels in Bolt's semantic
+colors) and a request and collection count; a document island with its tab row and path bar;
+and a status bar that shows load warnings. Only the tree is interactive so far: the arrow keys
+move the selection, Enter or the chevron toggles a folder. Icons are Lucide, from
+`gpui-kit-assets`, installed by the binary as the application's asset source.
 
 Every region and tree row has a stable element id (`title-bar`, `sidebar`, `document`,
 `status-bar`, `tree-row-<id>`), and text that automation must read carries a label role,
