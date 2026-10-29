@@ -310,3 +310,26 @@ fn ctrl_enter_sends_after_the_menu_closes_in_the_app_root(cx: &mut TestAppContex
     cx.simulate_keystrokes("ctrl-enter");
     assert_eq!(settle(cx, &shell, PING).as_deref(), Some("200 OK"));
 }
+
+#[gpui::test]
+fn the_status_bar_shows_the_last_send(cx: &mut TestAppContext) {
+    let (shell, cx) = render(cx, serve(Server::Ok));
+    assert!(cx.debug_bounds("status-last-request").is_none());
+    click(cx, "request-send");
+    assert_eq!(settle(cx, &shell, PING).as_deref(), Some("200 OK"));
+    let summary = cx.update(|_, cx| {
+        let shell = shell.read(cx);
+        shell.last_send.as_ref().and_then(|last| {
+            let state = &shell.sends.get(&last.id)?.state;
+            super::last_request::summary(&last.method, &last.path, state, Instant::now())
+                .map(|(text, _)| text)
+        })
+    });
+    assert!(
+        summary
+            .as_deref()
+            .is_some_and(|text| text.starts_with("GET /ping · 200 · ")),
+        "{summary:?}"
+    );
+    assert!(cx.debug_bounds("status-last-request").is_some());
+}

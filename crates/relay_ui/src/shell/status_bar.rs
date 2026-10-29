@@ -1,13 +1,16 @@
-//! The status bar: chips on the desk. With no request sent it only shows the load warnings
-//! count, and only when there are warnings.
+//! The status bar: chips on the desk. It shows the last send of the window, when there is
+//! one, and the load warnings count, when there are warnings.
+
+use std::time::Instant;
 
 use bolt::IconName;
 use bolt::controls::StatusChip;
-use bolt::tokens::chrome;
-use gpui::{App, IntoElement, ParentElement, Styled};
+use bolt::tokens::{Colors, chrome};
+use gpui::{App, Hsla, IntoElement, ParentElement, Styled};
 
-use super::region;
-use crate::workspace::OpenedWorkspace;
+use super::last_request::{LastKind, summary};
+use super::request::StatusClass;
+use super::{Shell, region};
 
 /// `<n> warnings` for the load warnings, or `None` when there are none.
 pub(crate) fn warnings_label(count: usize) -> Option<String> {
@@ -18,8 +21,13 @@ pub(crate) fn warnings_label(count: usize) -> Option<String> {
     }
 }
 
-pub(super) fn render(workspace: &OpenedWorkspace, cx: &App) -> impl IntoElement {
+pub(super) fn render(shell: &Shell, cx: &App) -> impl IntoElement {
     let colors = bolt::colors(cx);
+    let brand = bolt::brand(cx);
+    let last = shell.last_send.as_ref().and_then(|last| {
+        let state = &shell.sends.get(&last.id)?.state;
+        summary(&last.method, &last.path, state, Instant::now())
+    });
 
     region("status-bar")
         .flex_none()
@@ -30,9 +38,32 @@ pub(super) fn render(workspace: &OpenedWorkspace, cx: &App) -> impl IntoElement 
         .gap(chrome::ISLAND_GAP)
         .pl(chrome::ISLAND_GAP)
         .pr(chrome::ISLAND_GAP)
-        .children(warnings_label(workspace.warning_count()).map(|warnings| {
-            StatusChip::new("status-warnings", warnings)
-                .icon(IconName::TriangleAlert)
-                .icon_color(colors.warning)
+        .children(last.map(|(text, kind)| {
+            let (icon, color) = last_icon(kind, colors, brand.accent_tint);
+            StatusChip::new("status-last-request", text)
+                .icon(icon)
+                .icon_color(color)
         }))
+        .children(
+            warnings_label(shell.workspace.warning_count()).map(|warnings| {
+                StatusChip::new("status-warnings", warnings)
+                    .icon(IconName::TriangleAlert)
+                    .icon_color(colors.warning)
+            }),
+        )
+}
+
+/// The icon of the last send: a loader in tint while sending, a check for an answer under
+/// 400, an alert in warning for a 4xx and in danger for a 5xx or a failure.
+fn last_icon(kind: LastKind, colors: &Colors, tint: Hsla) -> (IconName, Hsla) {
+    match kind {
+        LastKind::Sending => (IconName::Loader, tint),
+        LastKind::Answered(StatusClass::Success | StatusClass::Info) => {
+            (IconName::Check, colors.success)
+        }
+        LastKind::Answered(StatusClass::Warning) => (IconName::TriangleAlert, colors.warning),
+        LastKind::Answered(StatusClass::Danger) | LastKind::Failed => {
+            (IconName::TriangleAlert, colors.danger)
+        }
+    }
 }

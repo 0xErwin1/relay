@@ -6,6 +6,7 @@ mod diamond;
 mod document;
 mod documents;
 mod environment_menu;
+mod last_request;
 mod path_bar;
 mod rail;
 mod request;
@@ -28,6 +29,7 @@ use gpui::{
 };
 
 use self::documents::Documents;
+use self::last_request::LastSend;
 use self::request::{RequestState, SubTab};
 use self::send::{CancelRequest, RequestSend, SHELL_CONTEXT, SendRequest};
 use self::sidebar::{OpenRequest, Sidebar};
@@ -56,6 +58,8 @@ pub(crate) struct Shell {
     requests: HashMap<String, RequestState>,
     /// The send of each open request that was sent, by request id; dropped with its tab.
     sends: HashMap<String, RequestSend>,
+    /// The request the window sent last, for the status bar.
+    last_send: Option<LastSend>,
     /// The slug of the window's active environment; `None` is No environment.
     active_environment: Option<String>,
     /// Whether the title bar environment menu is open; not kept across restarts.
@@ -85,6 +89,7 @@ impl Shell {
             documents: Documents::default(),
             requests: HashMap::new(),
             sends: HashMap::new(),
+            last_send: None,
             active_environment: None,
             environment_menu_open: false,
             environment_menu_focus: cx.focus_handle(),
@@ -217,7 +222,7 @@ impl Render for Shell {
                     .child(self.sidebar.clone())
                     .child(document::render(self, cx)),
             )
-            .child(status_bar::render(&self.workspace, cx))
+            .child(status_bar::render(self, cx))
     }
 }
 
@@ -237,6 +242,8 @@ fn text_region(id: &'static str) -> Stateful<Div> {
 mod document_tests;
 #[cfg(test)]
 mod environment_tests;
+#[cfg(test)]
+mod last_request_tests;
 #[cfg(test)]
 mod request_tests;
 #[cfg(test)]

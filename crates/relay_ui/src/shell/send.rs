@@ -7,6 +7,7 @@ use gpui::{App, Context, KeyBinding, Task, Window, actions};
 use relay_engine::{CancellationToken, ExecuteOptions, Execution};
 
 use super::Shell;
+use super::last_request::{LastSend, path_of};
 use super::request::{Completed, Failure, Received, SendState};
 use super::response::{BodyView, ResponseTab};
 use crate::workspace::OpenedWorkspace;
@@ -83,13 +84,35 @@ impl Shell {
         let OpenedWorkspace::Loaded(engine) = &self.workspace else {
             return;
         };
-        let send = self.sends.entry(id.to_owned()).or_default();
-        send.running = None;
+        if let Some(send) = self.sends.get_mut(id) {
+            send.running = None;
+        }
         let options = ExecuteOptions {
             environment: self.active_environment.clone(),
             ..ExecuteOptions::default()
         };
-        match engine.execute(id, &options) {
+        let executed = engine.execute(id, &options);
+        let (method, url) = match &executed {
+            Ok(execution) => (execution.method.clone(), execution.url.clone()),
+            Err(_) => self
+                .requests
+                .get(id)
+                .map_or_else(Default::default, |state| {
+                    let request = &state.inspection.request.request;
+                    (
+                        request.method.as_str().to_owned(),
+                        state.inspection.url.clone(),
+                    )
+                }),
+        };
+        self.last_send = Some(LastSend {
+            id: id.to_owned(),
+            method,
+            path: path_of(&url),
+        });
+        let send = self.sends.entry(id.to_owned()).or_default();
+        send.running = None;
+        match executed {
             Ok(execution) => {
                 let started = Instant::now();
                 send.state.start(started);

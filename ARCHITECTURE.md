@@ -434,6 +434,7 @@ the command search in the middle and the approvals bell on the right; the activi
 (Collections, History, Environments, MCP approvals, Audit log, Settings); a sidebar island with
 the collection tree (icons, indent guides, child counts, method labels in Bolt's semantic
 colors) and a request and collection count; a document island; and a status bar that shows
+the last send (`<METHOD> <path> · <status> · <time>`, or `sending` or `failed`) and
 load warnings. In the tree the arrow keys move the selection, Enter or the chevron toggles a
 folder, and a click or Enter on a request opens it in a document tab, or focuses its tab.
 The environment button of the title bar opens a menu with `No environment` and the workspace
@@ -444,7 +445,7 @@ installed by the binary as the application's asset source.
 The document island shows the open requests as tabs, the path bar of the active one
 (collection, folders, request), and the request read-only: an action strip (Save, Revert,
 Undo, Redo, Split, disabled until editing exists), the request line (method, URL with the
-enabled params, Send, visual only until sending exists), and the Params, Headers, Body, Auth,
+enabled params, Send), and the Params, Headers, Body, Auth,
 Scripts and Settings sub-tabs. What it shows comes from `Engine::inspect` with the window's
 active environment, which lives in memory, starts as none and re-inspects every open request
 when it changes, keeping its sub-tab: variables are styled as resolved or unresolved, the
@@ -453,9 +454,22 @@ place (`request-problem`), and a value that references a secret, a password, a t
 any field of an auth type the engine does not support is masked as `••••••••` on screen and
 in the automation tree.
 
+Send or Ctrl+Enter sends the active request with the active environment through
+`Engine::execute`. The UI awaits the execution's `JoinHandle` on GPUI's executor with
+`cx.spawn` and never calls `Engine::wait`, which blocks. While it is in flight, Send turns into
+Cancel; Cancel or Escape cancels it through its token, sending again cancels and replaces it,
+and closing the tab cancels it and drops its response. The response sits under the request:
+the status chip colored by class, the time and size, Body and Headers sub-tabs, a
+Pretty/Raw toggle (Pretty re-indents JSON keeping key order), the body split into lines once
+off the UI thread and drawn with `uniform_list` so only visible lines render, an error banner
+with Retry, and the unresolved variables the send used. Each open request keeps its last
+response in memory only; history comes later.
+
 Every region and tree row has a stable element id (`title-bar`, `sidebar`, `document`,
 `status-bar`, `tree-row-<id>`, `doc-tab-<id>`, `request-tab-<name>`,
-`request-<params|headers>-row-<n>`), and text that automation must read carries a label role,
+`request-<params|headers>-row-<n>`, `request-send`, `request-cancel`, `response-status`,
+`response-meta`, `response-body-line-<n>`, `response-headers-row-<n>`, `response-error`,
+`response-retry`, `status-last-request`), and text that automation must read carries a label role,
 because the gpui-mcp bridge only reports text for nodes with a text role. Tree rows report
 `selected` and `expanded`; tabs and sub-tabs report `selected`. On Wayland a window renders
 and handles input only while its workspace is on screen, so automation needs the window
