@@ -273,7 +273,8 @@ for a field (`request-cell-input`) seeded with the cell's text; Enter commits it
 cell of the same draft, Escape drops what was typed, and clicking another cell commits the
 open field first, like a spreadsheet. A value that references a secret is never seeded: the
 field opens empty with a `Secret value` placeholder and an empty commit keeps the stored
-reference. A drafted tab carries a tint dot, Save and Revert
+reference. The row counts next to the Params and Headers sub-tabs read the draft, so a
+toggle moves them. A drafted tab carries a tint dot, Save and Revert
 wake up, `Ctrl+S` saves and reloads the workspace so the tree and later sends see the file,
 and a moved file shows `File changed on disk` with the draft kept until Revert. Sending a
 drafted request goes through `Engine::execute_draft`. Still read-only are the body, the
