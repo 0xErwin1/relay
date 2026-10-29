@@ -1,26 +1,66 @@
-use gpui::{Context, IntoElement, ParentElement, Render, Styled, Window, div};
+//! The workspace the main window shows, opened through `relay_engine`.
 
-/// The root view of the main window.
+use std::path::PathBuf;
+
+use relay_engine::Engine;
+
+/// The text the document island shows when no workspace is open.
+pub(crate) const OPEN_HINT: &str = "Open a workspace: relay <directory>";
+
+/// The outcome of opening the workspace of a window.
 #[derive(Debug)]
-pub(crate) struct Workspace;
-
-impl Workspace {
-    pub(crate) fn new() -> Self {
-        Self
-    }
+pub(crate) enum OpenedWorkspace {
+    /// No workspace was requested.
+    None,
+    /// The workspace at `path` did not load.
+    Failed {
+        /// The directory that was opened.
+        path: PathBuf,
+        /// Why it did not load.
+        error: String,
+    },
+    /// The workspace loaded.
+    Loaded(Box<Engine>),
 }
 
-impl Render for Workspace {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let colors = bolt::colors(cx);
+impl OpenedWorkspace {
+    /// Opens the workspace at `dir`, if any.
+    ///
+    /// This loads the whole workspace from disk on the calling thread, so the window opens
+    /// only after it. Loading is fast enough for this; a large workspace will need the load
+    /// to move to a background task with a loading state.
+    pub(crate) fn open(dir: Option<PathBuf>) -> Self {
+        let Some(path) = dir else {
+            return Self::None;
+        };
+        match Engine::open(path.clone()) {
+            Ok(engine) => Self::Loaded(Box::new(engine)),
+            Err(error) => {
+                log::warn!("could not open workspace {}: {error}", path.display());
+                Self::Failed {
+                    path,
+                    error: error.to_string(),
+                }
+            }
+        }
+    }
 
-        div()
-            .size_full()
-            .flex()
-            .items_center()
-            .justify_center()
-            .bg(colors.desk)
-            .text_color(colors.muted)
-            .child(bolt::brand(cx).name.clone())
+    /// The display name of the loaded workspace.
+    pub(crate) fn name(&self) -> Option<&str> {
+        match self {
+            Self::Loaded(engine) => Some(engine.workspace().manifest.name.as_str()),
+            Self::None | Self::Failed { .. } => None,
+        }
+    }
+
+    /// The text the document island shows in place of a document, if any.
+    pub(crate) fn document_message(&self) -> Option<String> {
+        match self {
+            Self::None => Some(OPEN_HINT.to_owned()),
+            Self::Failed { path, error } => {
+                Some(format!("Could not open {}: {error}", path.display()))
+            }
+            Self::Loaded(_) => None,
+        }
     }
 }

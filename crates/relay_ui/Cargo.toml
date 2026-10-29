@@ -19,3 +19,7 @@ gpui-component.workspace = true
 gpui-mcp.workspace = true
 log.workspace = true
 relay_engine.workspace = true
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+tempfile.workspace = true

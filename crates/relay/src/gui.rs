@@ -15,7 +15,7 @@ pub(crate) fn open() -> ExitCode {
     let error_slot = Rc::clone(&startup_error);
     gpui_platform::application().run(move |cx: &mut App| {
         crate::signals::quit_on_termination(cx);
-        if let Err(error) = relay_ui::open_main_window(cx) {
+        if let Err(error) = relay_ui::open_main_window(None, cx) {
             error_slot.replace(Some(error));
             cx.quit();
         }
