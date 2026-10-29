@@ -8,6 +8,7 @@
 mod tests;
 
 use std::str::FromStr as _;
+use std::time::Duration;
 
 use gpui_mcp_protocol::{
     BridgeResult, InputCommand, MouseButton, Operation, Point, PointerCommand, PointerScrollDelta,
@@ -17,7 +18,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use thiserror::Error;
 
-use crate::bridge::{BridgeSession, CallError, SessionError, TargetId};
+use crate::bridge::{BridgeClient, BridgeSession, CallError, SessionError, TargetId};
 
 /// The session one MCP server drives: the bridge target choice lives here.
 #[derive(Debug)]
@@ -336,6 +337,7 @@ pub async fn click(state: &mut ServerState, args: ClickArgs) -> Result<String, T
             )?;
         }
     }
+    settle(&client).await?;
     Ok(ack("clicked"))
 }
 
@@ -354,6 +356,7 @@ pub async fn type_text(state: &mut ServerState, args: TextArgs) -> Result<String
             .await?,
         "ack",
     )?;
+    settle(&client).await?;
     Ok(ack("typed"))
 }
 
@@ -374,6 +377,7 @@ pub async fn key(state: &mut ServerState, args: KeyArgs) -> Result<String, ToolE
             .await?,
         "ack",
     )?;
+    settle(&client).await?;
     Ok(ack("key"))
 }
 
@@ -388,6 +392,7 @@ pub async fn focus(state: &mut ServerState, args: IdArgs) -> Result<String, Tool
         client.call(Operation::Focus { node_id: args.id }).await?,
         "ack",
     )?;
+    settle(&client).await?;
     Ok(ack("focused"))
 }
 
@@ -426,7 +431,49 @@ pub async fn scroll(state: &mut ServerState, args: ScrollArgs) -> Result<String,
             .await?,
         "ack",
     )?;
+    settle(&client).await?;
     Ok(ack("scrolled"))
+}
+
+/// How long an input may take to reach a completed frame before the tool stops waiting.
+const SETTLE_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// How many frames the UI may draw before an input counts as settled.
+const MAX_SETTLE_FRAMES: usize = 8;
+
+/// Wait until the app has drawn the frames an input queued, as upstream's server does:
+/// without it a tool answers before the app has processed the click or the keystroke, so
+/// the next read still sees the state from before the input.
+async fn settle(client: &BridgeClient) -> Result<(), ToolError> {
+    for _ in 0..MAX_SETTLE_FRAMES {
+        let pending = match client.call(Operation::GetPendingFrame).await? {
+            BridgeResult::PendingFrame(pending) => pending,
+            _ => {
+                return Err(ToolError::UnexpectedResult(
+                    "another result for the pending frame",
+                ));
+            }
+        };
+        if !pending.pending {
+            return Ok(());
+        }
+        let timeout_ms = u64::try_from(SETTLE_TIMEOUT.as_millis()).unwrap_or(0);
+        match client
+            .call(Operation::WaitForFrame {
+                after_frame_count: pending.completed.frame_count,
+                timeout_ms,
+            })
+            .await?
+        {
+            BridgeResult::FrameStats(_) => {}
+            _ => {
+                return Err(ToolError::UnexpectedResult(
+                    "another result for the frame wait",
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// The JSON text of a successful input action.

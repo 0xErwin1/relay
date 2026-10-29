@@ -10,8 +10,8 @@ use std::str::FromStr as _;
 use std::sync::{Arc, Mutex};
 
 use gpui_mcp_protocol::{
-    AppId, BridgeResult, Capabilities, EndpointDescriptor, InstanceId, LocalEndpoint, Operation,
-    PROTOCOL_VERSION, ProcessId, WireRequest, WireResponse,
+    AppId, BridgeResult, Capabilities, EndpointDescriptor, FrameStats, InstanceId, LocalEndpoint,
+    Operation, PROTOCOL_VERSION, PendingFrame, ProcessId, WireRequest, WireResponse,
 };
 use interprocess::local_socket::{
     GenericFilePath, ListenerOptions, ToFsName as _, tokio::prelude::*,
@@ -53,6 +53,17 @@ pub(crate) fn recording(log: OperationLog, responder: Responder) -> Behavior {
             .push(request.operation.clone());
         responder(request)
     }))
+}
+
+/// A bridge with no frame pending: the settle step that follows an input ends at once.
+pub(crate) fn settled_frame(request: &WireRequest) -> WireResponse {
+    result(
+        request,
+        BridgeResult::PendingFrame(PendingFrame {
+            pending: false,
+            completed: FrameStats::default(),
+        }),
+    )
 }
 
 /// A successful bridge response carrying `result`.

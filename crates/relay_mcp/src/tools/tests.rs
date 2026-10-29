@@ -20,7 +20,9 @@ use super::{
     WaitArgs, click, element, element_bounds, find, focus, key, list_targets, ping, scroll,
     select_target, tree, type_text, wait_for_element,
 };
-use crate::bridge::fake::{Behavior, FakeBridge, OperationLog, failure, pong, recording, result};
+use crate::bridge::fake::{
+    Behavior, FakeBridge, OperationLog, failure, pong, recording, result, settled_frame,
+};
 
 /// One canned node with defaults for everything not given.
 fn node(id: &str, parent: Option<&str>, role: Role, label: Option<&str>) -> UiNode {
@@ -142,6 +144,7 @@ fn tree_bridge(log: OperationLog, tree: UiTree) -> FakeBridge {
             Arc::new(move |request| match &request.operation {
                 Operation::GetTree => result(request, BridgeResult::Tree(tree.clone())),
                 Operation::Ping => pong(request),
+                Operation::GetPendingFrame => settled_frame(request),
                 _ => result(request, BridgeResult::Ack),
             }),
         ),
@@ -558,6 +561,7 @@ async fn ui_click_sends_pointer_input_at_the_center() {
                     click_count: 2,
                 },
             },
+            Operation::GetPendingFrame,
         ],
         "a double click is one press and release per click count",
     );
@@ -624,11 +628,14 @@ async fn ui_type_reaches_the_bridge() {
     assert_eq!(value["action"], serde_json::json!("typed"));
     assert_eq!(
         *log.lock().unwrap(),
-        vec![Operation::Input {
-            command: InputCommand::TypeText {
-                text: "hello".to_owned()
+        vec![
+            Operation::Input {
+                command: InputCommand::TypeText {
+                    text: "hello".to_owned()
+                },
             },
-        }]
+            Operation::GetPendingFrame,
+        ]
     );
 }
 
@@ -644,6 +651,7 @@ async fn ui_type_into_a_redacted_element_surfaces_the_bridge_refusal() {
                 Operation::Input {
                     command: InputCommand::TypeText { .. },
                 } => failure(request, "cannot type into a redacted element"),
+                Operation::GetPendingFrame => settled_frame(request),
                 _ => result(request, BridgeResult::Ack),
             }),
         ),
@@ -680,11 +688,14 @@ async fn ui_key_reaches_the_bridge() {
     );
     assert_eq!(
         *log.lock().unwrap(),
-        vec![Operation::Input {
-            command: InputCommand::Key {
-                keystroke: "ctrl-a".to_owned()
+        vec![
+            Operation::Input {
+                command: InputCommand::Key {
+                    keystroke: "ctrl-a".to_owned()
+                },
             },
-        }]
+            Operation::GetPendingFrame,
+        ]
     );
 }
 
@@ -704,9 +715,12 @@ async fn ui_focus_reaches_the_bridge() {
     assert_eq!(value["action"], serde_json::json!("focused"));
     assert_eq!(
         *log.lock().unwrap(),
-        vec![Operation::Focus {
-            node_id: "url-field".to_owned(),
-        }]
+        vec![
+            Operation::Focus {
+                node_id: "url-field".to_owned(),
+            },
+            Operation::GetPendingFrame,
+        ]
     );
 }
 
@@ -740,6 +754,7 @@ async fn ui_scroll_reaches_the_bridge() {
                     },
                 },
             },
+            Operation::GetPendingFrame,
         ]
     );
 }
