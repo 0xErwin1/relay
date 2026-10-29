@@ -41,7 +41,11 @@ fn option(
 ) -> impl IntoElement {
     let colors = bolt::colors(cx);
     let tint = bolt::brand(cx).accent_tint;
-    let id = format!("environment-option-{}", slug.as_deref().unwrap_or("none"));
+    // `environment-none` cannot collide with an environment, whose slug may well be `none`.
+    let id = slug.as_deref().map_or_else(
+        || "environment-none".to_owned(),
+        |slug| format!("environment-option-{slug}"),
+    );
     text_role::role(labeled_row(id, name.clone()), text::BODY, cx)
         .role(Role::MenuItem)
         .aria_selected(selected)

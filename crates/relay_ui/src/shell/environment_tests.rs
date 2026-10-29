@@ -43,8 +43,11 @@ fn environment_workspace() -> TempDir {
 }
 
 fn render(cx: &mut TestAppContext) -> (Entity<Shell>, &mut VisualTestContext) {
+    render_dir(cx, environment_workspace())
+}
+
+fn render_dir(cx: &mut TestAppContext, dir: TempDir) -> (Entity<Shell>, &mut VisualTestContext) {
     cx.update(super::bind_keys);
-    let dir = environment_workspace();
     let workspace = OpenedWorkspace::open(Some(dir.path().to_path_buf()));
     drop(dir);
     let (shell, cx) = cx.add_window_view(|_, cx| Shell::new(workspace, cx));
@@ -107,10 +110,14 @@ fn clicking_the_button_lists_none_then_environments_by_name(cx: &mut TestAppCont
         menu.top() >= button.bottom(),
         "the menu opens under the button"
     );
-    let tops: Vec<_> = ["none", "dev", "prod"]
-        .iter()
-        .map(|slug| present(cx, &format!("environment-option-{slug}")).top())
-        .collect();
+    let tops: Vec<_> = [
+        "environment-none",
+        "environment-option-dev",
+        "environment-option-prod",
+    ]
+    .iter()
+    .map(|id| present(cx, id).top())
+    .collect();
     assert!(tops.windows(2).all(|pair| pair[0] < pair[1]), "{tops:?}");
 }
 
@@ -139,8 +146,26 @@ fn choosing_an_environment_closes_the_menu_and_resolves_requests(cx: &mut TestAp
     assert_eq!(active(cx, &shell).as_deref(), Some("dev"));
 
     click(cx, "environment-selector");
-    click(cx, "environment-option-none");
+    click(cx, "environment-none");
     assert!(bounds(cx, "environment-menu").is_none());
     assert_eq!(active(cx, &shell), None);
     assert_eq!(unresolved(cx, &shell), Some(1));
+}
+
+#[gpui::test]
+fn an_environment_named_none_keeps_its_own_row(cx: &mut TestAppContext) {
+    let dir = environment_workspace();
+    write(
+        dir.path(),
+        "environments/none.env.toml",
+        "id = \"01J00000000000000000000025\"\nname = \"zz\"\n",
+    );
+    let (shell, cx) = render_dir(cx, dir);
+    click(cx, "environment-selector");
+    let no_environment = present(cx, "environment-none");
+    let named_none = present(cx, "environment-option-none");
+    assert!(no_environment.origin.y < named_none.origin.y);
+
+    click(cx, "environment-option-none");
+    assert_eq!(active(cx, &shell).as_deref(), Some("none"));
 }
