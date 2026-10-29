@@ -150,11 +150,13 @@ fn headers_is_the_default_and_clicking_selects(cx: &mut TestAppContext) {
     click(cx, &format!("tree-row-{INVOICE}"));
     assert_eq!(selected_tab(cx, &shell, INVOICE), Some(SubTab::Headers));
     let counts = cx.update(|_, cx| {
-        shell
-            .read(cx)
-            .requests
-            .get(INVOICE)
-            .map(|state| (state.count(SubTab::Params), state.count(SubTab::Headers)))
+        shell.read(cx).requests.get(INVOICE).map(|state| {
+            let request = &state.inspection.request.request;
+            (
+                super::request::count(request, SubTab::Params),
+                super::request::count(request, SubTab::Headers),
+            )
+        })
     });
     assert_eq!(counts, Some((Some(1), Some(4))));
 

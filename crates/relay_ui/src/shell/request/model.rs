@@ -1,6 +1,7 @@
 //! The request view without GPUI: the sub-tabs, their row counts and the unresolved notice.
 
 use relay_core::model::KeyValue;
+use relay_core::model::Request;
 use relay_engine::Inspection;
 
 /// A sub-tab of the request view, in bar order.
@@ -57,15 +58,15 @@ impl RequestState {
             tab: SubTab::Headers,
         }
     }
+}
 
-    /// The number of enabled rows `tab` shows next to its label: Params and Headers only.
-    pub(crate) fn count(&self, tab: SubTab) -> Option<usize> {
-        let request = &self.inspection.request.request;
-        match tab {
-            SubTab::Params => Some(enabled_count(&request.params)),
-            SubTab::Headers => Some(enabled_count(&request.headers)),
-            SubTab::Body | SubTab::Auth | SubTab::Scripts | SubTab::Settings => None,
-        }
+/// The number of enabled rows `tab` shows next to its label, counted on `request` — the
+/// draft's when there is one, so a toggle moves the number. Params and Headers only.
+pub(crate) fn count(request: &Request, tab: SubTab) -> Option<usize> {
+    match tab {
+        SubTab::Params => Some(enabled_count(&request.params)),
+        SubTab::Headers => Some(enabled_count(&request.headers)),
+        SubTab::Body | SubTab::Auth | SubTab::Scripts | SubTab::Settings => None,
     }
 }
 

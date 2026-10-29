@@ -14,12 +14,16 @@ mod scripts;
 mod send;
 mod settings;
 mod spans;
-mod sub_tabs;
+pub(super) mod sub_tabs;
 
 pub(crate) use line::accent_keycap;
+#[cfg(test)]
+pub(crate) use model::count;
 pub(crate) use model::{RequestState, SubTab};
 pub(crate) use send::{Completed, Failure, Received, SendState, StatusClass};
 pub(crate) use send::{elapsed_text, size_text};
+#[cfg(test)]
+pub(crate) use sub_tabs::shown_rows;
 
 use bolt::tokens::space;
 use gpui::{Context, Div, ParentElement, Stateful, StatefulInteractiveElement, Styled};
@@ -37,7 +41,7 @@ pub(super) fn render(
 ) -> [Stateful<Div>; 3] {
     [
         line::render(id, state, sending, shell, cx),
-        sub_tabs::render(id, state, cx),
+        sub_tabs::render(id, state, shell, cx),
         pane(id, state, shell, cx),
     ]
 }

@@ -9,13 +9,18 @@ use gpui::{
     Context, Div, FontWeight, Hsla, ParentElement, Role, Stateful, Styled, div, prelude::*,
 };
 
-use super::model::{RequestState, SubTab, unresolved_text};
+use super::model::{RequestState, SubTab, count, unresolved_text};
 use crate::shell::rows::part;
 use crate::shell::{Shell, region, text as text_role};
 use crate::tokens;
 
 /// The bar, element id `request-tabs`, for the request `id`.
-pub(super) fn render(id: &str, state: &RequestState, cx: &mut Context<Shell>) -> Stateful<Div> {
+pub(super) fn render(
+    id: &str,
+    state: &RequestState,
+    shell: &Shell,
+    cx: &mut Context<Shell>,
+) -> Stateful<Div> {
     let colors = bolt::colors(cx);
     let notice = match &state.inspection.problem {
         Some(problem) => Some(notice("request-problem", problem.clone(), colors.danger)),
@@ -32,9 +37,24 @@ pub(super) fn render(id: &str, state: &RequestState, cx: &mut Context<Shell>) ->
         .pr(space::MD)
         .border_t(border::THIN)
         .border_color(colors.line)
-        .children(SubTab::ALL.map(|tab| sub_tab(id, state, tab, cx)))
+        .children(
+            SubTab::ALL.map(|tab| sub_tab(id, state, shown_rows(id, state, shell, tab), tab, cx)),
+        )
         .child(div().flex_1())
         .children(notice)
+}
+
+/// The number of enabled rows `tab` shows next to its label: counted on the draft's rows
+/// when the request has one, so toggling a row moves the number, and on the file's
+/// otherwise.
+pub(crate) fn shown_rows(
+    id: &str,
+    state: &RequestState,
+    shell: &Shell,
+    tab: SubTab,
+) -> Option<usize> {
+    let request = shell.displayed_request(id, &state.inspection.request.request);
+    count(request, tab)
 }
 
 /// A notice at the right of the bar, element id `id`, in `color`.
@@ -69,7 +89,13 @@ fn icon_of(tab: SubTab) -> IconName {
 }
 
 /// The sub-tab `tab`, element id `request-tab-<name>`, selected when it is the state's tab.
-fn sub_tab(id: &str, state: &RequestState, tab: SubTab, cx: &mut Context<Shell>) -> Stateful<Div> {
+fn sub_tab(
+    id: &str,
+    state: &RequestState,
+    rows: Option<usize>,
+    tab: SubTab,
+    cx: &mut Context<Shell>,
+) -> Stateful<Div> {
     let colors = bolt::colors(cx);
     let selected = state.tab == tab;
     let (label_color, weight, icon_color) = if selected {
@@ -106,12 +132,16 @@ fn sub_tab(id: &str, state: &RequestState, tab: SubTab, cx: &mut Context<Shell>)
                 .font_weight(weight)
                 .child(tab.label()),
         )
-        .children(state.count(tab).map(|count| {
-            div()
-                .font_family(family::MONO)
-                .text_size(tokens::SMALL_MONO_TEXT)
-                .text_color(colors.muted)
-                .child(count.to_string())
+        .children(rows.map(|rows| {
+            text_role::role(
+                part(format!("request-tab-{}-count", tab.label().to_lowercase())),
+                text::LABEL,
+                cx,
+            )
+            .font_family(family::MONO)
+            .text_size(tokens::SMALL_MONO_TEXT)
+            .text_color(colors.muted)
+            .child(rows.to_string())
         }))
         .on_click(cx.listener(move |this, _event, _window, cx| {
             this.select_sub_tab(&request, tab, cx);

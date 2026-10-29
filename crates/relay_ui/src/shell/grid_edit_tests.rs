@@ -211,3 +211,30 @@ fn the_body_grid_has_no_enable_boxes(cx: &mut TestAppContext) {
 fn draftless_body_has_no_rows(cx: &mut VisualTestContext) -> bool {
     bounds(cx, "request-body-empty").is_some()
 }
+
+#[gpui::test]
+fn the_sub_tab_count_follows_the_draft(cx: &mut TestAppContext) {
+    let dir = grid_workspace();
+    let (_state_dir, state_path) = state_file();
+    let (shell, cx) = render(cx, &dir, &state_path);
+    click(cx, &format!("tree-row-{GRID}"));
+    let shown = |cx: &mut VisualTestContext| {
+        cx.update(|_, cx| {
+            let shell = shell.read(cx);
+            let state = shell.requests.get(GRID)?;
+            super::request::shown_rows(GRID, state, shell, super::request::SubTab::Headers)
+        })
+    };
+    assert_eq!(shown(cx), Some(2), "both headers are enabled in the file");
+    assert!(
+        bounds(cx, "request-tab-headers-count").is_some(),
+        "the count is addressable"
+    );
+
+    click(cx, "request-headers-enabled-2");
+    assert_eq!(
+        shown(cx),
+        Some(1),
+        "the number the sub-tab shows reads the draft"
+    );
+}
