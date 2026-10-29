@@ -17,7 +17,15 @@ workspace = true
 
 [dependencies]
 anyhow.workspace = true
+clap.workspace = true
+relay_engine.workspace = true
 env_logger.workspace = true
 gpui.workspace = true
 gpui-platform.workspace = true
 relay_ui.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+tempfile.workspace = true
+tokio.workspace = true
+wiremock.workspace = true

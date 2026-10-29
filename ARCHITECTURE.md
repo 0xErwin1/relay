@@ -294,6 +294,10 @@ measurably demand it, and then by one-way layers.
 - Timings (DNS, connect, TLS, first byte, download) come from a custom resolver and a connector
   layer. If that proves insufficient, `relay_http` drops to `hyper-util` directly; the crate
   boundary keeps that change local.
+- Known limits of the reqwest-based transport: repeated headers with the same name are grouped
+  at the position of the first one (the order among their values is kept), and the reason
+  phrase is the standard one for the status code rather than the server's own text. Both are
+  local to `relay_http`; dropping to `hyper` fixes them if they ever matter.
 - Responses keep the raw bytes. Pretty-printing, JSON paths and previews are views over them.
 - `relay_engine` owns a Tokio runtime. GPUI tasks await Tokio `JoinHandle`s, which are
   executor-agnostic futures, so no GPUI code runs on Tokio and no HTTP code runs on GPUI's

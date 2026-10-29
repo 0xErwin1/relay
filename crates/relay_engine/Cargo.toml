@@ -12,8 +12,19 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+base64.workspace = true
 relay_core.workspace = true
 relay_http.workspace = true
 relay_postman.workspace = true
 relay_script.workspace = true
 relay_store.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+tempfile.workspace = true
+wiremock.workspace = true

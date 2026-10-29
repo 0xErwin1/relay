@@ -35,6 +35,14 @@ relay_store = { path = "crates/relay_store" }
 relay_ui = { path = "crates/relay_ui" }
 
 anyhow = "1.0.104"
+base64 = "0.23.1"
+clap = { version = "4.6.7", features = ["derive"] }
+reqwest = { version = "0.13.5", features = ["gzip", "brotli", "deflate", "zstd", "form", "multipart", "stream"] }
+serde_json = "1.0.154"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "time", "fs", "sync"] }
+tokio-util = { version = "0.7.20", features = ["io"] }
+url = "2.5.8"
+wiremock = "0.6.5"
 env_logger = "0.11.11"
 log = "0.4.34"
 pretty_assertions = "1.4.1"
