@@ -1,6 +1,9 @@
 //! The main window shell: title bar and status bar on the desk, the sidebar and document
 //! islands between them.
 
+// Used by the sidebar view in the next change.
+#[allow(dead_code)]
+mod tree_model;
 mod document;
 mod sidebar;
 mod status_bar;

@@ -18,6 +18,7 @@ gpui.workspace = true
 gpui-component.workspace = true
 gpui-mcp.workspace = true
 log.workspace = true
+relay_core.workspace = true
 relay_engine.workspace = true
 
 [dev-dependencies]

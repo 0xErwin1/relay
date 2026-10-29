@@ -6177,6 +6177,7 @@ dependencies = [
  "gpui-mcp",
  "gpui-pre",
  "log",
+ "relay_core",
  "relay_engine",
  "tempfile",
 ]
