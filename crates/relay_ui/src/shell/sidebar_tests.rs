@@ -11,19 +11,19 @@ use super::status_bar::warnings_label;
 use crate::workspace::OpenedWorkspace;
 use crate::workspace_tests::{demo_workspace, write};
 
-const API: &str = "01J00000000000000000000001";
-const USERS: &str = "01J00000000000000000000002";
-const LIST: &str = "01J00000000000000000000003";
-const HEALTH: &str = "01J00000000000000000000004";
-const AUTH: &str = "01J00000000000000000000005";
-const TOKEN: &str = "01J00000000000000000000006";
+pub(super) const API: &str = "01J00000000000000000000001";
+pub(super) const USERS: &str = "01J00000000000000000000002";
+pub(super) const LIST: &str = "01J00000000000000000000003";
+pub(super) const HEALTH: &str = "01J00000000000000000000004";
+pub(super) const AUTH: &str = "01J00000000000000000000005";
+pub(super) const TOKEN: &str = "01J00000000000000000000006";
 const DEV: &str = "01J00000000000000000000007";
 const PROD: &str = "01J00000000000000000000008";
 
 /// `Demo` with collection `API` (folder `users` holding `GET List users`, then
 /// `GET Health`), collection `Auth` (`POST Token`), environments `dev` and `prod`, and a
 /// directory without `folder.toml`, which loads with one warning.
-fn sidebar_workspace() -> TempDir {
+pub(super) fn sidebar_workspace() -> TempDir {
     let dir = demo_workspace();
     let root = dir.path();
     let request = |id: &str, name: &str, method: &str| {

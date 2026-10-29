@@ -92,6 +92,12 @@ pub(crate) const ENVIRONMENT_DIAMOND: Pixels = px(7.0);
 /// The height of the document path bar under the tab row.
 pub(crate) const PATH_BAR: Pixels = px(28.0);
 
+/// The horizontal padding of the document path bar.
+pub(crate) const PATH_BAR_PADDING_X: Pixels = px(14.0);
+
+/// The side of the chevron between path bar segments.
+pub(crate) const PATH_SEPARATOR: Pixels = px(10.0);
+
 /// The size the main window opens at.
 pub(crate) const MAIN_WINDOW_SIZE: Size<Pixels> = size(px(1200.0), px(800.0));
 

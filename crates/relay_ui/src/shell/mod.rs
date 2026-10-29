@@ -1,15 +1,16 @@
 //! The main window shell: title bar, activity rail and status bar on the desk, the sidebar
 //! and document islands between them.
 
-// Wired into the shell by the tab row in the next change.
-#[allow(dead_code)]
-mod documents;
+mod action_strip;
 mod diamond;
 mod document;
+mod documents;
+mod path_bar;
 mod rail;
 mod rows;
 mod sidebar;
 mod status_bar;
+mod tabs;
 mod text;
 mod title_bar;
 mod tree_model;
@@ -19,23 +20,59 @@ pub(crate) use sidebar::bind_keys;
 use bolt::tokens::chrome;
 use gpui::{
     Context, Div, ElementId, Entity, IntoElement, ParentElement, Render, Role, Stateful, Styled,
-    Window, div, prelude::*,
+    Subscription, Window, div, prelude::*,
 };
 
-use self::sidebar::Sidebar;
+use self::documents::Documents;
+use self::sidebar::{OpenRequest, Sidebar};
+use self::tree_model::Node;
 
 use crate::workspace::OpenedWorkspace;
 
 /// The root view of the main window.
+///
+/// It owns the open documents: the sidebar reports opened requests through
+/// [`OpenRequest`] events, and the document island renders and changes [`Documents`].
 pub(crate) struct Shell {
     workspace: OpenedWorkspace,
     sidebar: Entity<Sidebar>,
+    /// The collection trees of the loaded workspace, which tabs and the path bar read names
+    /// and locations from; empty without one.
+    roots: Vec<Node>,
+    documents: Documents,
+    _open_requests: Subscription,
 }
 
 impl Shell {
     pub(crate) fn new(workspace: OpenedWorkspace, cx: &mut Context<Self>) -> Self {
         let sidebar = cx.new(|cx| Sidebar::new(&workspace, cx));
-        Self { workspace, sidebar }
+        let roots = match &workspace {
+            OpenedWorkspace::Loaded(engine) => tree_model::nodes(engine.workspace()),
+            OpenedWorkspace::None | OpenedWorkspace::Failed { .. } => Vec::new(),
+        };
+        let open_requests = cx.subscribe(&sidebar, |this, _, OpenRequest(id), cx| {
+            this.documents.open(id);
+            cx.notify();
+        });
+        Self {
+            workspace,
+            sidebar,
+            roots,
+            documents: Documents::default(),
+            _open_requests: open_requests,
+        }
+    }
+
+    /// Activates the tab of the request `id`.
+    fn activate_document(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.documents.activate(id);
+        cx.notify();
+    }
+
+    /// Closes the tab of the request `id`.
+    fn close_document(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.documents.close(id);
+        cx.notify();
     }
 }
 
@@ -59,7 +96,7 @@ impl Render for Shell {
                     .pr(chrome::ISLAND_GAP)
                     .child(rail::render())
                     .child(self.sidebar.clone())
-                    .child(document::render(&self.workspace, cx)),
+                    .child(document::render(self, cx)),
             )
             .child(status_bar::render(&self.workspace, cx))
     }
@@ -77,6 +114,8 @@ fn text_region(id: &'static str) -> Stateful<Div> {
     region(id).role(Role::Label)
 }
 
+#[cfg(test)]
+mod document_tests;
 #[cfg(test)]
 mod sidebar_tests;
 #[cfg(test)]

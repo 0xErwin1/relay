@@ -151,6 +151,17 @@ impl TreeState {
         self.selected.as_deref()
     }
 
+    /// Whether `id` is a request anywhere in the tree, shown or not.
+    pub(crate) fn is_request(&self, id: &str) -> bool {
+        fn find(nodes: &[Node], id: &str) -> bool {
+            nodes.iter().any(|node| match node.kind {
+                NodeKind::Request { .. } => node.id == id,
+                NodeKind::Collection | NodeKind::Folder => find(&node.children, id),
+            })
+        }
+        find(&self.roots, id)
+    }
+
     /// Selects the node `id`.
     pub(crate) fn select(&mut self, id: &str) {
         self.selected = Some(id.to_owned());

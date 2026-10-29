@@ -14,7 +14,7 @@ use super::tree_model::{NodeKind, VisibleRow};
 use crate::tokens::{self, method_color};
 
 /// A row element the UI automation tree reports by `id`, with `label` as its text.
-fn labeled_row(id: String, label: String) -> Stateful<Div> {
+pub(super) fn labeled_row(id: String, label: String) -> Stateful<Div> {
     let selector = id.clone();
     div()
         .id(ElementId::Name(id.into()))
@@ -24,7 +24,7 @@ fn labeled_row(id: String, label: String) -> Stateful<Div> {
 }
 
 /// A part of a row that tests find by `id`.
-fn part(id: String) -> Stateful<Div> {
+pub(super) fn part(id: String) -> Stateful<Div> {
     let selector = id.clone();
     div()
         .id(ElementId::Name(id.into()))

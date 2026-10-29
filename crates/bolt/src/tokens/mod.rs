@@ -9,6 +9,6 @@ mod metrics;
 mod typography;
 
 pub use colors::{Colors, accent_wash, hex, hex_alpha};
-pub use controls::{field, icon_button, keycap, rail, status_chip};
+pub use controls::{action_strip, doc_tab, field, icon_button, keycap, rail, status_chip};
 pub use metrics::{border, chrome, cut, icon, motion, space};
 pub use typography::{BASE_SIZE, TextRole, TextTone, family, text};
