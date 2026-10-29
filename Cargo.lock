@@ -812,6 +812,7 @@ name = "bolt"
 version = "0.1.0-dev.0"
 dependencies = [
  "gpui-component",
+ "gpui-kit-assets",
  "gpui-pre",
  "log",
 ]

@@ -88,17 +88,27 @@ pub mod chrome {
     pub const SIDEBAR_WIDTH: Pixels = px(290.0);
 }
 
-/// Motion timing.
 /// Icon metrics.
 pub mod icon {
     use gpui::{Pixels, px};
 
     /// Small icons: tree disclosure chevrons, inline indicators.
     pub const SM: Pixels = px(12.0);
+    /// Status chip icons.
+    pub const CHIP: Pixels = px(13.0);
+    /// Default icons: icon buttons, field icons.
+    pub const MD: Pixels = px(14.0);
+    /// Tree item icons.
+    pub const ITEM: Pixels = px(15.0);
+    /// Emphasized title bar icons.
+    pub const LG: Pixels = px(16.0);
+    /// Activity rail icons.
+    pub const RAIL: Pixels = px(19.0);
     /// Stroke width of line icons.
     pub const STROKE: Pixels = px(1.5);
 }
 
+/// Motion timing.
 pub mod motion {
     use std::time::Duration;
 
@@ -172,5 +182,21 @@ mod tests {
         assert_eq!(chrome::ISLAND_GAP, px(8.0));
         assert_eq!(chrome::SIDEBAR_WIDTH, px(290.0));
         assert_eq!(motion::FAST.as_millis(), 150);
+    }
+
+    #[test]
+    fn icon_sizes_match_the_design_system() {
+        let sizes = [
+            icon::SM,
+            icon::CHIP,
+            icon::MD,
+            icon::ITEM,
+            icon::LG,
+            icon::RAIL,
+        ];
+        assert_eq!(
+            sizes,
+            [px(12.0), px(13.0), px(14.0), px(15.0), px(16.0), px(19.0)]
+        );
     }
 }

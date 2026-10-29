@@ -15,6 +15,7 @@ mod brand;
 pub mod chamfer;
 mod chevron;
 pub mod fonts;
+mod icon;
 mod island;
 mod theme;
 pub mod tokens;
@@ -24,5 +25,6 @@ mod test_support;
 
 pub use brand::{AccentWashes, Brand};
 pub use chevron::{Chevron, ChevronDirection, chevron_points};
+pub use icon::{Icon, IconName, assets};
 pub use island::Island;
 pub use theme::{accent_washes, brand, colors, install};
