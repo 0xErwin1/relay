@@ -1,6 +1,9 @@
 //! The main window shell: title bar, activity rail and status bar on the desk, the sidebar
 //! and document islands between them.
 
+// Wired into the shell by the tab row in the next change.
+#[allow(dead_code)]
+mod documents;
 mod diamond;
 mod document;
 mod rail;
