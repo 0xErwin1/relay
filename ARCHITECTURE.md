@@ -126,10 +126,118 @@ Rules that keep files mergeable:
 - **Format version.** `relay.toml` carries `format = 1`. A newer format refuses to load with a
   clear message rather than guessing.
 
+- **Reserved request slugs.** A request cannot be named `collection` or `folder` on disk: its
+  sidecars would be `collection.pre.js` or `folder.pre.js`, the parent's own scripts. Saving
+  one fails; loading one skips it with a warning.
+- **Stability scope.** Files Relay wrote reload and save to the same bytes. A file written by
+  hand may be normalized once on its first save (string quoting, inline tables, unknown
+  top-level keys moved under `[extensions]`); key order inside `[extensions]` and unmodeled
+  auth types is preserved.
+
 Writes are atomic (temporary file plus rename) and carry the content hash the writer last
 read. A mismatch means someone else changed the file (another window, `relay mcp`, a `git
-pull`) and the write fails with a conflict instead of overwriting. The GUI watches the
-workspace directory and reloads changed files.
+pull`) and the write fails with a conflict instead of overwriting. The check and the rename
+are not locked together, so a write landing between them is lost; the window is one rename.
+The GUI watches the workspace directory and reloads changed files.
+
+### File schemas
+
+Keys appear in the order shown. Defaults are never written: `enabled = true`,
+`secret = false`, empty lists, `auth` of type `inherit`, and absent settings. Keys Relay does
+not model are kept under `[extensions]` and written back. `relay_store`'s round-trip test
+(`crates/relay_store/tests/round_trip.rs`) holds a fixture with every shape below.
+
+`relay.toml`
+
+```toml
+id = "01JB7X3K9Q0000000000000001"
+name = "Billing"
+format = 1
+
+[[globals]]
+key = "host"
+value = "api.test"
+
+[[globals]]
+key = "api_key"
+secret = true            # a secret never has a value in the file
+```
+
+`environments/<slug>.env.toml`
+
+```toml
+id = "01JB7X3K9Q0000000000000002"
+name = "Staging"
+
+[[variables]]
+key = "base_url"
+value = "https://api.staging.test"
+description = "staging gateway"
+
+[[variables]]
+key = "tenant_id"
+value = "t_42"
+enabled = false
+```
+
+`collections/<slug>/collection.toml` and `<folder>/folder.toml` (a folder has no
+`environments` and no `variables`)
+
+```toml
+id = "01JB7X3K9Q0000000000000003"
+name = "Billing API"
+environments = ["01JB7X3K9Q0000000000000002"]   # allowlist; absent means all
+order = ["invoices", "health"]
+
+[auth]
+type = "bearer"
+token = "{{access_token}}"
+
+[[variables]]
+key = "version"
+value = "v1"
+```
+
+`<slug>.req.toml`
+
+```toml
+id = "01JB7X3K9Q0000000000000004"
+name = "Create invoice"
+method = "POST"                     # any verb, stored uppercase
+url = "{{base_url}}/v1/invoices"     # never holds the query string
+
+[[params]]                           # the query string, in order
+key = "expand"
+value = "lines"
+
+[[headers]]
+key = "Idempotency-Key"
+value = "{{$guid}}"
+
+[auth]
+type = "apikey"
+key = "X-Api-Key"
+value = "{{api_key}}"
+location = "header"                  # or "query"
+
+[body]
+mode = "raw"
+language = "json"
+text = '{"currency": "usd"}'
+
+[settings]
+timeout_ms = 5000
+follow_redirects = false
+verify_tls = true
+```
+
+The other shapes:
+
+| Table | Variants |
+|-------|----------|
+| `[auth]` | `type = "inherit"` (default, not written), `"none"`, `"basic"` (`username`, `password`), `"bearer"` (`token`), `"apikey"` (`key`, `value`, `location`), or any other type name with its fields kept as they are |
+| `[body]` | `mode = "none"`, `"raw"` (`language`: `json`, `xml`, `text`, `html`, `javascript`; `text`), `"urlencoded"` (`[[body.fields]]` key and value rows), `"formdata"` (`[[body.parts]]` with `kind = "text"` and `value`, or `kind = "file"` and `path`), `"binary"` (`path`), `"graphql"` (`query`, `variables`) |
+| key and value rows | `key`, `value`, optional `description`, `enabled = false` when disabled |
 
 ## Drafts and saving
 
