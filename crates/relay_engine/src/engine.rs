@@ -11,7 +11,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::{ExecuteError, OpenError};
-use crate::prepare::{ExecuteOptions, Prepared, prepare};
+use crate::prepare::{ExecuteOptions, Inspection, Prepared, inspect, prepare};
 
 /// A loaded workspace that executes its requests. See the crate docs for the threading
 /// model.
@@ -108,6 +108,15 @@ impl Engine {
             options,
             &mut SystemDynamicSource,
         )
+    }
+
+    /// Inspects the request `selector` with no environment. See [`inspect`].
+    ///
+    /// # Errors
+    ///
+    /// The errors of [`inspect`].
+    pub fn inspect(&self, selector: &str) -> Result<Inspection, ExecuteError> {
+        inspect(self.workspace(), &self.root, selector)
     }
 
     /// Spawns a task on the engine runtime that sends `prepared`.

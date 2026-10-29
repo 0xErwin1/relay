@@ -5,7 +5,7 @@
 
 /// A run of the source text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Segment<'a> {
+pub enum Segment<'a> {
     /// Text copied as is.
     Literal(&'a str),
     /// A reference: `raw` is the whole `{{...}}`, `name` the trimmed name.
@@ -13,13 +13,13 @@ pub(super) enum Segment<'a> {
 }
 
 /// Iterates over the segments of `text`; concatenating them yields `text`.
-pub(super) fn segments(text: &str) -> Segments<'_> {
+pub fn segments(text: &str) -> Segments<'_> {
     Segments { rest: text }
 }
 
 /// Iterator returned by [`segments`].
 #[derive(Debug, Clone)]
-pub(super) struct Segments<'a> {
+pub struct Segments<'a> {
     rest: &'a str,
 }
 

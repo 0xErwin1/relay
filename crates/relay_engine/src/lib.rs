@@ -29,6 +29,8 @@ mod select;
 
 pub use engine::{Engine, Executed, Execution};
 pub use error::{ExecuteError, OpenError};
-pub use prepare::{DEFAULT_TIMEOUT_MS, ExecuteOptions, Prepared, prepare};
+pub use prepare::{
+    DEFAULT_TIMEOUT_MS, ExecuteOptions, Inspection, Prepared, Span, inspect, prepare,
+};
 /// The transport types front ends read, re-exported so they depend on the engine only.
 pub use relay_http::{HttpError, PreparedBody, PreparedRequest, Response};

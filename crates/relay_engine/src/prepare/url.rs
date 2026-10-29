@@ -2,15 +2,25 @@
 
 /// Appends `query` to `base`, percent-encoded, after `&` when `base` already has a `?`.
 pub(super) fn with_query(base: String, query: &[(String, String)]) -> String {
+    let encoded: Vec<(String, String)> = query
+        .iter()
+        .map(|(key, value)| (encode(key), encode(value)))
+        .collect();
+    append(base, &encoded)
+}
+
+/// Appends `query` to `base` as written, without encoding, after the same separator as
+/// [`with_query`]; front ends show requests this way.
+pub(super) fn append(base: String, query: &[(String, String)]) -> String {
     if query.is_empty() {
         return base;
     }
-    let encoded: Vec<String> = query
+    let pairs: Vec<String> = query
         .iter()
-        .map(|(key, value)| format!("{}={}", encode(key), encode(value)))
+        .map(|(key, value)| format!("{key}={value}"))
         .collect();
     let separator = if base.contains('?') { '&' } else { '?' };
-    format!("{base}{separator}{}", encoded.join("&"))
+    format!("{base}{separator}{}", pairs.join("&"))
 }
 
 /// Percent-encodes every byte except the RFC 3986 unreserved characters.

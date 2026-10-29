@@ -2,6 +2,7 @@
 
 mod auth;
 mod body;
+mod inspect;
 mod resolver;
 mod url;
 
@@ -15,6 +16,8 @@ use relay_http::{PreparedRequest, RequestOptions};
 use crate::error::ExecuteError;
 use crate::select;
 use resolver::Resolver;
+
+pub use inspect::{Inspection, Span, inspect};
 
 /// The timeout used when a request does not set one, in milliseconds.
 pub const DEFAULT_TIMEOUT_MS: u64 = 30_000;
@@ -113,7 +116,7 @@ fn select_environment<'a>(
 }
 
 /// Globals < collection < environment < local `--var`s (S4).
-fn scopes(
+pub(super) fn scopes(
     workspace: &Workspace,
     collection: &CollectionNode,
     environment: Option<&EnvironmentNode>,
@@ -158,7 +161,7 @@ fn request_options(settings: Settings) -> RequestOptions {
 }
 
 /// The enabled rows of a key/value table.
-fn enabled(rows: &[KeyValue]) -> impl Iterator<Item = &KeyValue> {
+pub(super) fn enabled(rows: &[KeyValue]) -> impl Iterator<Item = &KeyValue> {
     rows.iter().filter(|row| row.enabled)
 }
 

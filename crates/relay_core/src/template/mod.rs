@@ -2,7 +2,8 @@
 //!
 //! [`resolve`] replaces every `{{name}}` reference in a text with the value of `name` from
 //! [`Scopes`], or with a fresh dynamic value such as `{{$guid}}` from a [`DynamicSource`].
-//! [`referenced_names`] lists the references without resolving them.
+//! [`referenced_names`] lists the references without resolving them, and [`segments`] splits a
+//! text into literal runs and references.
 
 mod dynamic;
 mod parser;
@@ -10,6 +11,7 @@ mod resolve;
 mod scope;
 
 pub use dynamic::{DynamicSource, DynamicVariable, SequentialDynamicSource, SystemDynamicSource};
+pub use parser::{Segment, Segments, segments};
 pub use resolve::{Resolved, referenced_names, resolve};
 pub use scope::{Scope, ScopeEntry, ScopeKind, Scopes};
 
