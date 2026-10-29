@@ -40,7 +40,8 @@ fn draft_workspace(port: u16) -> TempDir {
 }
 
 /// A temp file for the app state, held alive for the test.
-fn state_file() -> (TempDir, PathBuf) {
+/// A temp file for the app state, held alive for the test.
+pub(crate) fn state_file() -> (TempDir, PathBuf) {
     let dir = match TempDir::new() {
         Ok(dir) => dir,
         Err(error) => panic!("temp dir: {error}"),
@@ -49,7 +50,7 @@ fn state_file() -> (TempDir, PathBuf) {
     (dir, path)
 }
 
-fn render<'a>(
+pub(crate) fn render<'a>(
     cx: &'a mut TestAppContext,
     dir: &TempDir,
     state_path: &Path,
@@ -68,18 +69,21 @@ fn render<'a>(
     (shell, cx)
 }
 
-fn bounds(cx: &mut VisualTestContext, selector: &str) -> Option<gpui::Bounds<gpui::Pixels>> {
+pub(crate) fn bounds(
+    cx: &mut VisualTestContext,
+    selector: &str,
+) -> Option<gpui::Bounds<gpui::Pixels>> {
     cx.debug_bounds(Box::leak(selector.to_owned().into_boxed_str()))
 }
 
-fn present(cx: &mut VisualTestContext, selector: &str) -> gpui::Bounds<gpui::Pixels> {
+pub(crate) fn present(cx: &mut VisualTestContext, selector: &str) -> gpui::Bounds<gpui::Pixels> {
     match bounds(cx, selector) {
         Some(found) => found,
         None => panic!("{selector} is missing"),
     }
 }
 
-fn click(cx: &mut VisualTestContext, selector: &str) {
+pub(crate) fn click(cx: &mut VisualTestContext, selector: &str) {
     let target = present(cx, selector);
     cx.simulate_click(target.center(), Modifiers::none());
     cx.run_until_parked();
@@ -110,7 +114,7 @@ fn draft_url(cx: &mut TestAppContext, shell: &Entity<Shell>, id: &str) -> Option
     })
 }
 
-fn marker(cx: &mut VisualTestContext, id: &str) -> bool {
+pub(crate) fn marker(cx: &mut VisualTestContext, id: &str) -> bool {
     bounds(cx, &format!("doc-tab-dirty-{id}")).is_some()
 }
 

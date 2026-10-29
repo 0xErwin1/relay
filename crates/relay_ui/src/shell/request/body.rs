@@ -3,16 +3,17 @@
 
 use bolt::tokens::{family, space};
 use bolt::{Icon, IconName};
-use gpui::{AnyElement, App, ParentElement, Styled, div, prelude::*};
+use gpui::{AnyElement, ParentElement, Styled, div, prelude::*};
 use relay_core::model::{Body, FormPart, KeyValue};
 use relay_engine::Inspection;
 
 use super::pane_model::body_mode;
 use super::{code, grid};
+use crate::shell::Shell;
 use crate::shell::rows::{labeled_row, part};
 use crate::tokens;
 
-pub(super) fn render(inspection: &Inspection, cx: &App) -> Vec<AnyElement> {
+pub(super) fn render(inspection: &Inspection, cx: &mut gpui::Context<Shell>) -> Vec<AnyElement> {
     let body = &inspection.request.request.body;
     let mode = labeled_row("request-body-mode".to_owned(), body_mode(body))
         .pl(space::MD)
@@ -50,11 +51,21 @@ pub(super) fn render(inspection: &Inspection, cx: &App) -> Vec<AnyElement> {
             ),
         ],
         Body::Urlencoded { fields } => {
-            vec![grid::render(inspection, "body", "field", fields, &[], cx)]
+            vec![grid::render(
+                inspection,
+                "body",
+                "field",
+                fields,
+                &[],
+                None,
+                cx,
+            )]
         }
         Body::FormData { parts } => {
             let (rows, files): (Vec<KeyValue>, Vec<bool>) = parts.iter().map(form_row).unzip();
-            vec![grid::render(inspection, "body", "part", &rows, &files, cx)]
+            vec![grid::render(
+                inspection, "body", "part", &rows, &files, None, cx,
+            )]
         }
         Body::Binary { path } => vec![
             part("request-body-file".to_owned())

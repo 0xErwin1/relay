@@ -265,12 +265,15 @@ Saving is explicit, as in Postman: an edit never touches the workspace file unti
 
 What the window does today: clicking the URL of an open request swaps it for a field
 (`request-url-input`); typing stores a draft on every keystroke, Enter commits it to the
-draft and Escape drops what was typed. A drafted tab carries a tint dot, Save and Revert
+draft and Escape drops what was typed. In the Params and Headers grids, each row carries an
+enable box (`request-<params|headers>-enabled-<n>`) whose click toggles the row's `enabled`
+state in the same draft on the spot, and the grid shows the draft's rows while a draft
+exists. A drafted tab carries a tint dot, Save and Revert
 wake up, `Ctrl+S` saves and reloads the workspace so the tree and later sends see the file,
 and a moved file shows `File changed on disk` with the draft kept until Revert. Sending a
-drafted request goes through `Engine::execute_draft`. Only the URL is editable so far:
-params, headers, body, auth and settings are the next slices, and each lands in the same
-draft record. Undo, Redo and Split stay disabled.
+drafted request goes through `Engine::execute_draft`. Still read-only are the cell keys and
+values, the body, the auth and the settings: they are the next slices, and each lands in
+the same draft record. Undo, Redo and Split stay disabled.
 
 Drafts stay out of the workspace directory so that a commit never picks one up.
 

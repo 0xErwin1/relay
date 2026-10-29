@@ -153,6 +153,9 @@ pub(crate) const GRID_ROW: Pixels = px(29.0);
 pub(crate) const GRID_HEADER_TEXT: Pixels = px(12.0);
 pub(crate) const GRID_TEXT: Pixels = px(12.5);
 
+/// The side of the enable box at the start of a Params or Headers row.
+pub(crate) const GRID_ENABLED_BOX: Pixels = px(14.0);
+
 /// The grid columns: row number, key and value; the description fills the rest.
 pub(crate) const GRID_NUMBER_COLUMN: Pixels = px(46.0);
 pub(crate) const GRID_KEY_COLUMN: Pixels = px(200.0);

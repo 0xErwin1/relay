@@ -81,6 +81,38 @@ impl Shell {
     /// Puts `url` into the draft of the request `id`, creating the draft from the saved
     /// request when there is none, and persists it in the app state.
     pub(super) fn set_draft_url(&mut self, id: &str, url: String, cx: &mut Context<Self>) {
+        self.edit_draft(id, |request| request.url = url, cx);
+    }
+
+    /// Toggles the `enabled` state of the 1-based row `n` of `table` (`params` or
+    /// `headers`) in the draft of the request `id`, creating the draft from the saved
+    /// request when there is none, and persists it. Rows of the inactive sub-tab are never
+    /// touched, because only the active one renders.
+    pub(super) fn toggle_grid_row(
+        &mut self,
+        id: &str,
+        table: &str,
+        n: usize,
+        cx: &mut Context<Self>,
+    ) {
+        self.edit_draft(
+            id,
+            |request| {
+                let rows = match table {
+                    "params" => &mut request.params,
+                    _ => &mut request.headers,
+                };
+                if let Some(row) = n.checked_sub(1).and_then(|index| rows.get_mut(index)) {
+                    row.enabled = !row.enabled;
+                }
+            },
+            cx,
+        );
+    }
+
+    /// Edits the draft of the request `id` with `edit`, creating the draft from the saved
+    /// request when there is none, and persists it in the app state.
+    fn edit_draft(&mut self, id: &str, edit: impl FnOnce(&mut Request), cx: &mut Context<Self>) {
         let OpenedWorkspace::Loaded(engine) = &self.workspace else {
             return;
         };
@@ -90,7 +122,7 @@ impl Shell {
             .flatten()
             .map(|hash| hash.to_string());
         match self.drafts.get_mut(id) {
-            Some(draft) => draft.request.url = url,
+            Some(draft) => edit(&mut draft.request),
             None => {
                 let Some(mut request) = self
                     .requests
@@ -99,7 +131,7 @@ impl Shell {
                 else {
                     return;
                 };
-                request.url = url;
+                edit(&mut request);
                 self.drafts.insert(
                     id.to_owned(),
                     RequestDraft {
@@ -159,6 +191,12 @@ impl Shell {
                 .get(id)
                 .map_or_else(String::new, |state| state.inspection.url.clone()),
         }
+    }
+
+    /// The request the view of `id` shows: the draft's when it has one, else `fallback`,
+    /// the saved request as inspected.
+    pub(super) fn displayed_request<'a>(&'a self, id: &str, fallback: &'a Request) -> &'a Request {
+        self.drafts.get(id).map_or(fallback, |draft| &draft.request)
     }
 
     /// Saves the draft of the request `id` into its file, hash-checked against the base the

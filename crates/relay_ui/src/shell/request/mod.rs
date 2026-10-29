@@ -38,13 +38,15 @@ pub(super) fn render(
     [
         line::render(id, state, sending, shell, cx),
         sub_tabs::render(id, state, cx),
-        pane(state, cx),
+        pane(id, state, shell, cx),
     ]
 }
 
-fn pane(state: &RequestState, cx: &mut Context<Shell>) -> Stateful<Div> {
+fn pane(id: &str, state: &RequestState, shell: &Shell, cx: &mut Context<Shell>) -> Stateful<Div> {
     let inspection = &state.inspection;
-    let request = &inspection.request.request;
+    // The grids show the draft's rows when the request has one, so a toggle is visible
+    // immediately and survives a restart.
+    let request = shell.displayed_request(id, &inspection.request.request);
     let content = match state.tab {
         SubTab::Params => vec![grid::render(
             inspection,
@@ -52,6 +54,7 @@ fn pane(state: &RequestState, cx: &mut Context<Shell>) -> Stateful<Div> {
             "param",
             &request.params,
             &[],
+            Some(id),
             cx,
         )],
         SubTab::Headers => vec![grid::render(
@@ -60,12 +63,13 @@ fn pane(state: &RequestState, cx: &mut Context<Shell>) -> Stateful<Div> {
             "header",
             &request.headers,
             &[],
+            Some(id),
             cx,
         )],
         SubTab::Body => body::render(inspection, cx),
         SubTab::Auth => auth::render(inspection, cx),
         SubTab::Scripts => scripts::render(inspection, cx),
-        SubTab::Settings => settings::render(&request.settings, cx),
+        SubTab::Settings => settings::render(&inspection.request.request.settings, cx),
     };
     region("request-pane")
         .flex_none()
