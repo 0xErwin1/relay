@@ -34,3 +34,5 @@ pub use prepare::{
 };
 /// The transport types front ends read, re-exported so they depend on the engine only.
 pub use relay_http::{HttpError, PreparedBody, PreparedRequest, Response};
+/// The token type of [`Execution::cancel`], re-exported so front ends can hold it.
+pub use tokio_util::sync::CancellationToken;

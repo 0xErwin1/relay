@@ -40,7 +40,10 @@ pub(super) fn render(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement
                 .active()
                 .and_then(|id| shell.requests.get(id).map(|state| (id, state)));
             body.child(action_strip::render(cx)).child(match state {
-                Some((id, state)) => content.children(request::render(id, state, cx)),
+                Some((id, state)) => {
+                    let send = shell.sends.get(id).map(|send| &send.state);
+                    content.children(request::render(id, state, send, cx))
+                }
                 None => content,
             })
         }

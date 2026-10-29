@@ -1,0 +1,224 @@
+//! Sending the active request (S1), the Cancel button (S2), cancelling (S3), replacing and
+//! closing (S4), against a local HTTP server.
+
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::thread;
+use std::time::{Duration, Instant};
+
+use gpui::{Entity, Modifiers, TestAppContext, VisualTestContext};
+
+use super::Shell;
+use crate::workspace::OpenedWorkspace;
+use crate::workspace_tests::{demo_workspace, write};
+
+const COLLECTION: &str = "01J00000000000000000000031";
+const PING: &str = "01J00000000000000000000032";
+
+/// How the test server answers each connection.
+#[derive(Clone, Copy)]
+enum Server {
+    /// `200 OK` with a JSON body.
+    Ok,
+    /// Never answers; the connection stays open until the client drops it.
+    Silent,
+}
+
+/// Reads the request head off `stream`.
+fn read_head(stream: &mut TcpStream) {
+    let mut head = Vec::new();
+    let mut byte = [0_u8; 1];
+    while !head.ends_with(b"\r\n\r\n") {
+        match stream.read(&mut byte) {
+            Ok(1) => head.extend_from_slice(&byte),
+            Ok(_) | Err(_) => return,
+        }
+    }
+}
+
+/// Starts a server on a free local port and returns the port.
+fn serve(server: Server) -> u16 {
+    let listener = match TcpListener::bind("127.0.0.1:0") {
+        Ok(listener) => listener,
+        Err(error) => panic!("bind: {error}"),
+    };
+    let port = match listener.local_addr() {
+        Ok(address) => address.port(),
+        Err(error) => panic!("address: {error}"),
+    };
+    thread::spawn(move || {
+        for mut stream in listener.incoming().flatten() {
+            thread::spawn(move || {
+                read_head(&mut stream);
+                match server {
+                    Server::Ok => {
+                        let reply = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
+                                     content-length: 2\r\nconnection: close\r\n\r\n{}";
+                        if let Err(error) = stream.write_all(reply.as_bytes()) {
+                            eprintln!("write: {error}");
+                        }
+                    }
+                    Server::Silent => {
+                        let mut rest = [0_u8; 64];
+                        while matches!(stream.read(&mut rest), Ok(read) if read > 0) {}
+                    }
+                }
+            });
+        }
+    });
+    port
+}
+
+/// A port nothing listens on.
+fn closed_port() -> u16 {
+    match TcpListener::bind("127.0.0.1:0").and_then(|listener| listener.local_addr()) {
+        Ok(address) => address.port(),
+        Err(error) => panic!("bind: {error}"),
+    }
+}
+
+/// Opens a workspace whose request `GET Ping` targets `port` and opens its tab.
+fn render(cx: &mut TestAppContext, port: u16) -> (Entity<Shell>, &mut VisualTestContext) {
+    // The engine wakes the awaiting task from its own threads.
+    cx.executor().allow_parking();
+    cx.update(super::bind_keys);
+    let dir = demo_workspace();
+    let root = dir.path();
+    write(
+        root,
+        "collections/api/collection.toml",
+        &format!("id = \"{COLLECTION}\"\nname = \"API\"\n"),
+    );
+    write(
+        root,
+        "collections/api/ping.req.toml",
+        &format!(
+            "id = \"{PING}\"\nname = \"Ping\"\nmethod = \"GET\"\nurl = \"http://127.0.0.1:{port}/ping\"\n"
+        ),
+    );
+    let workspace = OpenedWorkspace::open(Some(root.to_path_buf()));
+    drop(dir);
+    let (shell, cx) = cx.add_window_view(|_, cx| Shell::new(workspace, cx));
+    cx.run_until_parked();
+    click_owned(cx, &format!("tree-row-{PING}"));
+    (shell, cx)
+}
+
+fn click(cx: &mut VisualTestContext, selector: &'static str) {
+    let Some(target) = cx.debug_bounds(selector) else {
+        panic!("{selector} is missing");
+    };
+    cx.simulate_click(target.center(), Modifiers::none());
+    cx.run_until_parked();
+}
+
+fn click_owned(cx: &mut VisualTestContext, selector: &str) {
+    click(cx, Box::leak(selector.to_owned().into_boxed_str()));
+}
+
+/// The response placeholder text of the request `id`.
+fn response(cx: &mut VisualTestContext, shell: &Entity<Shell>, id: &str) -> Option<String> {
+    cx.update(|_, cx| {
+        shell
+            .read(cx)
+            .sends
+            .get(id)
+            .and_then(|send| send.state.text())
+    })
+}
+
+/// Runs the executor until the send of `id` is no longer in flight, or fails after 10 s.
+fn settle(cx: &mut VisualTestContext, shell: &Entity<Shell>, id: &str) -> Option<String> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        cx.run_until_parked();
+        let text = response(cx, shell, id);
+        if text.as_deref() != Some("Sending") {
+            return text;
+        }
+        assert!(Instant::now() < deadline, "the send of {id} never ended");
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[gpui::test]
+fn clicking_send_shows_the_status(cx: &mut TestAppContext) {
+    let (shell, cx) = render(cx, serve(Server::Ok));
+    assert_eq!(response(cx, &shell, PING), None);
+    assert!(cx.debug_bounds("response-status").is_none());
+
+    click(cx, "request-send");
+    assert_eq!(settle(cx, &shell, PING).as_deref(), Some("200 OK"));
+    assert!(cx.debug_bounds("response-status").is_some());
+    assert!(cx.debug_bounds("request-send").is_some());
+}
+
+#[gpui::test]
+fn ctrl_enter_sends_the_active_request(cx: &mut TestAppContext) {
+    let (shell, cx) = render(cx, serve(Server::Ok));
+    cx.simulate_keystrokes("ctrl-enter");
+    assert_eq!(settle(cx, &shell, PING).as_deref(), Some("200 OK"));
+}
+
+#[gpui::test]
+fn a_closed_port_fails_to_connect(cx: &mut TestAppContext) {
+    let (shell, cx) = render(cx, closed_port());
+    click(cx, "request-send");
+    let text = settle(cx, &shell, PING).unwrap_or_default();
+    assert!(
+        text.starts_with("Failed: could not connect"),
+        "unexpected {text}"
+    );
+}
+
+#[gpui::test]
+fn the_cancel_button_cancels_the_send(cx: &mut TestAppContext) {
+    let (shell, cx) = render(cx, serve(Server::Silent));
+    click(cx, "request-send");
+    assert_eq!(response(cx, &shell, PING).as_deref(), Some("Sending"));
+    assert!(cx.debug_bounds("request-send").is_none());
+
+    click(cx, "request-cancel");
+    assert_eq!(
+        settle(cx, &shell, PING).as_deref(),
+        Some("Failed: request cancelled")
+    );
+    assert!(cx.debug_bounds("request-cancel").is_none());
+    assert!(cx.debug_bounds("request-send").is_some());
+}
+
+#[gpui::test]
+fn escape_cancels_the_send(cx: &mut TestAppContext) {
+    let (shell, cx) = render(cx, serve(Server::Silent));
+    cx.simulate_keystrokes("ctrl-enter");
+    cx.run_until_parked();
+    cx.simulate_keystrokes("escape");
+    assert_eq!(
+        settle(cx, &shell, PING).as_deref(),
+        Some("Failed: request cancelled")
+    );
+}
+
+#[gpui::test]
+fn sending_again_replaces_the_send_in_flight(cx: &mut TestAppContext) {
+    let (shell, cx) = render(cx, serve(Server::Ok));
+    cx.simulate_keystrokes("ctrl-enter");
+    cx.simulate_keystrokes("ctrl-enter");
+    assert_eq!(settle(cx, &shell, PING).as_deref(), Some("200 OK"));
+    // The replaced send must not land later as a cancellation.
+    thread::sleep(Duration::from_millis(50));
+    assert_eq!(settle(cx, &shell, PING).as_deref(), Some("200 OK"));
+}
+
+#[gpui::test]
+fn closing_the_tab_drops_its_send(cx: &mut TestAppContext) {
+    let (shell, cx) = render(cx, serve(Server::Silent));
+    click(cx, "request-send");
+    assert_eq!(response(cx, &shell, PING).as_deref(), Some("Sending"));
+
+    click_owned(cx, &format!("doc-tab-close-{PING}"));
+    assert!(cx.update(|_, cx| !shell.read(cx).sends.contains_key(PING)));
+    thread::sleep(Duration::from_millis(50));
+    cx.run_until_parked();
+    assert!(cx.update(|_, cx| !shell.read(cx).sends.contains_key(PING)));
+}

@@ -1,18 +1,30 @@
 //! The request line: the read-only method chip, the URL with its references styled, and the
-//! Send split button, which does nothing yet.
+//! Send split button, which sends the request, or the Cancel button while it is in flight.
+//! The send options do nothing yet.
 
 use bolt::chamfer::Chamfer;
+use bolt::controls::Keycap;
 use bolt::tokens::{border, chrome, cut, family, icon, space};
 use bolt::{Icon, IconName};
-use gpui::{App, Div, FontWeight, ParentElement, Role, Stateful, Styled, div, prelude::*};
+use gpui::{App, Context, Div, FontWeight, ParentElement, Role, Stateful, Styled, div, prelude::*};
 
 use super::model::RequestState;
 use super::spans;
-use crate::shell::region;
+use crate::shell::{Shell, region};
 use crate::tokens::{self, method_color};
 
-/// The line, element id `request-line`.
-pub(super) fn render(state: &RequestState, cx: &App) -> Stateful<Div> {
+/// The line of the request `id`, element id `request-line`.
+pub(super) fn render(
+    id: &str,
+    state: &RequestState,
+    sending: bool,
+    cx: &mut Context<Shell>,
+) -> Stateful<Div> {
+    let action = if sending {
+        cancel(id, cx).into_any_element()
+    } else {
+        send(id, cx).into_any_element()
+    };
     region("request-line")
         .flex_none()
         .h(tokens::REQUEST_LINE)
@@ -23,7 +35,41 @@ pub(super) fn render(state: &RequestState, cx: &App) -> Stateful<Div> {
         .pr(space::MD)
         .child(method(state, cx))
         .child(url(state, cx))
-        .child(send(cx))
+        .child(action)
+}
+
+/// The Cancel button shown while the request is in flight, element id `request-cancel`.
+fn cancel(id: &str, cx: &mut Context<Shell>) -> Stateful<Div> {
+    let colors = bolt::colors(cx);
+    let brand = bolt::brand(cx);
+    let id = id.to_owned();
+    region("request-cancel")
+        .role(Role::Button)
+        .aria_label("Cancel")
+        .relative()
+        .flex_none()
+        .h(tokens::URL_FIELD)
+        .flex()
+        .items_center()
+        .gap(space::SM)
+        .pl(space::MD)
+        .pr(space::MD)
+        .text_size(tokens::REQUEST_LINE_TEXT)
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(colors.strong)
+        .child(
+            Chamfer::new(cut::CONTROL)
+                .fill(colors.raised)
+                .edge(colors.line, border::THIN),
+        )
+        .child(
+            Icon::new(IconName::Loader)
+                .size(icon::MD)
+                .color(brand.accent_tint),
+        )
+        .child("Cancel")
+        .child(Keycap::new("request-cancel-keycap", "Esc"))
+        .on_click(cx.listener(move |this, _event, _window, cx| this.cancel(&id, cx)))
 }
 
 /// The method chip, element id `request-method`.
@@ -91,8 +137,10 @@ fn url(state: &RequestState, cx: &App) -> Stateful<Div> {
         .children(spans::render(&state.inspection, &url, cx))
 }
 
-/// The Send split button: `request-send`, then `request-send-options`.
-fn send(cx: &App) -> Div {
+/// The Send split button: `request-send`, which sends the request `id`, then
+/// `request-send-options`.
+fn send(id: &str, cx: &mut Context<Shell>) -> Div {
+    let id = id.to_owned();
     let brand = bolt::brand(cx);
     let keycap = div()
         .relative()
@@ -129,7 +177,8 @@ fn send(cx: &App) -> Div {
                         .color(brand.on_accent),
                 )
                 .child("Send")
-                .child(keycap),
+                .child(keycap)
+                .on_click(cx.listener(move |this, _event, _window, cx| this.send(&id, cx))),
         )
         .child(div().w(border::THIN).bg(tokens::keycap_on_accent_fill()))
         .child(

@@ -10,6 +10,7 @@ mod path_bar;
 mod rail;
 mod request;
 mod rows;
+mod send;
 mod sidebar;
 mod status_bar;
 mod tabs;
@@ -17,22 +18,27 @@ mod text;
 mod title_bar;
 mod tree_model;
 
-pub(crate) use sidebar::bind_keys;
-
 use std::collections::HashMap;
 
 use bolt::tokens::chrome;
 use gpui::{
-    Context, Div, ElementId, Entity, FocusHandle, IntoElement, ParentElement, Render, Role,
+    App, Context, Div, ElementId, Entity, FocusHandle, IntoElement, ParentElement, Render, Role,
     Stateful, Styled, Subscription, Window, div, prelude::*,
 };
 
 use self::documents::Documents;
 use self::request::{RequestState, SubTab};
+use self::send::{CancelRequest, RequestSend, SHELL_CONTEXT, SendRequest};
 use self::sidebar::{OpenRequest, Sidebar};
 use self::tree_model::Node;
 
 use crate::workspace::OpenedWorkspace;
+
+/// Binds the keys of the main window.
+pub(crate) fn bind_keys(cx: &mut App) {
+    sidebar::bind_keys(cx);
+    send::bind_keys(cx);
+}
 
 /// The root view of the main window.
 ///
@@ -47,6 +53,8 @@ pub(crate) struct Shell {
     documents: Documents,
     /// The state of each open request that the engine could inspect, by request id.
     requests: HashMap<String, RequestState>,
+    /// The send of each open request that was sent, by request id; dropped with its tab.
+    sends: HashMap<String, RequestSend>,
     /// The slug of the window's active environment; `None` is No environment.
     active_environment: Option<String>,
     /// Whether the title bar environment menu is open; not kept across restarts.
@@ -72,6 +80,7 @@ impl Shell {
             roots,
             documents: Documents::default(),
             requests: HashMap::new(),
+            sends: HashMap::new(),
             active_environment: None,
             environment_menu_open: false,
             environment_menu_focus: cx.focus_handle(),
@@ -164,10 +173,11 @@ impl Shell {
         cx.notify();
     }
 
-    /// Closes the tab of the request `id`.
+    /// Closes the tab of the request `id`, cancelling its send in flight.
     fn close_document(&mut self, id: &str, cx: &mut Context<Self>) {
         self.documents.close(id);
         self.requests.remove(id);
+        self.sends.remove(id);
         cx.notify();
     }
 }
@@ -177,6 +187,9 @@ impl Render for Shell {
         let colors = bolt::colors(cx);
 
         div()
+            .key_context(SHELL_CONTEXT)
+            .on_action(cx.listener(|this, _: &SendRequest, _, cx| this.send_active(cx)))
+            .on_action(cx.listener(|this, _: &CancelRequest, _, cx| this.cancel_active(cx)))
             .size_full()
             .flex()
             .flex_col()
@@ -216,6 +229,8 @@ mod document_tests;
 mod environment_tests;
 #[cfg(test)]
 mod request_tests;
+#[cfg(test)]
+mod send_tests;
 #[cfg(test)]
 mod sidebar_tests;
 #[cfg(test)]
