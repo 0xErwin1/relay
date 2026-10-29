@@ -9,6 +9,7 @@ mod environment_menu;
 mod path_bar;
 mod rail;
 mod request;
+mod response;
 mod rows;
 mod send;
 mod sidebar;
@@ -229,6 +230,8 @@ mod document_tests;
 mod environment_tests;
 #[cfg(test)]
 mod request_tests;
+#[cfg(test)]
+mod response_tests;
 #[cfg(test)]
 mod send_tests;
 #[cfg(test)]

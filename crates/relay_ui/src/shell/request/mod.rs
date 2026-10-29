@@ -1,6 +1,6 @@
 //! The open request under the document tabs: the request line, the sub-tab bar and the pane
 //! of the selected sub-tab: the Params and Headers grids or the read-only Body, Auth, Scripts
-//! and Settings panes; under them, the outcome of the last send.
+//! and Settings panes.
 
 mod auth;
 mod body;
@@ -16,46 +16,29 @@ mod settings;
 mod spans;
 mod sub_tabs;
 
+pub(crate) use line::accent_keycap;
 pub(crate) use model::{RequestState, SubTab};
-pub(crate) use send::{Completed, Failure, Received, SendState};
+pub(crate) use send::{Completed, Failure, Received, SendState, StatusClass};
+pub(crate) use send::{elapsed_text, size_text};
 
-use bolt::tokens::{border, space};
+use bolt::tokens::space;
 use gpui::{Context, Div, ParentElement, Stateful, StatefulInteractiveElement, Styled};
 
-use super::{Shell, region, text_region};
+use super::{Shell, region};
 
-/// The request `id` with its `state` and the state of its last send, filling the document
-/// content.
+/// The request `id` with its `state`, at its natural height over the response; `sending`
+/// while its send is in flight.
 pub(super) fn render(
     id: &str,
     state: &RequestState,
-    send: Option<&SendState>,
+    sending: bool,
     cx: &mut Context<Shell>,
-) -> [Stateful<Div>; 4] {
-    let sending = send.is_some_and(SendState::is_sending);
+) -> [Stateful<Div>; 3] {
     [
         line::render(id, state, sending, cx),
         sub_tabs::render(id, state, cx),
         pane(state, cx),
-        response(send, cx),
     ]
-}
-
-/// The response region, `response`: for now only the state text, `response-status`.
-fn response(send: Option<&SendState>, cx: &mut Context<Shell>) -> Stateful<Div> {
-    let colors = bolt::colors(cx);
-    region("response")
-        .flex_none()
-        .border_t(border::THIN)
-        .border_color(colors.line)
-        .pl(space::MD)
-        .pr(space::MD)
-        .py(space::SM)
-        .text_color(colors.strong)
-        .children(
-            send.and_then(SendState::text)
-                .map(|text| text_region("response-status").child(text)),
-        )
 }
 
 fn pane(state: &RequestState, cx: &mut Context<Shell>) -> Stateful<Div> {
@@ -84,8 +67,7 @@ fn pane(state: &RequestState, cx: &mut Context<Shell>) -> Stateful<Div> {
         SubTab::Settings => settings::render(&request.settings, cx),
     };
     region("request-pane")
-        .flex_1()
-        .min_h_0()
+        .flex_none()
         .overflow_y_scroll()
         .pb(space::MD)
         .children(content)

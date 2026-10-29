@@ -8,6 +8,7 @@ use relay_engine::{CancellationToken, ExecuteOptions, Execution};
 
 use super::Shell;
 use super::request::{Completed, Failure, Received, SendState};
+use super::response::{BodyView, ResponseTab};
 use crate::workspace::OpenedWorkspace;
 
 /// The key context of the main window, where the send keys are bound.
@@ -35,10 +36,13 @@ pub(super) fn bind_keys(cx: &mut App) {
     ]);
 }
 
-/// The send of one open request: its state and, while in flight, what keeps it running.
+/// The send of one open request: its state, the response sub-tab and body view, and, while
+/// in flight, what keeps it running.
 #[derive(Default)]
 pub(crate) struct RequestSend {
     pub(crate) state: SendState,
+    pub(crate) tab: ResponseTab,
+    pub(crate) view: BodyView,
     running: Option<Running>,
 }
 
@@ -109,6 +113,27 @@ impl Shell {
         }
     }
 
+    /// Selects the response sub-tab `tab` of the request `id`.
+    pub(super) fn select_response_tab(
+        &mut self,
+        id: &str,
+        tab: ResponseTab,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(send) = self.sends.get_mut(id) {
+            send.tab = tab;
+            cx.notify();
+        }
+    }
+
+    /// Shows the response body of the request `id` as `view`.
+    pub(super) fn select_body_view(&mut self, id: &str, view: BodyView, cx: &mut Context<Self>) {
+        if let Some(send) = self.sends.get_mut(id) {
+            send.view = view;
+            cx.notify();
+        }
+    }
+
     fn finish_send(&mut self, id: &str, completed: Completed, cx: &mut Context<Self>) {
         if let Some(send) = self.sends.get_mut(id) {
             send.state.finish(completed);
@@ -136,7 +161,14 @@ fn spawn(id: &str, execution: Execution, started: Instant, cx: &mut Context<Shel
             })
         };
         let completed = match handle.await {
-            Ok(Ok(response)) => Completed::Response(Received::new(response, unresolved)),
+            Ok(Ok(response)) => {
+                // Splitting a large body into lines stays off the UI thread.
+                let received = cx
+                    .background_executor()
+                    .spawn(async move { Received::new(response, unresolved) })
+                    .await;
+                Completed::Response(received)
+            }
             Ok(Err(error)) => failure(error.to_string(), unresolved),
             Err(error) => failure(error.to_string(), unresolved),
         };

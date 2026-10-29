@@ -1,14 +1,15 @@
 //! The document island: the tab row and the path bar over the active document, or the reason
 //! there is none.
 //!
-//! The active request shows the action strip at its left and the request beside it.
+//! The active request shows the action strip at its left and the request beside it, with
+//! its response under it.
 
 use bolt::Island;
 use bolt::tokens::border;
 use gpui::{Context, IntoElement, ParentElement, Styled};
 
 use super::documents::locate;
-use super::{Shell, action_strip, path_bar, region, request, tabs, text_region};
+use super::{Shell, action_strip, path_bar, region, request, response, tabs, text_region};
 
 pub(super) fn render(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
     let colors = bolt::colors(cx);
@@ -41,8 +42,11 @@ pub(super) fn render(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement
                 .and_then(|id| shell.requests.get(id).map(|state| (id, state)));
             body.child(action_strip::render(cx)).child(match state {
                 Some((id, state)) => {
-                    let send = shell.sends.get(id).map(|send| &send.state);
-                    content.children(request::render(id, state, send, cx))
+                    let send = shell.sends.get(id);
+                    let sending = send.is_some_and(|send| send.state.is_sending());
+                    content
+                        .children(request::render(id, state, sending, cx))
+                        .child(response::render(id, send, cx))
                 }
                 None => content,
             })

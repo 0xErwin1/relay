@@ -2,6 +2,8 @@
 //! sizes and the main window size. The only `relay_ui` file besides `brand.rs` that holds raw values.
 
 use bolt::tokens::{Colors, hex, hex_alpha};
+use std::time::Duration;
+
 use gpui::{Hsla, Pixels, Size, px, size};
 
 /// The label color of the uppercase HTTP `verb`: Bolt's semantic hues, as DBFlux colors its
@@ -29,10 +31,6 @@ fn method_other() -> Hsla {
 }
 
 /// Body syntax colors: quiet keys, values carry the data.
-#[allow(
-    dead_code,
-    reason = "read by the response body view, which does not exist yet"
-)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct SyntaxColors {
     pub(crate) key: Hsla,
@@ -42,10 +40,6 @@ pub(crate) struct SyntaxColors {
     pub(crate) punct: Hsla,
 }
 
-#[allow(
-    dead_code,
-    reason = "read by the response body view, which does not exist yet"
-)]
 impl SyntaxColors {
     pub(crate) fn dark() -> Self {
         Self {
@@ -179,6 +173,41 @@ pub(crate) fn unresolved_row_wash(colors: &Colors) -> Hsla {
         a: UNRESOLVED_ROW_WASH,
         ..colors.warning
     }
+}
+
+/// The height of the response tab row.
+pub(crate) const RESPONSE_TAB_ROW: Pixels = px(46.0);
+
+/// The text size of the response status chip and of the time and size at the right.
+pub(crate) const RESPONSE_STATUS_TEXT: Pixels = px(11.0);
+pub(crate) const RESPONSE_META_TEXT: Pixels = px(11.5);
+
+/// The opacity of the wash behind the response status chip, in the chip's color.
+pub(crate) const RESPONSE_STATUS_WASH: f32 = 0.133;
+
+/// The height of the indeterminate progress bar under the tab row while sending.
+pub(crate) const RESPONSE_PROGRESS: Pixels = px(4.0);
+
+/// The width of the moving progress segment, as a fraction of the track.
+pub(crate) const RESPONSE_PROGRESS_SEGMENT: f32 = 0.22;
+
+/// How long the progress segment takes to cross the track.
+pub(crate) const RESPONSE_PROGRESS_PERIOD: Duration = Duration::from_millis(1400);
+
+/// The opacity of the previous response while a new send is in flight.
+pub(crate) const RESPONSE_DIMMED: f32 = 0.62;
+
+/// The height of the error banner, the width of its left edge and its text size.
+pub(crate) const RESPONSE_ERROR_BANNER: Pixels = px(44.0);
+pub(crate) const RESPONSE_ERROR_EDGE: Pixels = px(3.0);
+pub(crate) const RESPONSE_ERROR_TEXT: Pixels = px(13.0);
+
+/// The opacity of the danger wash behind the error banner.
+pub(crate) const RESPONSE_ERROR_WASH: f32 = 0.08;
+
+/// `color` at opacity `alpha`.
+pub(crate) fn wash(color: Hsla, alpha: f32) -> Hsla {
+    Hsla { a: alpha, ..color }
 }
 
 /// The size the main window opens at.

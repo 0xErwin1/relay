@@ -3,7 +3,11 @@
 
 use std::time::{Duration, Instant};
 
+use std::sync::Arc;
+
 use relay_engine::Response;
+
+use crate::shell::response::BodyText;
 
 /// The outcome of a finished send.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,6 +28,8 @@ pub(crate) struct Received {
     pub(crate) elapsed: Duration,
     /// Variable names that did not resolve, in first-occurrence order.
     pub(crate) unresolved: Vec<String>,
+    /// The body split into lines for the view, computed once.
+    pub(crate) text: Arc<BodyText>,
 }
 
 /// A send that ended without a response.
@@ -36,7 +42,10 @@ pub(crate) struct Failure {
 }
 
 impl Received {
+    /// Splits the body into lines, so build it off the UI thread for a large body.
     pub(crate) fn new(response: Response, unresolved: Vec<String>) -> Self {
+        let content_type = content_type(&response.headers);
+        let text = Arc::new(BodyText::new(&response.body, content_type));
         Self {
             status: response.status,
             reason: response.reason,
@@ -44,34 +53,31 @@ impl Received {
             body: response.body,
             elapsed: response.elapsed,
             unresolved,
+            text,
         }
     }
 
     /// The body size in bytes.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the response view of T2 reads it")
-    )]
     pub(crate) fn size(&self) -> u64 {
         u64::try_from(self.body.len()).unwrap_or(u64::MAX)
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the response view of T2 reads it")
-    )]
     /// The value of the first `Content-Type` header, matched case-insensitively.
     pub(crate) fn content_type(&self) -> Option<&str> {
-        self.headers
-            .iter()
-            .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
-            .map(|(_, value)| value.as_str())
+        content_type(&self.headers)
     }
 
     /// The status chip text: `<code> <reason>`, or the code alone without a reason.
     pub(crate) fn status_text(&self) -> String {
         status_text(self.status, self.reason.as_deref())
     }
+}
+
+fn content_type(headers: &[(String, String)]) -> Option<&str> {
+    headers
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+        .map(|(_, value)| value.as_str())
 }
 
 /// Where the send of one open request is.
@@ -114,7 +120,8 @@ impl SendState {
         matches!(self, Self::Sending { .. })
     }
 
-    /// The placeholder text of the response region.
+    /// The state as one line of text, for tests.
+    #[cfg(test)]
     pub(crate) fn text(&self) -> Option<String> {
         match self {
             Self::Idle => None,
@@ -126,10 +133,6 @@ impl SendState {
 }
 
 /// The class of a status code, which colors its chip.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the response view of T2 reads it")
-)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StatusClass {
     Success,
@@ -138,10 +141,6 @@ pub(crate) enum StatusClass {
     Danger,
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the response view of T2 reads it")
-)]
 impl StatusClass {
     /// 2xx success, 1xx and 3xx info, 4xx warning, anything else danger.
     pub(crate) fn of(status: u16) -> Self {
@@ -163,10 +162,6 @@ pub(crate) fn status_text(status: u16, reason: Option<&str>) -> String {
 }
 
 /// `184 ms` under a second, else seconds with two decimals: `1.84 s`.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the response view of T2 reads it")
-)]
 pub(crate) fn elapsed_text(elapsed: Duration) -> String {
     if elapsed < Duration::from_secs(1) {
         format!("{} ms", elapsed.as_millis())
@@ -176,10 +171,6 @@ pub(crate) fn elapsed_text(elapsed: Duration) -> String {
 }
 
 /// `512 B` under a kilobyte, else one decimal of `KB`, `MB` or `GB`; 1 KB is 1024 B.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the response view of T2 reads it")
-)]
 pub(crate) fn size_text(bytes: u64) -> String {
     const UNITS: [&str; 3] = ["KB", "MB", "GB"];
     if bytes < 1024 {
@@ -210,6 +201,7 @@ mod tests {
             body: b"{}".to_vec(),
             elapsed: Duration::from_millis(5),
             unresolved: Vec::new(),
+            text: Arc::new(BodyText::new(b"{}", None)),
         }
     }
 

@@ -13,16 +13,19 @@ use crate::workspace::OpenedWorkspace;
 use crate::workspace_tests::{demo_workspace, write};
 
 const COLLECTION: &str = "01J00000000000000000000031";
-const PING: &str = "01J00000000000000000000032";
+pub(super) const PING: &str = "01J00000000000000000000032";
 
 /// How the test server answers each connection.
 #[derive(Clone, Copy)]
-enum Server {
-    /// `200 OK` with a JSON body.
+pub(super) enum Server {
+    /// `200 OK` with the JSON body [`JSON`].
     Ok,
     /// Never answers; the connection stays open until the client drops it.
     Silent,
 }
+
+/// The body of [`Server::Ok`].
+pub(super) const JSON: &str = r#"{"id":7,"tags":["a"]}"#;
 
 /// Reads the request head off `stream`.
 fn read_head(stream: &mut TcpStream) {
@@ -37,7 +40,7 @@ fn read_head(stream: &mut TcpStream) {
 }
 
 /// Starts a server on a free local port and returns the port.
-fn serve(server: Server) -> u16 {
+pub(super) fn serve(server: Server) -> u16 {
     let listener = match TcpListener::bind("127.0.0.1:0") {
         Ok(listener) => listener,
         Err(error) => panic!("bind: {error}"),
@@ -52,8 +55,11 @@ fn serve(server: Server) -> u16 {
                 read_head(&mut stream);
                 match server {
                     Server::Ok => {
-                        let reply = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
-                                     content-length: 2\r\nconnection: close\r\n\r\n{}";
+                        let reply = format!(
+                            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
+                             content-length: {}\r\nconnection: close\r\n\r\n{JSON}",
+                            JSON.len()
+                        );
                         if let Err(error) = stream.write_all(reply.as_bytes()) {
                             eprintln!("write: {error}");
                         }
@@ -70,7 +76,7 @@ fn serve(server: Server) -> u16 {
 }
 
 /// A port nothing listens on.
-fn closed_port() -> u16 {
+pub(super) fn closed_port() -> u16 {
     match TcpListener::bind("127.0.0.1:0").and_then(|listener| listener.local_addr()) {
         Ok(address) => address.port(),
         Err(error) => panic!("bind: {error}"),
@@ -78,7 +84,10 @@ fn closed_port() -> u16 {
 }
 
 /// Opens a workspace whose request `GET Ping` targets `port` and opens its tab.
-fn render(cx: &mut TestAppContext, port: u16) -> (Entity<Shell>, &mut VisualTestContext) {
+pub(super) fn render(
+    cx: &mut TestAppContext,
+    port: u16,
+) -> (Entity<Shell>, &mut VisualTestContext) {
     // The engine wakes the awaiting task from its own threads.
     cx.executor().allow_parking();
     cx.update(super::bind_keys);
@@ -104,7 +113,7 @@ fn render(cx: &mut TestAppContext, port: u16) -> (Entity<Shell>, &mut VisualTest
     (shell, cx)
 }
 
-fn click(cx: &mut VisualTestContext, selector: &'static str) {
+pub(super) fn click(cx: &mut VisualTestContext, selector: &'static str) {
     let Some(target) = cx.debug_bounds(selector) else {
         panic!("{selector} is missing");
     };
@@ -112,12 +121,16 @@ fn click(cx: &mut VisualTestContext, selector: &'static str) {
     cx.run_until_parked();
 }
 
-fn click_owned(cx: &mut VisualTestContext, selector: &str) {
+pub(super) fn click_owned(cx: &mut VisualTestContext, selector: &str) {
     click(cx, Box::leak(selector.to_owned().into_boxed_str()));
 }
 
 /// The response placeholder text of the request `id`.
-fn response(cx: &mut VisualTestContext, shell: &Entity<Shell>, id: &str) -> Option<String> {
+pub(super) fn response(
+    cx: &mut VisualTestContext,
+    shell: &Entity<Shell>,
+    id: &str,
+) -> Option<String> {
     cx.update(|_, cx| {
         shell
             .read(cx)
@@ -128,7 +141,11 @@ fn response(cx: &mut VisualTestContext, shell: &Entity<Shell>, id: &str) -> Opti
 }
 
 /// Runs the executor until the send of `id` is no longer in flight, or fails after 10 s.
-fn settle(cx: &mut VisualTestContext, shell: &Entity<Shell>, id: &str) -> Option<String> {
+pub(super) fn settle(
+    cx: &mut VisualTestContext,
+    shell: &Entity<Shell>,
+    id: &str,
+) -> Option<String> {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         cx.run_until_parked();

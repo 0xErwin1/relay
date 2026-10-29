@@ -142,17 +142,6 @@ fn url(state: &RequestState, cx: &App) -> Stateful<Div> {
 fn send(id: &str, cx: &mut Context<Shell>) -> Div {
     let id = id.to_owned();
     let brand = bolt::brand(cx);
-    let keycap = div()
-        .relative()
-        .pl(tokens::KEYCAP_PADDING_X)
-        .pr(tokens::KEYCAP_PADDING_X)
-        .py(tokens::KEYCAP_PADDING_Y)
-        .font_family(family::MONO)
-        .text_size(tokens::SMALL_MONO_TEXT)
-        .font_weight(FontWeight::NORMAL)
-        .text_color(tokens::keycap_on_accent_text())
-        .child(Chamfer::new(cut::KEYCAP).fill(tokens::keycap_on_accent_fill()))
-        .child("Ctrl ↵");
     div()
         .relative()
         .flex_none()
@@ -177,7 +166,7 @@ fn send(id: &str, cx: &mut Context<Shell>) -> Div {
                         .color(brand.on_accent),
                 )
                 .child("Send")
-                .child(keycap)
+                .child(accent_keycap())
                 .on_click(cx.listener(move |this, _event, _window, cx| this.send(&id, cx))),
         )
         .child(div().w(border::THIN).bg(tokens::keycap_on_accent_fill()))
@@ -195,4 +184,19 @@ fn send(id: &str, cx: &mut Context<Shell>) -> Div {
                         .color(brand.on_accent),
                 ),
         )
+}
+
+/// The `Ctrl ↵` keycap on an accent button.
+pub(crate) fn accent_keycap() -> Div {
+    div()
+        .relative()
+        .pl(tokens::KEYCAP_PADDING_X)
+        .pr(tokens::KEYCAP_PADDING_X)
+        .py(tokens::KEYCAP_PADDING_Y)
+        .font_family(family::MONO)
+        .text_size(tokens::SMALL_MONO_TEXT)
+        .font_weight(FontWeight::NORMAL)
+        .text_color(tokens::keycap_on_accent_text())
+        .child(Chamfer::new(cut::KEYCAP).fill(tokens::keycap_on_accent_fill()))
+        .child("Ctrl ↵")
 }
