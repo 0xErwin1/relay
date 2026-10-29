@@ -14,6 +14,7 @@
 mod brand;
 pub mod chamfer;
 mod chevron;
+pub mod controls;
 pub mod fonts;
 mod icon;
 mod island;

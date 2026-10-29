@@ -4,9 +4,11 @@
 //! rejects color literals and bare `px(` calls anywhere else in the crate.
 
 mod colors;
+mod controls;
 mod metrics;
 mod typography;
 
 pub use colors::{Colors, accent_wash, hex, hex_alpha};
+pub use controls::{field, icon_button, keycap, rail, status_chip};
 pub use metrics::{border, chrome, cut, icon, motion, space};
 pub use typography::{BASE_SIZE, TextRole, TextTone, family, text};

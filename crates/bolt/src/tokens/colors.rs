@@ -25,6 +25,8 @@ pub mod accent_wash {
     pub const TEXT_SELECTION: f32 = 0.25;
     /// A drop target while dragging.
     pub const DROP_TARGET: f32 = 0.10;
+    /// The active navigation entry: the activity rail button of the view on screen.
+    pub const ACTIVE_NAV: f32 = 0.16;
 }
 
 /// The neutral, wash and semantic color roles of one palette.
@@ -130,6 +132,7 @@ mod tests {
         assert_eq!(accent_wash::SELECTED_ITEM, 0.12);
         assert_eq!(accent_wash::TEXT_SELECTION, 0.25);
         assert_eq!(accent_wash::DROP_TARGET, 0.10);
+        assert_eq!(accent_wash::ACTIVE_NAV, 0.16);
     }
 
     #[test]
