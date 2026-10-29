@@ -57,18 +57,9 @@ impl SyntaxColors {
     }
 }
 
-/// The unsaved draft marker, and nothing else.
-#[allow(
-    dead_code,
-    reason = "read by the request tabs and tree once drafts exist"
-)]
-pub(crate) fn draft() -> Hsla {
-    hex(0xF28AC9)
-}
-
-/// The width of the method column of a tree row: `DELETE` in JetBrains Mono at
-/// `METHOD_LABEL_SIZE` plus room before the name.
-pub(crate) const TREE_METHOD_COLUMN: Pixels = px(38.0);
+/// The width of the method column of a tree row: `OPTIONS`, the longest standard verb, in
+/// JetBrains Mono at `METHOD_LABEL_SIZE` (about 42 px), plus room before the name.
+pub(crate) const TREE_METHOD_COLUMN: Pixels = px(46.0);
 
 /// The size of a method label in a tree row or tab.
 pub(crate) const METHOD_LABEL_SIZE: Pixels = px(10.0);
@@ -143,8 +134,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn draft_and_syntax_match_the_design_system() {
-        assert_eq!(rgb_of(draft()), 0xF28AC9);
+    fn syntax_colors_match_the_design_system() {
         let syntax = SyntaxColors::dark();
         assert_eq!(rgb_of(syntax.key), 0xA9A4B2);
         assert_eq!(rgb_of(syntax.string), 0x7BE0A0);
