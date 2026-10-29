@@ -14,7 +14,8 @@ const INVOICE: &str = "01J00000000000000000000012";
 const PLAIN: &str = "01J00000000000000000000013";
 
 /// `Demo` with collection `API`, which declares `base`, holding `GET Invoice` at
-/// `{{base}}/v1/{{missing}}` with enabled and disabled params and headers, and `GET Plain`.
+/// `{{base}}/v1/{{missing}}` with enabled and disabled params and headers, a header that
+/// uses the secret `token` and one with the unresolved `tenant`, and `GET Plain`.
 fn request_workspace() -> TempDir {
     let dir = demo_workspace();
     let root = dir.path();
@@ -22,7 +23,8 @@ fn request_workspace() -> TempDir {
         root,
         "collections/api/collection.toml",
         &format!(
-            "id = \"{COLLECTION}\"\nname = \"API\"\n\n[[variables]]\nkey = \"base\"\nvalue = \"https://h\"\n"
+            "id = \"{COLLECTION}\"\nname = \"API\"\n\n[[variables]]\nkey = \"base\"\nvalue = \"https://h\"\n\n\
+             [[variables]]\nkey = \"token\"\nsecret = true\n"
         ),
     );
     write(
@@ -34,7 +36,9 @@ fn request_workspace() -> TempDir {
              [[params]]\nkey = \"b\"\nvalue = \"2\"\nenabled = false\n\n\
              [[headers]]\nkey = \"X-One\"\nvalue = \"1\"\n\n\
              [[headers]]\nkey = \"X-Two\"\nvalue = \"2\"\n\n\
-             [[headers]]\nkey = \"X-Off\"\nvalue = \"3\"\nenabled = false\n"
+             [[headers]]\nkey = \"X-Off\"\nvalue = \"3\"\nenabled = false\n\n\
+             [[headers]]\nkey = \"Authorization\"\nvalue = \"Bearer {{{{token}}}}\"\n\n\
+             [[headers]]\nkey = \"X-Tenant\"\nvalue = \"{{{{tenant}}}}\"\n"
         ),
     );
     write(
@@ -118,7 +122,7 @@ fn headers_is_the_default_and_clicking_selects(cx: &mut TestAppContext) {
             .get(INVOICE)
             .map(|state| (state.count(SubTab::Params), state.count(SubTab::Headers)))
     });
-    assert_eq!(counts, Some((Some(1), Some(2))));
+    assert_eq!(counts, Some((Some(1), Some(4))));
 
     click(cx, "request-tab-body");
     assert_eq!(selected_tab(cx, &shell, INVOICE), Some(SubTab::Body));
@@ -142,4 +146,48 @@ fn closing_the_tab_drops_its_state(cx: &mut TestAppContext) {
 
     click(cx, &format!("doc-tab-close-{INVOICE}"));
     assert_eq!(selected_tab(cx, &shell, INVOICE), None);
+}
+
+fn rows(cx: &mut VisualTestContext, table: &str) -> Vec<gpui::Bounds<gpui::Pixels>> {
+    (1..=10)
+        .map_while(|n| bounds(cx, &format!("request-{table}-row-{n}")))
+        .collect()
+}
+
+#[gpui::test]
+fn headers_render_every_row_in_order_inside_the_pane(cx: &mut TestAppContext) {
+    let (_shell, cx) = render(cx);
+    click(cx, &format!("tree-row-{INVOICE}"));
+    let pane = present(cx, "request-pane");
+    let headers = rows(cx, "headers");
+    assert_eq!(
+        headers.len(),
+        5,
+        "enabled, disabled, secret and unresolved rows"
+    );
+    assert!(headers.iter().all(|row| pane.contains(&row.origin)));
+    assert!(headers.windows(2).all(|pair| match pair {
+        [above, below] => above.origin.y < below.origin.y,
+        _ => false,
+    }));
+    assert!(rows(cx, "params").is_empty());
+}
+
+#[gpui::test]
+fn params_replace_the_headers_grid(cx: &mut TestAppContext) {
+    let (_shell, cx) = render(cx);
+    click(cx, &format!("tree-row-{INVOICE}"));
+    click(cx, "request-tab-params");
+    assert_eq!(rows(cx, "params").len(), 2);
+    assert!(rows(cx, "headers").is_empty());
+    assert!(bounds(cx, "request-grid-empty").is_none());
+}
+
+#[gpui::test]
+fn an_empty_table_shows_the_empty_state(cx: &mut TestAppContext) {
+    let (_shell, cx) = render(cx);
+    click(cx, &format!("tree-row-{PLAIN}"));
+    assert!(rows(cx, "headers").is_empty());
+    let pane = present(cx, "request-pane");
+    assert!(pane.contains(&present(cx, "request-grid-empty").origin));
 }

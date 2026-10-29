@@ -1,0 +1,102 @@
+//! The Params and Headers grids without GPUI: row ids, automation labels, secret masking and
+//! the unresolved-row decision, all from the spans the engine reports.
+
+use relay_engine::Span;
+
+/// What a secret value shows instead of anything it resolves to.
+pub(crate) const MASK: &str = "••••••••";
+
+/// The automation id of the 1-based row `n` of `table` (`params` or `headers`).
+pub(crate) fn row_id(table: &str, n: usize) -> String {
+    format!("request-{table}-row-{n}")
+}
+
+/// `<key>: <value as written>`, or `<key>: ••••••••` when the value references a secret.
+pub(crate) fn row_label(key: &str, value: &str, secret: bool) -> String {
+    if secret {
+        format!("{key}: {MASK}")
+    } else {
+        format!("{key}: {value}")
+    }
+}
+
+/// Whether any of `spans` is a reference that does not resolve.
+pub(crate) fn has_unresolved(spans: &[Span]) -> bool {
+    spans.iter().any(|span| {
+        matches!(
+            span,
+            Span::Reference {
+                resolves: false,
+                ..
+            }
+        )
+    })
+}
+
+/// The text a secret value shows: its literal text followed by [`MASK`].
+pub(crate) fn masked_text(spans: &[Span]) -> String {
+    let mut shown: String = spans
+        .iter()
+        .filter_map(|span| match span {
+            Span::Literal(literal) => Some(literal.as_str()),
+            Span::Reference { .. } => None,
+        })
+        .collect();
+    shown.push_str(MASK);
+    shown
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reference(name: &str, resolves: bool, secret: bool) -> Span {
+        Span::Reference {
+            raw: format!("{{{{{name}}}}}"),
+            name: name.to_owned(),
+            resolves,
+            secret,
+        }
+    }
+
+    #[test]
+    fn row_ids_are_one_based_per_table() {
+        assert_eq!(row_id("headers", 1), "request-headers-row-1");
+        assert_eq!(row_id("params", 3), "request-params-row-3");
+    }
+
+    #[test]
+    fn labels_show_the_value_as_written() {
+        assert_eq!(row_label("X-One", "{{base}}/1", false), "X-One: {{base}}/1");
+    }
+
+    #[test]
+    fn secret_labels_never_show_the_value() {
+        let label = row_label("Authorization", "Bearer {{token}}", true);
+        assert_eq!(label, "Authorization: ••••••••");
+        assert!(!label.contains("token"));
+    }
+
+    #[test]
+    fn a_row_is_unresolved_only_with_an_unresolved_reference() {
+        let literal = Span::Literal("a".to_owned());
+        assert!(!has_unresolved(&[]));
+        assert!(!has_unresolved(&[
+            literal.clone(),
+            reference("base", true, false)
+        ]));
+        assert!(has_unresolved(&[
+            literal,
+            reference("missing", false, false)
+        ]));
+    }
+
+    #[test]
+    fn masked_text_keeps_literals_and_drops_references() {
+        let spans = [
+            Span::Literal("Bearer ".to_owned()),
+            reference("token", true, true),
+        ];
+        assert_eq!(masked_text(&spans), "Bearer ••••••••");
+    }
+}

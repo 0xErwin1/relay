@@ -142,6 +142,33 @@ pub(crate) const SUB_TAB_BAR: Pixels = px(42.0);
 /// The text size of the unresolved notice at the right of the sub-tab bar.
 pub(crate) const NOTICE_TEXT: Pixels = px(12.0);
 
+/// The heights of the Params and Headers grid header and data rows.
+pub(crate) const GRID_HEADER: Pixels = px(32.0);
+pub(crate) const GRID_ROW: Pixels = px(29.0);
+
+/// The text sizes of the grid header and data rows.
+pub(crate) const GRID_HEADER_TEXT: Pixels = px(12.0);
+pub(crate) const GRID_TEXT: Pixels = px(12.5);
+
+/// The grid columns: row number, key and value; the description fills the rest.
+pub(crate) const GRID_NUMBER_COLUMN: Pixels = px(46.0);
+pub(crate) const GRID_KEY_COLUMN: Pixels = px(200.0);
+pub(crate) const GRID_VALUE_COLUMN: Pixels = px(420.0);
+
+/// The text and icon size of the SECRET badge.
+pub(crate) const BADGE_TEXT: Pixels = px(10.0);
+
+/// The opacity of the warning wash on a grid row with an unresolved reference.
+const UNRESOLVED_ROW_WASH: f32 = 0.05;
+
+/// The wash of a grid row with an unresolved reference: the warning, faint.
+pub(crate) fn unresolved_row_wash(colors: &Colors) -> Hsla {
+    Hsla {
+        a: UNRESOLVED_ROW_WASH,
+        ..colors.warning
+    }
+}
+
 /// The size the main window opens at.
 pub(crate) const MAIN_WINDOW_SIZE: Size<Pixels> = size(px(1200.0), px(800.0));
 
