@@ -415,6 +415,20 @@ database, which was DBFlux's most expensive structural mistake.
 
 ## UI
 
+What exists today: `relay [<dir>]` opens a workspace through `relay_engine` before the window
+appears (a slow disk delays the window). The window is the Bolt shell: title bar and status bar
+on the desk, a 290 px sidebar island and a document island. The sidebar lists collections,
+folders and requests (collections expanded, folders collapsed) and the environments; the
+arrow keys move the selection, Enter or the chevron toggles a folder, and the status bar counts
+load warnings. The document island shows the open hint or the load error; documents come next.
+
+Every region and tree row has a stable element id (`title-bar`, `sidebar`, `document`,
+`status-bar`, `tree-row-<id>`), and text that automation must read carries a label role,
+because the gpui-mcp bridge only reports text for nodes with a text role. Tree rows report
+`selected` and `expanded`.
+
+The plan:
+
 - Sidebar tree: workspace, collections, folders, requests, environments.
 - Documents in tabs: request editor, collection and folder settings, environment editor,
   runner results.

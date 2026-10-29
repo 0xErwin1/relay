@@ -15,7 +15,8 @@ cleanly in git.
 
 ```sh
 nix develop          # toolchain, mold and native libraries
-cargo run            # opens the Relay window
+cargo run            # opens the Relay window (on the current directory if it holds relay.toml)
+cargo run -- ~/billing                     # opens the workspace in ~/billing
 cargo run -- run billing-api/invoices/list-invoices --workspace ~/billing --env staging
                      # sends one request, body to stdout, summary to stderr
 scripts/lint.py      # fmt, clippy, file-size and layering checks
