@@ -1,0 +1,409 @@
+//! `relay run` end to end: the built binary against a local mock server (S11, S12).
+
+#![allow(
+    clippy::panic,
+    clippy::indexing_slicing,
+    reason = "test helpers fail the calling test"
+)]
+
+use std::fs;
+use std::path::Path;
+use std::process::{Command, Output};
+
+use pretty_assertions::assert_eq;
+use tempfile::TempDir;
+use tokio::runtime::Runtime;
+use wiremock::matchers::{header, method, path, query_param};
+use wiremock::{Mock, MockServer, ResponseTemplate};
+
+fn id_text(n: u32) -> String {
+    format!("01J{n:023}")
+}
+
+fn runtime() -> Runtime {
+    match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(error) => panic!("runtime: {error}"),
+    }
+}
+
+fn server(runtime: &Runtime, mocks: Vec<Mock>) -> MockServer {
+    runtime.block_on(async {
+        let server = MockServer::start().await;
+        for mock in mocks {
+            mock.mount(&server).await;
+        }
+        server
+    })
+}
+
+fn write(root: &Path, relative: &str, content: &str) {
+    let path = root.join(relative);
+    if let Some(parent) = path.parent()
+        && let Err(error) = fs::create_dir_all(parent)
+    {
+        panic!("create {}: {error}", parent.display());
+    }
+    if let Err(error) = fs::write(&path, content) {
+        panic!("write {}: {error}", path.display());
+    }
+}
+
+/// A workspace with environments `dev` (allowed) and `prod`, and a collection `api`, named
+/// `Api`, that only allows `dev` and holds the request `api/<slug>` with `request` as body.
+fn workspace(manifest_extra: &str, requests: &[(&str, String)]) -> TempDir {
+    let dir = match TempDir::new() {
+        Ok(dir) => dir,
+        Err(error) => panic!("temp dir: {error}"),
+    };
+    let root = dir.path();
+    write(
+        root,
+        "relay.toml",
+        &format!(
+            "id = \"{}\"\nname = \"W\"\nformat = 1\n{manifest_extra}",
+            id_text(900)
+        ),
+    );
+    write(
+        root,
+        "environments/dev.env.toml",
+        &format!("id = \"{}\"\nname = \"Dev\"\n", id_text(1)),
+    );
+    write(
+        root,
+        "environments/prod.env.toml",
+        &format!("id = \"{}\"\nname = \"Prod\"\n", id_text(2)),
+    );
+    write(
+        root,
+        "collections/api/collection.toml",
+        &format!(
+            "id = \"{}\"\nname = \"Api\"\nenvironments = [\"{}\"]\n",
+            id_text(3),
+            id_text(1)
+        ),
+    );
+    for (n, (slug, body)) in (10..).zip(requests) {
+        write(
+            root,
+            &format!("collections/api/{slug}.req.toml"),
+            &format!("id = \"{}\"\nname = \"{slug}\"\n{body}", id_text(n)),
+        );
+    }
+    dir
+}
+
+fn get(url: &str) -> String {
+    format!("method = \"GET\"\nurl = \"{url}\"\n")
+}
+
+fn relay(args: &[&str]) -> Output {
+    match Command::new(env!("CARGO_BIN_EXE_relay"))
+        .args(args)
+        .env_remove("RUST_LOG")
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => panic!("run relay: {error}"),
+    }
+}
+
+fn run(dir: &TempDir, args: &[&str]) -> Output {
+    let root = dir.path().to_string_lossy().into_owned();
+    let mut all = vec!["run", "--workspace", root.as_str()];
+    all.extend_from_slice(args);
+    relay(&all)
+}
+
+fn text(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes).into_owned()
+}
+
+/// Asserts `line` is `<before><digits><after>`: the elapsed milliseconds vary.
+fn assert_summary(line: &str, before: &str, after: &str) {
+    let ms = line
+        .strip_prefix(before)
+        .and_then(|rest| rest.strip_suffix(after))
+        .unwrap_or_else(|| panic!("summary {line:?} is not {before:?}<ms>{after:?}"));
+    assert!(
+        !ms.is_empty() && ms.bytes().all(|byte| byte.is_ascii_digit()),
+        "summary {line:?} has no millisecond count"
+    );
+}
+
+fn assert_failure(output: &Output, code: i32, stderr: &str) {
+    assert_eq!(text(&output.stderr), stderr);
+    assert_eq!(text(&output.stdout), "");
+    assert_eq!(output.status.code(), Some(code));
+}
+
+#[test]
+fn success_writes_the_raw_body_and_a_summary() {
+    let rt = runtime();
+    let body = vec![b'o', b'k', 0xff, 0x00, b'\n'];
+    let server = server(
+        &rt,
+        vec![
+            Mock::given(method("GET"))
+                .and(path("/hello"))
+                .respond_with(ResponseTemplate::new(200).set_body_bytes(body.clone())),
+        ],
+    );
+    let dir = workspace("", &[("hello", get(&format!("{}/hello", server.uri())))]);
+    let output = run(&dir, &["api/hello"]);
+    assert_eq!(output.stdout, body);
+    assert_summary(
+        &text(&output.stderr),
+        &format!("GET {}/hello -> 200 OK in ", server.uri()),
+        " ms, 5 B\n",
+    );
+    assert_eq!(output.status.code(), Some(0));
+}
+
+#[test]
+fn any_status_exits_zero_and_sizes_use_kilobytes() {
+    let rt = runtime();
+    let server = server(
+        &rt,
+        vec![
+            Mock::given(path("/missing"))
+                .respond_with(ResponseTemplate::new(404).set_body_bytes(vec![b'x'; 2560])),
+        ],
+    );
+    let dir = workspace(
+        "",
+        &[("missing", get(&format!("{}/missing", server.uri())))],
+    );
+    let output = run(&dir, &["api/missing"]);
+    assert_summary(
+        &text(&output.stderr),
+        &format!("GET {}/missing -> 404 Not Found in ", server.uri()),
+        " ms, 2.5 KB\n",
+    );
+    assert_eq!(output.stdout.len(), 2560);
+    assert_eq!(output.status.code(), Some(0));
+}
+
+#[test]
+fn include_prints_the_status_line_and_headers_first() {
+    let rt = runtime();
+    let server = server(
+        &rt,
+        vec![
+            Mock::given(path("/inc")).respond_with(
+                ResponseTemplate::new(201)
+                    .insert_header("x-test", "one")
+                    .set_body_string("body"),
+            ),
+        ],
+    );
+    let dir = workspace("", &[("inc", get(&format!("{}/inc", server.uri())))]);
+    let output = run(&dir, &["api/inc", "--include"]);
+    // The date header varies; mask its value and compare the rest exactly.
+    let stdout: Vec<String> = text(&output.stdout)
+        .split('\n')
+        .map(|line| match line.strip_prefix("date: ") {
+            Some(_) => "date: <date>".to_owned(),
+            None => line.to_owned(),
+        })
+        .collect();
+    assert_eq!(
+        stdout.join("\n"),
+        "HTTP/1.1 201 Created\nx-test: one\ncontent-type: text/plain\ncontent-length: 4\ndate: <date>\n\nbody"
+    );
+    assert_eq!(output.status.code(), Some(0));
+    let short = run(&dir, &["api/inc", "-i"]);
+    assert!(text(&short.stdout).starts_with("HTTP/1.1 201 Created\n"));
+}
+
+#[test]
+fn vars_resolve_as_local_variables() {
+    let rt = runtime();
+    let server = server(
+        &rt,
+        vec![
+            Mock::given(path("/v"))
+                .and(query_param("q", "a=b"))
+                .and(header("authorization", "Bearer s3cret"))
+                .respond_with(ResponseTemplate::new(200).set_body_string("ok")),
+        ],
+    );
+    let request = "method = \"GET\"\nurl = \"{{base}}/v\"\n\n[[params]]\nkey = \"q\"\nvalue = \"{{q}}\"\n\n[auth]\ntype = \"bearer\"\ntoken = \"{{token}}\"\n";
+    let dir = workspace("", &[("v", request.to_owned())]);
+    let base = format!("base={}", server.uri());
+    let output = run(
+        &dir,
+        &[
+            "api/v",
+            "--var",
+            &base,
+            "--var",
+            "q=a=b",
+            "--var",
+            "token=s3cret",
+        ],
+    );
+    assert_eq!(text(&output.stdout), "ok");
+    assert_summary(
+        &text(&output.stderr),
+        &format!("GET {}/v?q=a%3Db -> 200 OK in ", server.uri()),
+        " ms, 2 B\n",
+    );
+    assert_eq!(output.status.code(), Some(0));
+}
+
+#[test]
+fn warnings_come_before_the_summary() {
+    let rt = runtime();
+    let server = server(
+        &rt,
+        vec![Mock::given(path("/w")).respond_with(ResponseTemplate::new(200))],
+    );
+    let request = format!(
+        "method = \"GET\"\nurl = \"{}/w\"\n\n[[params]]\nkey = \"q\"\nvalue = \"{{{{a}}}}\"\n\n[[headers]]\nkey = \"X-B\"\nvalue = \"{{{{b}}}}{{{{a}}}}\"\n",
+        server.uri()
+    );
+    let dir = workspace(
+        "\n[[globals]]\nkey = \"t\"\nvalue = \"leaked\"\nsecret = true\n",
+        &[("w", request)],
+    );
+    let output = run(&dir, &["api/w"]);
+    let stderr = text(&output.stderr);
+    let lines: Vec<&str> = stderr.lines().collect();
+    assert_eq!(
+        lines[..3],
+        [
+            format!(
+                "warning: {}: secret variable t has a value in the workspace file; it was ignored",
+                dir.path().join("relay.toml").display()
+            )
+            .as_str(),
+            "warning: unresolved variable {{a}}",
+            "warning: unresolved variable {{b}}",
+        ]
+    );
+    assert_eq!(lines.len(), 4);
+    assert_summary(
+        &format!("{}\n", lines[3]),
+        &format!("GET {}/w?q=%7B%7Ba%7D%7D -> 200 OK in ", server.uri()),
+        " ms, 0 B\n",
+    );
+    assert_eq!(output.status.code(), Some(0));
+}
+
+#[test]
+fn unknown_environment_is_a_usage_error() {
+    let dir = workspace("", &[("r", get("http://127.0.0.1:1/"))]);
+    assert_failure(
+        &run(&dir, &["api/r", "--env", "nope"]),
+        2,
+        "error: unknown environment nope\n",
+    );
+}
+
+#[test]
+fn environment_outside_the_allowlist_fails() {
+    let dir = workspace("", &[("r", get("http://127.0.0.1:1/"))]);
+    assert_failure(
+        &run(&dir, &["api/r", "--env", "prod"]),
+        1,
+        "error: environment prod is not allowed for collection Api\n",
+    );
+}
+
+#[test]
+fn unknown_request_is_a_usage_error() {
+    let dir = workspace("", &[("r", get("http://127.0.0.1:1/"))]);
+    assert_failure(
+        &run(&dir, &["api/nope"]),
+        2,
+        "error: no request matches api/nope\n",
+    );
+}
+
+#[test]
+fn var_without_equals_is_a_usage_error() {
+    let dir = workspace("", &[("r", get("http://127.0.0.1:1/"))]);
+    assert_failure(
+        &run(&dir, &["api/r", "--var", "novalue"]),
+        2,
+        "error: invalid --var novalue: expected <key>=<value>\n",
+    );
+}
+
+#[test]
+fn workspace_that_fails_to_load_is_a_usage_error() {
+    let dir = match TempDir::new() {
+        Ok(dir) => dir,
+        Err(error) => panic!("temp dir: {error}"),
+    };
+    let manifest = dir.path().join("relay.toml");
+    let output = run(&dir, &["api/r"]);
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = text(&output.stderr);
+    assert!(
+        stderr.starts_with(&format!("error: {}: ", manifest.display()))
+            && stderr.lines().count() == 1,
+        "{stderr}"
+    );
+}
+
+#[test]
+fn unsupported_auth_fails() {
+    let request = "method = \"GET\"\nurl = \"http://127.0.0.1:1/\"\n\n[auth]\ntype = \"digest\"\nusername = \"u\"\n";
+    let dir = workspace("", &[("r", request.to_owned())]);
+    assert_failure(
+        &run(&dir, &["api/r"]),
+        1,
+        "error: auth type digest is not supported yet\n",
+    );
+}
+
+#[test]
+fn connection_failure_fails() {
+    let dir = workspace("", &[("r", get("http://127.0.0.1:1/"))]);
+    let output = run(&dir, &["api/r"]);
+    let stderr = text(&output.stderr);
+    assert!(
+        stderr.starts_with("error: could not connect to 127.0.0.1: ")
+            && stderr.lines().count() == 1,
+        "{stderr}"
+    );
+    assert_eq!(text(&output.stdout), "");
+    assert_eq!(output.status.code(), Some(1));
+}
+
+#[test]
+fn help_lists_run() {
+    let output = relay(&["--help"]);
+    let stdout = text(&output.stdout);
+    assert!(stdout.contains("run "), "{stdout}");
+    assert_eq!(output.status.code(), Some(0));
+}
+
+#[test]
+fn run_help_describes_arguments_and_exit_codes() {
+    let output = relay(&["run", "--help"]);
+    let stdout = text(&output.stdout);
+    for expected in [
+        "<REQUEST>",
+        "--workspace <DIR>",
+        "--env <SLUG>",
+        "--var <KEY=VALUE>",
+        "-i, --include",
+        "Exit codes:",
+        "  0  ",
+        "  1  ",
+        "  2  ",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "missing {expected:?} in\n{stdout}"
+        );
+    }
+    assert_eq!(output.status.code(), Some(0));
+}

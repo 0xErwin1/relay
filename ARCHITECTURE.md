@@ -303,6 +303,44 @@ measurably demand it, and then by one-way layers.
   executor-agnostic futures, so no GPUI code runs on Tokio and no HTTP code runs on GPUI's
   executor.
 
+## Command line
+
+`relay` with no arguments opens the window. `relay run` sends one request through
+`relay_engine`, the same path the UI and MCP use:
+
+```text
+relay run <request> [--workspace <dir>] [--env <slug>] [--var <key>=<value>]... [-i|--include]
+```
+
+- `<request>` is a request id or its slug path, `<collection>/<folder>/.../<request>`.
+- `--workspace` defaults to the current directory. `--env` selects an environment by slug;
+  without it no environment applies. `--var` sets a local variable, the highest scope, and
+  repeats.
+- stdout is the response body, byte for byte. `--include` writes the status line
+  `HTTP/<version> <code> <reason>` and the headers first, then a blank line.
+- stderr has one `warning: <message>` line per workspace load warning, one
+  `warning: unresolved variable {{<name>}}` line per unresolved variable, then the summary
+  `<METHOD> <url> -> <code> <reason> in <ms> ms, <size>`, with the size in `B`, `KB` or `MB`
+  (1024 based). Errors print `error: <message>`.
+
+| Exit code | Meaning |
+|-----------|---------|
+| 0 | A response was received, whatever its status. |
+| 1 | The request could not be executed: transport error, unsupported auth, environment not allowed for the collection, invalid GraphQL variables. |
+| 2 | Usage error: bad arguments, unknown request or environment, workspace that fails to load. |
+
+Secret variables have no value in workspace files, and the keyring does not exist yet, so a
+secret resolves only when passed with `--var`. A `--var` value is visible in the process list
+and the shell history; prefer reading it from the environment, such as
+`--var token="$API_TOKEN"`.
+
+The engine API behind it: `Engine::open(root)` loads the workspace; `Engine::prepare` selects
+the request, checks the environment and resolves variables, auth, body and settings into a
+`relay_http` request without IO (`relay_engine::prepare` is the same step as a pure function);
+`Engine::execute` sends it as a task on the engine runtime and returns an `Execution` with its
+`JoinHandle` and a cancellation token. Auth types other than `inherit`, `none`, `basic`,
+`bearer` and `apikey` fail with `auth type <type> is not supported yet`.
+
 ## Scripting
 
 `rquickjs` embeds QuickJS, as DBFlux already does in `dbflux_js`.

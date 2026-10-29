@@ -89,7 +89,7 @@ v1.
 | Feature | Level |
 |---------|-------|
 | Run a collection or folder in order, with `setNextRequest` | v1 |
-| `relay run` on the command line, with an exit code for CI | v1 |
+| `relay run` on the command line, with an exit code for CI (single requests work today; running a collection or folder is still v1) | v1 |
 | Iterations over CSV or JSON data | Later |
 
 ## History

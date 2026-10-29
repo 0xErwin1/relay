@@ -7,8 +7,8 @@ Relay reads and writes Postman collection v2.1 and environment files, runs Postm
 Workspaces are directories of small TOML files, so collections diff, merge and review
 cleanly in git.
 
-> Status: foundation. The workspace compiles and opens an empty window; no product
-> features exist yet. See [FEATURES.md](FEATURES.md) for what is planned and
+> Status: early. The window is still empty; `relay run` sends a request of a workspace
+> from the command line. See [FEATURES.md](FEATURES.md) for what is planned and
 > [ARCHITECTURE.md](ARCHITECTURE.md) for how it is built.
 
 ## Quick path
@@ -16,6 +16,8 @@ cleanly in git.
 ```sh
 nix develop          # toolchain, mold and native libraries
 cargo run            # opens the Relay window
+cargo run -- run billing-api/invoices/list-invoices --workspace ~/billing --env staging
+                     # sends one request, body to stdout, summary to stderr
 scripts/lint.py      # fmt, clippy, file-size and layering checks
 cargo nextest run    # tests
 ```
