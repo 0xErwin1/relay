@@ -8,6 +8,8 @@ mod field;
 mod hover;
 mod icon_button;
 mod keycap;
+mod rail_button;
+mod status_chip;
 
 #[cfg(test)]
 mod render_tests;
@@ -15,3 +17,5 @@ mod render_tests;
 pub use field::Field;
 pub use icon_button::{IconButton, IconButtonColors, IconButtonVariant, icon_button_colors};
 pub use keycap::Keycap;
+pub use rail_button::{RailButton, RailButtonColors, badge_text, rail_button_colors};
+pub use status_chip::StatusChip;

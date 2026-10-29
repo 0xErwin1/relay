@@ -68,6 +68,16 @@ impl Render for Shell {
                     .w(px(420.0)),
             )
             .child(Field::new("plain", "Filter requests").w(px(200.0)))
+            .child(
+                RailButton::new("rail-collections", IconName::Box, "Collections")
+                    .active(true)
+                    .badge(Some(3)),
+            )
+            .child(
+                RailButton::new("rail-history", IconName::RotateCcwClock, "History").badge(Some(0)),
+            )
+            .child(StatusChip::new("chip-warnings", "2 warnings").icon(IconName::TriangleAlert))
+            .child(StatusChip::new("chip-plain", "Ready"))
     }
 }
 
@@ -97,4 +107,49 @@ fn fields_are_30_high_at_the_width_they_were_given(cx: &mut TestAppContext) {
         Some("Ctrl Shift P")
     );
     assert_eq!(a11y.label_of("plain").as_deref(), Some("Filter requests"));
+}
+
+#[gpui::test]
+fn rail_buttons_are_38_square_and_badge_only_a_positive_count(cx: &mut TestAppContext) {
+    let (_view, cx) = cx.add_window_view(|_, _| Shell);
+    cx.run_until_parked();
+
+    let button = bounds_of(cx, "rail-collections");
+    assert_eq!(button.size, size(px(38.0), px(38.0)));
+    assert_eq!(bounds_of(cx, "rail-history").size, size(px(38.0), px(38.0)));
+    let badge = bounds_of(cx, "rail-collections-badge");
+    assert_eq!(badge.top(), button.top() + px(3.0));
+    assert_eq!(badge.right(), button.right() - px(3.0));
+    assert_eq!(badge.size.height, px(13.0));
+    assert!(cx.debug_bounds("rail-history-badge").is_none());
+
+    let a11y = A11yRecorder::observe(cx);
+    assert_eq!(
+        a11y.label_of("rail-collections").as_deref(),
+        Some("Collections")
+    );
+    assert_eq!(
+        a11y.label_of("rail-collections-badge").as_deref(),
+        Some("3")
+    );
+    assert_eq!(a11y.label_of("rail-history").as_deref(), Some("History"));
+}
+
+#[gpui::test]
+fn status_chips_are_26_high_and_labeled(cx: &mut TestAppContext) {
+    let (_view, cx) = cx.add_window_view(|_, _| Shell);
+    cx.run_until_parked();
+
+    let with_icon = bounds_of(cx, "chip-warnings");
+    let plain = bounds_of(cx, "chip-plain");
+    assert_eq!(with_icon.size.height, px(26.0));
+    assert_eq!(plain.size.height, px(26.0));
+    assert!(with_icon.size.width > plain.size.width);
+
+    let a11y = A11yRecorder::observe(cx);
+    assert_eq!(
+        a11y.label_of("chip-warnings").as_deref(),
+        Some("2 warnings")
+    );
+    assert_eq!(a11y.label_of("chip-plain").as_deref(), Some("Ready"));
 }
