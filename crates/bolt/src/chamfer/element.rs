@@ -4,8 +4,8 @@ use gpui::prelude::*;
 use gpui::{App, Bounds, Hsla, PathBuilder, Pixels, Point, Window, canvas};
 
 use super::geometry::{
-    CutCorners, cut_outline, edge_polygons, outside_polygons, snap_bounds_to_device,
-    snap_length_to_device, snap_offset_to_device,
+    CutCorners, bottom_edge_polygon, cut_outline, edge_polygons, outside_polygons,
+    snap_bounds_to_device, snap_length_to_device, snap_offset_to_device,
 };
 
 /// An edge painted just inside the outline, along the straight sides and the cuts.
@@ -25,7 +25,7 @@ pub struct ChamferEdge {
 /// child it paints behind them; as the last child it paints over them, which is how an
 /// [`outside_fill`](Self::outside_fill) masks content into the cut.
 ///
-/// Paint order: fill, outside fill, edge. Bounds, cut and edge snap to the device pixel grid.
+/// Paint order: fill, outside fill, edge, bottom edge. Bounds, cut and edge snap to the device pixel grid.
 ///
 /// Not yet ported from DBFlux: hover and pressed fills with their transitions, and the focus
 /// ring traced along the cut. They belong here, as builder options on this element, when the
@@ -37,6 +37,7 @@ pub struct Chamfer {
     fill: Option<Hsla>,
     outside_fill: Option<Hsla>,
     edge: Option<ChamferEdge>,
+    bottom_edge: Option<ChamferEdge>,
 }
 
 impl Chamfer {
@@ -49,6 +50,7 @@ impl Chamfer {
             fill: None,
             outside_fill: None,
             edge: None,
+            bottom_edge: None,
         }
     }
 
@@ -79,6 +81,16 @@ impl Chamfer {
         self
     }
 
+    /// Paints a line `thickness` wide just inside the bottom side, following a bottom cut:
+    /// the edge under a keycap.
+    pub fn bottom_edge(mut self, color: impl Into<Hsla>, thickness: Pixels) -> Self {
+        self.bottom_edge = Some(ChamferEdge {
+            color: color.into(),
+            thickness,
+        });
+        self
+    }
+
     /// Paints the shape into `bounds`.
     pub fn paint(&self, bounds: Bounds<Pixels>, window: &mut Window) {
         let scale_factor = window.scale_factor();
@@ -98,6 +110,11 @@ impl Chamfer {
             for polygon in edge_polygons(bounds, cut, self.corners, thickness) {
                 paint_polygon(&polygon, edge.color, window);
             }
+        }
+        if let Some(edge) = self.bottom_edge {
+            let thickness = snap_length_to_device(edge.thickness, scale_factor);
+            let polygon = bottom_edge_polygon(bounds, cut, self.corners, thickness);
+            paint_polygon(&polygon, edge.color, window);
         }
     }
 }

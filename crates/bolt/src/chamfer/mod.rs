@@ -9,6 +9,6 @@ pub mod geometry;
 pub use element::{Chamfer, ChamferEdge};
 
 pub use geometry::{
-    CutCorners, clamp_cut, cut_outline, edge_polygons, outside_polygons, snap_bounds_to_device,
-    snap_length_to_device, snap_offset_to_device,
+    CutCorners, bottom_edge_polygon, clamp_cut, cut_outline, edge_polygons, outside_polygons,
+    snap_bounds_to_device, snap_length_to_device, snap_offset_to_device,
 };

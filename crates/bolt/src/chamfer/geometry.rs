@@ -85,6 +85,45 @@ pub fn edge_polygons(
         .collect()
 }
 
+/// The part of the shape within `thickness` of its bottom side, following a bottom cut
+/// diagonally like an inset bottom line clipped by the shape: the keycap's bottom edge.
+pub fn bottom_edge_polygon(
+    bounds: Bounds<Pixels>,
+    cut: Pixels,
+    corners: CutCorners,
+    thickness: Pixels,
+) -> Vec<Point<Pixels>> {
+    let thickness = f32::from(thickness);
+    let Some(rect) = Rect::of(bounds) else {
+        return Vec::new();
+    };
+    if thickness <= 0.0 {
+        return Vec::new();
+    }
+    let cut = f32::from(clamp_cut(bounds.size, cut));
+    let band_top = (rect.bottom - thickness).max(rect.top);
+    let outline = dedup(rect.outline(cut, corners).to_vec());
+    to_pixels(&dedup(clip_below(&outline, band_top)))
+}
+
+/// The part of the convex `polygon` at or below `y`, keeping the vertex order.
+fn clip_below(polygon: &[Point<f32>], y: f32) -> Vec<Point<f32>> {
+    let next = polygon.iter().cycle().skip(1);
+    let mut clipped = Vec::with_capacity(polygon.len() + 2);
+    for (&from, &to) in polygon.iter().zip(next) {
+        let from_inside = from.y >= y;
+        let to_inside = to.y >= y;
+        if from_inside {
+            clipped.push(from);
+        }
+        if from_inside != to_inside {
+            let t = (y - from.y) / (to.y - from.y);
+            clipped.push(point(from.x + (to.x - from.x) * t, y));
+        }
+    }
+    clipped
+}
+
 /// The corners of `bounds` outside the shape, one right triangle per cut corner. Painted in
 /// the color around the shape, they mask content so it reads as cut.
 pub fn outside_polygons(
@@ -279,6 +318,39 @@ mod tests {
                 "{actual:?} != {expected:?}"
             );
         }
+    }
+
+    #[test]
+    fn bottom_edge_is_the_band_of_the_shape_along_the_bottom_side() {
+        let band = bottom_edge_polygon(
+            rect(0.0, 0.0, 40.0, 20.0),
+            px(4.0),
+            CutCorners::default(),
+            px(1.0),
+        );
+        assert_close(
+            &band,
+            &[(37.0, 19.0), (36.0, 20.0), (0.0, 20.0), (0.0, 19.0)],
+        );
+
+        let all = bottom_edge_polygon(
+            rect(0.0, 0.0, 40.0, 20.0),
+            px(4.0),
+            CutCorners::All,
+            px(1.0),
+        );
+        assert_close(
+            &all,
+            &[(37.0, 19.0), (36.0, 20.0), (4.0, 20.0), (3.0, 19.0)],
+        );
+    }
+
+    #[test]
+    fn bottom_edge_of_empty_bounds_or_no_thickness_is_empty() {
+        let empty = rect(0.0, 0.0, 0.0, 20.0);
+        assert!(bottom_edge_polygon(empty, px(4.0), CutCorners::default(), px(1.0)).is_empty());
+        let shape = rect(0.0, 0.0, 40.0, 20.0);
+        assert!(bottom_edge_polygon(shape, px(4.0), CutCorners::default(), px(0.0)).is_empty());
     }
 
     #[test]
