@@ -14,6 +14,7 @@ names the alternative it rejects and, where relevant, the DBFlux experience behi
 |------|----------|
 | Source of truth | A workspace is a directory of TOML files, one file per request, folder, collection and environment. |
 | Saving | Edits are local drafts that survive restarts. `Ctrl+S` writes the workspace file. |
+| Windows | One app instance with one workspace open at a time, as in DBFlux. Switching workspace replaces the window's content; each workspace keeps its own drafts. |
 | Protocols | HTTP only until after v1. |
 | App state | History, recent workspaces, cookies and UI state live in a per-user SQLite file, never in the workspace. |
 | Secrets | Secret variable values live in the OS keyring; workspace files hold only the key and `secret = true`. |

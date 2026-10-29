@@ -8,6 +8,13 @@
       "tradeoff": "Same app as DBFlux; one more stacked row in the document (toolbar plus selector chips) than DBFlux's editor",
       "width": 1440,
       "height": 900
+    },
+    {
+      "file": "02-workspace-menu.html",
+      "title": "Workspace menu",
+      "tradeoff": "One workspace at a time; switching keeps each workspace's drafts",
+      "width": 1440,
+      "height": 900
     }
   ]
 }

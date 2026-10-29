@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "comments": [
+    {
+      "id": "j58vubyh",
+      "file": "01-main.html",
+      "selector": "body > main > div > div:nth-of-type(2) > section > div:nth-of-type(3)",
+      "excerpt": "Billing API staging STAGE last sent 2 min ago · billing-api/invoices/create-invoice.req.toml",
+      "comment": "Quitaria esto de aca, porque genera ruido y redundancia. Como es algo global, me parecia bien que estuviera en la barra de arriba junto al search",
+      "createdAt": "2026-10-29T12:32:41.243Z",
+      "status": "resolved",
+      "sentAt": "2026-10-29T12:32:41.282Z",
+      "resolvedAt": "2026-10-29T12:33:28.305Z"
+    },
+    {
+      "id": "8v9b3q0n",
+      "file": "01-main.html",
+      "selector": "body > main > div > div:nth-of-type(2) > section > div:nth-of-type(2)",
+      "excerpt": "Billing API invoices Create invoice 4 headers · JSON body Save Ctrl S Revert Stacked Split",
+      "comment": "Hay tres barras, quitando espacio al usuario, se puede meter o en toro lado los botones esos, en un sub menu, en una sidebar como hace en dbflux en el editor o en otro lado. Las tabas estan bien, la siguiente linea me genera mas ruido especialmente los botones, si la barra fuera mas fina y solo estuviera el path no habria tanto problema",
+      "createdAt": "2026-10-29T12:35:04.939Z",
+      "status": "resolved",
+      "sentAt": "2026-10-29T12:35:04.958Z",
+      "resolvedAt": "2026-10-29T12:35:56.007Z",
+      "screenshot": ".screenshots/8v9b3q0n.png"
+    },
+    {
+      "id": "h4cbs67e",
+      "file": "01-main.html",
+      "selector": "body > main > div > div:nth-of-type(1) > aside > div:nth-of-type(1) > button:nth-of-type(2) > svg",
+      "excerpt": "",
+      "comment": "Quitaria este boton",
+      "createdAt": "2026-10-29T12:35:17.927Z",
+      "status": "resolved",
+      "sentAt": "2026-10-29T12:35:17.934Z",
+      "resolvedAt": "2026-10-29T12:36:22.668Z"
+    },
+    {
+      "id": "c0d6nd82",
+      "file": "01-main.html",
+      "selector": "body > main > div > nav > button:nth-of-type(4)",
+      "excerpt": "Agents (MCP)",
+      "comment": "Lo quitaria tambien",
+      "createdAt": "2026-10-29T12:35:27.871Z",
+      "status": "resolved",
+      "sentAt": "2026-10-29T12:35:27.878Z",
+      "resolvedAt": "2026-10-29T12:36:44.256Z"
+    },
+    {
+      "id": "feieru13",
+      "file": "01-main.html",
+      "selector": "body > main > header > div > div:nth-of-type(2)",
+      "excerpt": "staging STAGE",
+      "comment": "Queda miedio tirado ahi , como que no encaja con el resto Aparte que rompe. Aparte que rompe la simetria, no se donde lo meteria para que no moleste",
+      "createdAt": "2026-10-29T12:37:15.028Z",
+      "status": "resolved",
+      "sentAt": "2026-10-29T12:37:15.040Z",
+      "resolvedAt": "2026-10-29T12:38:09.656Z"
+    }
+  ]
+}
