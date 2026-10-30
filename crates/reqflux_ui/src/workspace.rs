@@ -3,10 +3,20 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use reqflux_engine::Engine;
+use reqflux_engine::{Engine, KeyringSecretStore, MemorySecretStore, SecretStore};
 
 /// The text the document island shows when no workspace is open.
 pub(crate) const OPEN_HINT: &str = "Open a workspace: reqflux <directory>";
+
+/// The OS keyring in the app; an empty in-memory store in tests, which never touch the real
+/// keyring (keyring-secrets S8).
+fn secret_store() -> Arc<dyn SecretStore> {
+    if cfg!(test) {
+        Arc::new(MemorySecretStore::new())
+    } else {
+        Arc::new(KeyringSecretStore)
+    }
+}
 
 /// The outcome of opening the workspace of a window.
 #[derive(Debug)]
@@ -35,7 +45,7 @@ impl OpenedWorkspace {
         let Some(path) = dir else {
             return Self::None;
         };
-        match Engine::open(path.clone()) {
+        match Engine::open_with_secrets(path.clone(), secret_store()) {
             Ok(engine) => Self::Loaded(Arc::new(engine)),
             Err(error) => {
                 log::warn!("could not open workspace {}: {error}", path.display());

@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use reqflux_core::model::{Request, Workspace};
 use reqflux_core::template::SystemDynamicSource;
@@ -14,10 +15,11 @@ use tokio_util::sync::CancellationToken;
 
 use crate::error::{ExecuteError, OpenError, SaveError};
 use crate::prepare::{
-    ExecuteOptions, Inspection, Prepared, inspect, prepare, prepare_draft, prepare_target, scopes,
+    ExecuteOptions, Inspection, Prepared, StoredSecrets, inspect_stored, prepare_target, scopes,
     select_environment,
 };
 use crate::scripts as engine_scripts;
+use crate::secrets::{KeyringSecretStore, SecretStore};
 use crate::sent::{Masker, SentRequest};
 
 /// A loaded workspace that executes its requests. See the crate docs for the threading
@@ -28,6 +30,7 @@ pub struct Engine {
     client: HttpClient,
     pub(crate) root: PathBuf,
     pub(crate) loaded: Loaded,
+    secrets: Arc<dyn SecretStore>,
 }
 
 /// A request in flight.
@@ -39,6 +42,9 @@ pub struct Execution {
     pub url: String,
     /// Variable names that did not resolve, in first-occurrence order.
     pub unresolved: Vec<String>,
+    /// Why secret variables were not read from the secret store; see
+    /// [`Prepared::secret_problem`].
+    pub secret_problem: Option<String>,
     /// The request as sent with every secret masked, for history. Available before the
     /// send completes, so a failed send can be recorded too.
     pub sent: SentRequest,
@@ -118,6 +124,7 @@ impl Execution {
             method,
             url,
             unresolved,
+            secret_problem,
             sent,
             handle,
             scripts,
@@ -127,7 +134,19 @@ impl Execution {
         let response = handle
             .await
             .map_err(|error| HttpError::Request(error.to_string()))??;
-        Ok(finalize(method, url, unresolved, sent, scripts, scripted, response).await)
+        Ok(finalize(
+            Sent {
+                method,
+                url,
+                unresolved,
+                secret_problem,
+                sent,
+            },
+            scripts,
+            scripted,
+            response,
+        )
+        .await)
     }
 }
 
@@ -136,10 +155,7 @@ impl Execution {
 /// the caller (S14). [`Engine::wait`] drives this same future with `block_on`, so both
 /// paths return the same `Executed`.
 async fn finalize(
-    method: String,
-    url: String,
-    unresolved: Vec<String>,
-    sent: SentRequest,
+    sent: Sent,
     mut scripts: ScriptOutcome,
     scripted: Option<Box<Scripted>>,
     response: Response,
@@ -148,14 +164,31 @@ async fn finalize(
         let outcome = scripted.run(&response).await;
         engine_scripts::merge(&mut scripts, outcome);
     }
+    let Sent {
+        method,
+        url,
+        unresolved,
+        secret_problem,
+        sent,
+    } = sent;
     Executed {
         method,
         url,
         unresolved,
+        secret_problem,
         sent,
         response,
         scripts,
     }
+}
+
+/// What an execution sent, carried from the [`Execution`] into its [`Executed`].
+struct Sent {
+    method: String,
+    url: String,
+    unresolved: Vec<String>,
+    secret_problem: Option<String>,
+    sent: SentRequest,
 }
 
 /// A finished request execution.
@@ -167,6 +200,9 @@ pub struct Executed {
     pub url: String,
     /// Variable names that did not resolve, in first-occurrence order.
     pub unresolved: Vec<String>,
+    /// Why secret variables were not read from the secret store; see
+    /// [`Prepared::secret_problem`].
+    pub secret_problem: Option<String>,
     /// The request as sent with every secret masked, for history.
     pub sent: SentRequest,
     /// The response.
@@ -179,12 +215,27 @@ pub struct Executed {
 }
 
 impl Engine {
-    /// Loads the workspace at `root` and starts the runtime.
+    /// Loads the workspace at `root` and starts the runtime, with the OS keyring as the
+    /// secret store.
     ///
     /// # Errors
     ///
     /// Fails when the workspace does not load or the runtime cannot start.
     pub fn open(root: impl Into<PathBuf>) -> Result<Self, OpenError> {
+        Self::open_with_secrets(root, Arc::new(KeyringSecretStore))
+    }
+
+    /// Loads the workspace at `root` and starts the runtime, reading secret variable values
+    /// from `secrets`. Tests and front ends that must not touch the OS keyring pass a
+    /// [`MemorySecretStore`](crate::MemorySecretStore).
+    ///
+    /// # Errors
+    ///
+    /// Fails when the workspace does not load or the runtime cannot start.
+    pub fn open_with_secrets(
+        root: impl Into<PathBuf>,
+        secrets: Arc<dyn SecretStore>,
+    ) -> Result<Self, OpenError> {
         let root = root.into();
         let loaded = reqflux_store::load(&root)?;
         let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -197,7 +248,14 @@ impl Engine {
             client: HttpClient::new(),
             root,
             loaded,
+            secrets,
         })
+    }
+
+    /// The store secret variable values are read from and written to.
+    #[must_use]
+    pub fn secret_store(&self) -> &Arc<dyn SecretStore> {
+        &self.secrets
     }
 
     /// Re-reads the workspace from disk into this engine, keeping its runtime, its client and
@@ -231,59 +289,92 @@ impl Engine {
         &self.loaded.warnings
     }
 
-    /// Prepares the request `selector` with fresh dynamic values. See [`prepare`].
+    /// Prepares the request `selector` with fresh dynamic values, the valueless secrets read
+    /// from the secret store. See [`prepare`](crate::prepare).
     ///
     /// # Errors
     ///
-    /// The errors of [`prepare`].
+    /// The errors of [`prepare`](crate::prepare).
     pub fn prepare(
         &self,
         selector: &str,
         options: &ExecuteOptions,
     ) -> Result<Prepared, ExecuteError> {
-        prepare(
+        let target = crate::select::find(self.workspace(), selector)?;
+        self.prepare_stored(&target, &target.request.request, options)
+    }
+
+    /// Prepares `request` in the place of `target` with the valueless secrets read from the
+    /// secret store.
+    fn prepare_stored(
+        &self,
+        target: &crate::select::Target<'_>,
+        request: &Request,
+        options: &ExecuteOptions,
+    ) -> Result<Prepared, ExecuteError> {
+        let stored = self.stored(target, options)?;
+        prepare_target(
             self.workspace(),
+            target,
+            request,
             &self.root,
-            selector,
             options,
             &mut SystemDynamicSource,
+            &[],
+            &stored,
         )
     }
 
+    /// Reads the valueless secrets `target` resolves with under `options` from the store.
+    fn stored(
+        &self,
+        target: &crate::select::Target<'_>,
+        options: &ExecuteOptions,
+    ) -> Result<StoredSecrets, ExecuteError> {
+        let environment = select_environment(self.workspace(), target.collection, options)?;
+        Ok(StoredSecrets::read(
+            self.secrets.as_ref(),
+            self.workspace(),
+            target.collection,
+            environment,
+        ))
+    }
+
     /// Prepares `draft` in the place of the request `selector` selects, keeping the parents
-    /// the workspace has for it. See [`prepare_draft`].
+    /// the workspace has for it, the valueless secrets read from the secret store. See
+    /// [`prepare_draft`](crate::prepare_draft).
     ///
     /// # Errors
     ///
-    /// The errors of [`prepare_draft`].
+    /// The errors of [`prepare_draft`](crate::prepare_draft).
     pub fn prepare_draft(
         &self,
         selector: &str,
         draft: &Request,
         options: &ExecuteOptions,
     ) -> Result<Prepared, ExecuteError> {
-        prepare_draft(
-            self.workspace(),
-            &self.root,
-            selector,
-            draft,
-            options,
-            &mut SystemDynamicSource,
-        )
+        let target = crate::select::find(self.workspace(), selector)?;
+        self.prepare_stored(&target, draft, options)
     }
 
-    /// Inspects the request `selector` against the environment slug `environment`. See
-    /// [`inspect`].
+    /// Inspects the request `selector` against the environment slug `environment`, a secret
+    /// set in the secret store reporting resolved. See [`inspect`](crate::inspect).
     ///
     /// # Errors
     ///
-    /// The errors of [`inspect`].
+    /// The errors of [`inspect`](crate::inspect).
     pub fn inspect(
         &self,
         selector: &str,
         environment: Option<&str>,
     ) -> Result<Inspection, ExecuteError> {
-        inspect(self.workspace(), &self.root, selector, environment)
+        inspect_stored(
+            self.workspace(),
+            &self.root,
+            selector,
+            environment,
+            Some(self.secrets.as_ref()),
+        )
     }
 
     /// The content hash of the request `selector`'s file as it was loaded, the base hash a
@@ -340,6 +431,7 @@ impl Engine {
         let Prepared {
             request,
             unresolved,
+            secret_problem,
             ..
         } = prepared;
         let PreparedRequest { method, url, .. } = &request;
@@ -354,6 +446,7 @@ impl Engine {
             method,
             url,
             unresolved,
+            secret_problem,
             sent,
             cancel,
             handle,
@@ -370,7 +463,8 @@ impl Engine {
     ///
     /// # Errors
     ///
-    /// The errors of [`prepare`]; transport errors come out of the [`Execution`].
+    /// The errors of [`prepare`](crate::prepare); transport errors come out of the
+    /// [`Execution`].
     pub fn execute(
         &self,
         selector: &str,
@@ -388,7 +482,7 @@ impl Engine {
     ///
     /// # Errors
     ///
-    /// The errors of [`prepare_draft`]; transport errors come out of the [`Execution`].
+    /// The errors of [`prepare_draft`](crate::prepare_draft); transport errors come out of the [`Execution`].
     pub fn execute_draft(
         &self,
         selector: &str,
@@ -426,7 +520,19 @@ impl Engine {
         options: &ExecuteOptions,
     ) -> Result<(Prepared, ScriptOutcome, Scripted), ExecuteError> {
         let environment = select_environment(self.workspace(), target.collection, options)?;
-        let scope_view = scopes(self.workspace(), target.collection, environment, options);
+        let stored = StoredSecrets::read(
+            self.secrets.as_ref(),
+            self.workspace(),
+            target.collection,
+            environment,
+        );
+        let scope_view = scopes(
+            self.workspace(),
+            target.collection,
+            environment,
+            options,
+            &stored,
+        );
         let view = engine_scripts::request_view(request);
         // A script's `pm.sendRequest` sends through the same client and settings the real
         // request will use (S13).
@@ -461,6 +567,7 @@ impl Engine {
             options,
             &mut SystemDynamicSource,
             &outcome.writes,
+            &stored,
         )?;
         Ok((prepared, outcome, scripted))
     }
@@ -479,6 +586,7 @@ impl Engine {
             method,
             url,
             unresolved,
+            secret_problem,
             sent,
             handle,
             scripts,
@@ -489,7 +597,19 @@ impl Engine {
             let response = handle
                 .await
                 .map_err(|error| ExecuteError::Task(error.to_string()))??;
-            Ok(finalize(method, url, unresolved, sent, scripts, scripted, response).await)
+            Ok(finalize(
+                Sent {
+                    method,
+                    url,
+                    unresolved,
+                    secret_problem,
+                    sent,
+                },
+                scripts,
+                scripted,
+                response,
+            )
+            .await)
         })
     }
 

@@ -103,7 +103,7 @@ fn environment(root: &Path, slug: &str, key: &str, value: &str) {
 }
 
 fn engine(root: &Path) -> Engine {
-    match Engine::open(root) {
+    match common::open_engine(root) {
         Ok(engine) => engine,
         Err(error) => panic!("open: {error}"),
     }

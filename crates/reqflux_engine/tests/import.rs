@@ -104,7 +104,7 @@ fn an_empty_directory_gets_a_whole_workspace() {
     );
     assert!(root.join("environments/staging.env.toml").exists());
 
-    let engine = match Engine::open(root) {
+    let engine = match open_engine(root) {
         Ok(engine) => engine,
         Err(error) => panic!("open: {error}"),
     };
@@ -127,7 +127,7 @@ fn a_raw_json_body_and_a_bearer_token_come_back_through_the_engine() {
         Ok(_) => {}
         Err(error) => panic!("import: {error}"),
     }
-    let engine = match Engine::open(dir.path()) {
+    let engine = match open_engine(dir.path()) {
         Ok(engine) => engine,
         Err(error) => panic!("open: {error}"),
     };
@@ -196,7 +196,7 @@ fn an_environment_named_like_the_collection_gets_a_distinct_slug() {
         Err(error) => panic!("import: {error}"),
     };
     assert_eq!(summary.environments, 1);
-    let engine = match Engine::open(dir.path()) {
+    let engine = match open_engine(dir.path()) {
         Ok(engine) => engine,
         Err(error) => panic!("open: {error}"),
     };
@@ -286,4 +286,13 @@ fn a_document_that_does_not_map_writes_nothing() {
         Err(error) => panic!("read temp dir: {error}"),
     };
     assert_eq!(entries.count(), 0);
+}
+
+/// Opens the workspace at `root` with an empty in-memory secret store, so no test touches
+/// the OS keyring (keyring-secrets S8).
+fn open_engine(root: &std::path::Path) -> Result<Engine, reqflux_engine::OpenError> {
+    Engine::open_with_secrets(
+        root,
+        std::sync::Arc::new(reqflux_engine::MemorySecretStore::new()),
+    )
 }

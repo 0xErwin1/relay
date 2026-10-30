@@ -4,6 +4,7 @@ mod auth;
 mod body;
 mod inspect;
 mod resolver;
+mod stored;
 mod url;
 
 use std::path::Path;
@@ -17,11 +18,14 @@ use reqflux_http::{PreparedRequest, RequestOptions};
 use reqflux_script::VariableWrite;
 
 use crate::error::ExecuteError;
+use crate::secrets::SecretScope;
 use crate::select::{self, Target};
 use crate::sent::{self, Masker, Secrets, SentRequest};
 use resolver::Resolver;
 
+pub(crate) use inspect::inspect_stored;
 pub use inspect::{Inspection, Span, inspect};
+pub(crate) use stored::StoredSecrets;
 
 /// The timeout used when a request does not set one, in milliseconds.
 pub const DEFAULT_TIMEOUT_MS: u64 = 30_000;
@@ -43,6 +47,9 @@ pub struct Prepared {
     /// Variable names that did not resolve, unique, in first-occurrence order. Their
     /// references are sent as literal text.
     pub unresolved: Vec<String>,
+    /// Why secret variables were not read from the secret store, such as an OS keyring that
+    /// is not available. Those secrets stay unresolved; the request still prepares.
+    pub secret_problem: Option<String>,
     /// The values history must mask; see [`Prepared::sent`].
     pub(crate) secrets: Secrets,
 }
@@ -70,7 +77,9 @@ pub(crate) fn percent_encode(text: &str) -> String {
     url::encode(text)
 }
 
-/// Prepares the request `selector` of `workspace` without any IO.
+/// Prepares the request `selector` of `workspace` without any IO. Secret variables with no
+/// value in the files stay unresolved; [`Engine::prepare`](crate::Engine::prepare) also reads
+/// them from its secret store.
 ///
 /// Variables resolve in the URL, then enabled params, enabled headers, the effective auth and
 /// the body, which is the order unresolved names are reported in. Disabled rows are skipped
@@ -92,7 +101,7 @@ pub fn prepare(
     dynamic: &mut impl DynamicSource,
 ) -> Result<Prepared, ExecuteError> {
     let target = select::find(workspace, selector)?;
-    prepare_request(
+    prepare_target(
         workspace,
         &target,
         &target.request.request,
@@ -100,6 +109,7 @@ pub fn prepare(
         options,
         dynamic,
         &[],
+        &StoredSecrets::default(),
     )
 }
 
@@ -123,14 +133,33 @@ pub fn prepare_draft(
     dynamic: &mut impl DynamicSource,
 ) -> Result<Prepared, ExecuteError> {
     let target = select::find(workspace, selector)?;
-    prepare_request(workspace, &target, draft, root, options, dynamic, &[])
+    prepare_target(
+        workspace,
+        &target,
+        draft,
+        root,
+        options,
+        dynamic,
+        &[],
+        &StoredSecrets::default(),
+    )
 }
 
 /// Prepares the request `target` selects with `request` as its document, applying the
 /// variable writes a pre-request script made to this run's scopes (`S7`). The writes are
-/// never persisted; they exist for this preparation only.
+/// never persisted; they exist for this preparation only. Valueless secrets resolve from
+/// `stored`.
+///
+/// The one resolution path; `request` is the document to prepare, stored or draft, and
+/// `target` supplies the parents the scopes, allowlist and inherited auth come from.
+///
+/// # Errors
 ///
 /// The errors of [`prepare`] for the same `workspace`, `target`, `options` and `request`.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the one internal path every public entry point funnels into"
+)]
 pub(crate) fn prepare_target(
     workspace: &Workspace,
     target: &Target<'_>,
@@ -139,32 +168,11 @@ pub(crate) fn prepare_target(
     options: &ExecuteOptions,
     dynamic: &mut impl DynamicSource,
     script_writes: &[VariableWrite],
-) -> Result<Prepared, ExecuteError> {
-    prepare_request(
-        workspace,
-        target,
-        request,
-        root,
-        options,
-        dynamic,
-        script_writes,
-    )
-}
-
-/// The one resolution path; `request` is the document to prepare, stored or draft, and
-/// `target` supplies the parents the scopes, allowlist and inherited auth come from.
-fn prepare_request(
-    workspace: &Workspace,
-    target: &Target<'_>,
-    request: &Request,
-    root: &Path,
-    options: &ExecuteOptions,
-    dynamic: &mut impl DynamicSource,
-    script_writes: &[VariableWrite],
+    stored: &StoredSecrets,
 ) -> Result<Prepared, ExecuteError> {
     let environment = select_environment(workspace, target.collection, options)?;
     let names = secret_names(workspace, target.collection, environment);
-    let mut scope_map = scopes(workspace, target.collection, environment, options);
+    let mut scope_map = scopes(workspace, target.collection, environment, options, stored);
     crate::scripts::apply_writes(&mut scope_map, script_writes);
     let mut resolver = Resolver::new(scope_map, dynamic);
 
@@ -186,6 +194,7 @@ fn prepare_request(
             options: request_options(request.settings),
         },
         unresolved: resolver.into_unresolved(),
+        secret_problem: stored.problem.clone(),
         secrets,
     })
 }
@@ -237,18 +246,29 @@ pub(crate) fn select_environment<'a>(
     Ok(Some(environment))
 }
 
-/// Globals < collection < environment < local `--var`s (S4).
+/// Globals < collection < environment < local `--var`s (S4). A secret with no value in the
+/// files takes its value from `stored`, in its own scope, so every override still wins.
 pub(crate) fn scopes(
     workspace: &Workspace,
     collection: &CollectionNode,
     environment: Option<&EnvironmentNode>,
     options: &ExecuteOptions,
+    stored: &StoredSecrets,
 ) -> Scopes {
     let mut scopes = Scopes::default();
-    *scopes.scope_mut(ScopeKind::Globals) = scope(&workspace.manifest.globals);
-    *scopes.scope_mut(ScopeKind::Collection) = scope(&collection.collection.variables);
+    *scopes.scope_mut(ScopeKind::Globals) =
+        scope(&workspace.manifest.globals, stored, SecretScope::Global);
+    *scopes.scope_mut(ScopeKind::Collection) = scope(
+        &collection.collection.variables,
+        stored,
+        SecretScope::Collection(collection.collection.id),
+    );
     if let Some(environment) = environment {
-        *scopes.scope_mut(ScopeKind::Environment) = scope(&environment.environment.variables);
+        *scopes.scope_mut(ScopeKind::Environment) = scope(
+            &environment.environment.variables,
+            stored,
+            SecretScope::Environment(environment.environment.id),
+        );
     }
     *scopes.scope_mut(ScopeKind::Local) = options
         .vars
@@ -258,13 +278,15 @@ pub(crate) fn scopes(
     scopes
 }
 
-/// A secret with no value is left out so it does not resolve; any other variable with no
-/// value resolves to empty text.
-fn scope(variables: &[Variable]) -> Scope {
+/// A secret with no value takes its stored value, and is left out when none is stored so it
+/// does not resolve; any other variable with no value resolves to empty text.
+fn scope(variables: &[Variable], stored: &StoredSecrets, secret_scope: SecretScope) -> Scope {
     variables
         .iter()
         .filter_map(|variable| match (&variable.value, variable.secret) {
-            (None, true) => None,
+            (None, true) => stored
+                .value(secret_scope, &variable.key)
+                .map(|value| ScopeEntry::new(variable.key.clone(), value, variable.enabled)),
             (value, _) => Some(ScopeEntry::new(
                 variable.key.clone(),
                 value.clone().unwrap_or_default(),

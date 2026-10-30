@@ -13,7 +13,7 @@ use std::path::Path;
 use common::{id_text, temp_dir, write};
 use pretty_assertions::assert_eq;
 use reqflux_core::model::{Body, Id, Method, RawLanguage, Request};
-use reqflux_engine::{Engine, ExecuteOptions, Executed};
+use reqflux_engine::{ExecuteOptions, Executed};
 use tokio::runtime::Runtime;
 use wiremock::matchers::{body_string, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -69,7 +69,7 @@ fn execute(root: &Path, collection_extra: &str, request_extra: &str, url: &str) 
             id_text(2)
         ),
     );
-    let engine = match Engine::open(root) {
+    let engine = match common::open_engine(root) {
         Ok(engine) => engine,
         Err(error) => panic!("open: {error}"),
     };
@@ -238,7 +238,7 @@ fn execute_draft_sends_the_draft_not_the_stored_request() {
             server.uri()
         ),
     );
-    let engine = match Engine::open(dir.path()) {
+    let engine = match common::open_engine(dir.path()) {
         Ok(engine) => engine,
         Err(error) => panic!("open: {error}"),
     };
@@ -275,7 +275,7 @@ fn execute_returns_a_handle_any_executor_can_await() {
     // asynchronously from the test runtime.
     let first = execute(dir.path(), "", "", &format!("{}/async", server.uri()));
     assert_eq!(first.response.status, 201);
-    let engine = match Engine::open(dir.path()) {
+    let engine = match common::open_engine(dir.path()) {
         Ok(engine) => engine,
         Err(error) => panic!("open: {error}"),
     };
@@ -318,7 +318,7 @@ fn cancelling_an_execution_ends_it_with_request_cancelled() {
             server.uri()
         ),
     );
-    let engine = match Engine::open(dir.path()) {
+    let engine = match common::open_engine(dir.path()) {
         Ok(engine) => engine,
         Err(error) => panic!("open: {error}"),
     };

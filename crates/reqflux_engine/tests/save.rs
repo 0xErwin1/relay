@@ -46,7 +46,7 @@ fn workspace_with(root: &Path, request: &Request) {
 }
 
 fn open(root: &Path) -> Engine {
-    match Engine::open(root) {
+    match common::open_engine(root) {
         Ok(engine) => engine,
         Err(error) => panic!("open: {error}"),
     }

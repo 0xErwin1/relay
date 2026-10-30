@@ -47,6 +47,9 @@ wiremock = "0.6.5"
 rustls-pemfile = "2.2.0"
 tokio-rustls = "0.26"
 env_logger = "0.11.11"
+# The `v1` feature picks the platform store: Secret Service over zbus (pure Rust) on
+# Linux and the BSDs, Keychain on macOS, Credential Manager on Windows.
+keyring = "4.2.0"
 log = "0.4.34"
 pretty_assertions = "1.4.1"
 rand = "0.10.3"

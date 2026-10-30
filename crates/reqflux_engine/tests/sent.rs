@@ -336,7 +336,7 @@ fn a_failed_send_error_never_echoes_a_query_secret() {
             common::id_text(2)
         ),
     );
-    let engine = match reqflux_engine::Engine::open(root) {
+    let engine = match common::open_engine(root) {
         Ok(engine) => engine,
         Err(error) => panic!("open: {error}"),
     };

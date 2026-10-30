@@ -93,7 +93,7 @@ fn request_with(root: &Path, slug: &str, in_folder: bool, url: &str, extra: &str
 }
 
 fn engine(root: &Path) -> reqflux_engine::Engine {
-    match reqflux_engine::Engine::open(root) {
+    match common::open_engine(root) {
         Ok(engine) => engine,
         Err(error) => panic!("open: {error}"),
     }

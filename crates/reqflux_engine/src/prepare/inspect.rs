@@ -5,27 +5,48 @@ use std::path::Path;
 use reqflux_core::model::{RequestNode, Variable, Workspace};
 use reqflux_core::template::{DynamicVariable, Scopes, Segment, SequentialDynamicSource, segments};
 
-use super::{ExecuteOptions, enabled, prepare, scopes, select_environment, url};
+use super::{
+    ExecuteOptions, StoredSecrets, enabled, prepare_target, scopes, select_environment, url,
+};
 use crate::error::ExecuteError;
+use crate::secrets::SecretStore;
 use crate::select;
 
-/// A request as a front end shows it before sending it, against the active environment.
-#[derive(Debug, Clone, PartialEq)]
+/// A request as a front end shows it before sending it, against the active environment. Its
+/// `Debug` output leaves out the variable values, secrets included.
+#[derive(Clone, PartialEq)]
 pub struct Inspection {
     /// The selected request with its scripts, as stored.
     pub request: RequestNode,
     /// The request URL as written, with the enabled params appended as written after the
     /// separator [`prepare`] uses.
     pub url: String,
-    /// The names [`prepare`] reports unresolved with the environment, in its order. Empty
+    /// The names [`prepare`](super::prepare) reports unresolved with the environment, in its order. Empty
     /// when the request cannot be prepared, for example with an auth type the engine does
     /// not send yet.
     pub unresolved: Vec<String>,
-    /// Why [`prepare`] fails with the environment, as its error text. The spans still resolve
+    /// Why [`prepare`](super::prepare) fails with the environment, as its error text. The spans still resolve
     /// with the environment when the collection allows it, and without one otherwise.
     pub problem: Option<String>,
+    /// Why secret variables were not read from the secret store, as in
+    /// [`Prepared::secret_problem`](super::Prepared::secret_problem).
+    pub secret_problem: Option<String>,
     scopes: Scopes,
     secrets: Vec<String>,
+}
+
+impl std::fmt::Debug for Inspection {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Inspection")
+            .field("request", &self.request)
+            .field("url", &self.url)
+            .field("unresolved", &self.unresolved)
+            .field("problem", &self.problem)
+            .field("secret_problem", &self.secret_problem)
+            .field("secrets", &self.secrets)
+            .finish_non_exhaustive()
+    }
 }
 
 /// A run of a text split by [`Inspection::spans`].
@@ -78,7 +99,7 @@ impl Inspection {
 /// Inspects the request `selector` of `workspace`, whose file paths resolve against `root`,
 /// against the environment slug `environment`, without any IO.
 ///
-/// When [`prepare`] fails with that environment, the inspection carries the error text in
+/// When [`prepare`](super::prepare) fails with that environment, the inspection carries the error text in
 /// [`Inspection::problem`]; its spans resolve with the environment when the collection allows
 /// it and without one otherwise.
 ///
@@ -91,6 +112,18 @@ pub fn inspect(
     selector: &str,
     environment: Option<&str>,
 ) -> Result<Inspection, ExecuteError> {
+    inspect_stored(workspace, root, selector, environment, None)
+}
+
+/// [`inspect`], with the valueless secrets read from `store` when there is one, so a stored
+/// secret reports resolved (keyring-secrets S4). Its value stays out of the inspection.
+pub(crate) fn inspect_stored(
+    workspace: &Workspace,
+    root: &Path,
+    selector: &str,
+    environment: Option<&str>,
+    store: Option<&dyn SecretStore>,
+) -> Result<Inspection, ExecuteError> {
     let target = select::find(workspace, selector)?;
     let request = &target.request.request;
     let collection = &target.collection.collection;
@@ -102,22 +135,28 @@ pub fn inspect(
         environment: environment.map(str::to_owned),
         ..ExecuteOptions::default()
     };
-    let prepared = prepare(
-        workspace,
-        root,
-        selector,
-        &options,
-        &mut SequentialDynamicSource::default(),
-    );
-    let (unresolved, problem) = match prepared {
-        Ok(prepared) => (prepared.unresolved, None),
-        Err(error) => (Vec::new(), Some(error.to_string())),
-    };
     // The spans follow the environment whenever the collection allows it, also when
     // something else, such as the auth, keeps the request from being prepared.
     let selected = select_environment(workspace, target.collection, &options)
         .ok()
         .flatten();
+    let stored = store.map_or_else(StoredSecrets::default, |store| {
+        StoredSecrets::read(store, workspace, target.collection, selected)
+    });
+    let prepared = prepare_target(
+        workspace,
+        &target,
+        request,
+        root,
+        &options,
+        &mut SequentialDynamicSource::default(),
+        &[],
+        &stored,
+    );
+    let (unresolved, problem) = match prepared {
+        Ok(prepared) => (prepared.unresolved, None),
+        Err(error) => (Vec::new(), Some(error.to_string())),
+    };
 
     let environments = workspace
         .environments
@@ -140,7 +179,8 @@ pub fn inspect(
         url: url::append(request.url.clone(), &params),
         unresolved,
         problem,
-        scopes: scopes(workspace, target.collection, selected, &options),
+        scopes: scopes(workspace, target.collection, selected, &options, &stored),
+        secret_problem: stored.problem,
         secrets,
     })
 }

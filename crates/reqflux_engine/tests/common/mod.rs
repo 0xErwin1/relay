@@ -252,3 +252,14 @@ pub fn write(root: &Path, relative: &str, content: &str) {
         panic!("write {}: {error}", path.display());
     }
 }
+
+/// Opens the workspace at `root` with an empty in-memory secret store, so no test touches
+/// the OS keyring (keyring-secrets S8).
+pub fn open_engine(
+    root: impl Into<std::path::PathBuf>,
+) -> Result<reqflux_engine::Engine, reqflux_engine::OpenError> {
+    reqflux_engine::Engine::open_with_secrets(
+        root,
+        std::sync::Arc::new(reqflux_engine::MemorySecretStore::new()),
+    )
+}

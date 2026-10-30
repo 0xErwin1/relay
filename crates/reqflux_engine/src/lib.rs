@@ -19,6 +19,14 @@
 //! [`Engine::wait`] runs the effective test script once the response arrives and returns
 //! its results beside the response in [`Executed::scripts`].
 //!
+//! # Secrets
+//!
+//! Secret variable values never live in workspace files. The engine reads the valueless
+//! secrets in scope from its [`SecretStore`] (the OS keyring by default; see
+//! [`Engine::open_with_secrets`]) when it prepares, executes or inspects a request. `--var`,
+//! local and script overrides still win. A store that cannot be read leaves those secrets
+//! unresolved and says why in [`Prepared::secret_problem`]; it never fails the send.
+//!
 //! # Threading model
 //!
 //! The [`Engine`] owns a multi-thread Tokio runtime and every request runs on it as a spawned
@@ -42,6 +50,7 @@ mod error;
 mod import;
 mod prepare;
 mod scripts;
+mod secrets;
 mod select;
 mod sent;
 pub mod state;
@@ -57,6 +66,10 @@ pub use prepare::{
 pub use reqflux_http::{HttpError, PreparedBody, PreparedRequest, Response};
 pub use reqflux_script::{
     ConsoleEntry, ConsoleLevel, ScriptOutcome, TestResult, VariableScope, VariableWrite,
+};
+pub use secrets::{
+    KeyringSecretStore, MemorySecretStore, SECRET_SERVICE, SecretError, SecretKey, SecretScope,
+    SecretStore,
 };
 pub use sent::{MASK, Masker, SentBody, SentRequest};
 /// The token type of [`Execution::cancel`], re-exported so front ends can hold it.
