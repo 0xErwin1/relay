@@ -15,6 +15,7 @@ mod path_bar;
 mod rail;
 mod request;
 mod response;
+mod row_edit;
 mod rows;
 mod send;
 mod setting_edit;
@@ -366,6 +367,8 @@ mod last_request_tests;
 mod request_tests;
 #[cfg(test)]
 mod response_tests;
+#[cfg(test)]
+mod row_edit_tests;
 #[cfg(test)]
 mod send_tests;
 #[cfg(test)]

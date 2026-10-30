@@ -3,7 +3,8 @@
 //! and the description. Disabled rows are muted, rows with an unresolved reference carry a
 //! warning wash, and a value that references a secret shows `••••••••` with a SECRET badge.
 //! Clicking a row's enable box toggles the row in the draft; clicking its key or value cell
-//! swaps the cell for a text field.
+//! swaps the cell for a text field. The delete control at the end of a row removes it, and
+//! the `Add` row under the grid appends one.
 
 use bolt::chamfer::Chamfer;
 use bolt::tokens::{Colors, border, cut, family, space};
@@ -39,14 +40,20 @@ pub(super) fn render(
     shell: &Shell,
     cx: &mut Context<Shell>,
 ) -> AnyElement {
+    let add = request_id.map(|id| add_row(id, table, cx));
     if rows.is_empty() {
         let colors = bolt::colors(cx);
-        return part("request-grid-empty".to_owned())
+        let empty = part("request-grid-empty".to_owned())
             .pl(space::MD)
             .pt(space::MD)
             .text_size(tokens::GRID_TEXT)
             .text_color(colors.muted)
-            .child(format!("No {table}"))
+            .child(format!("No {table}"));
+        return div()
+            .flex()
+            .flex_col()
+            .child(empty)
+            .children(add)
             .into_any_element();
     }
     let header = header(kind, bolt::colors(cx));
@@ -67,6 +74,7 @@ pub(super) fn render(
                 cx,
             )
         }))
+        .children(add)
         .into_any_element()
 }
 
@@ -111,6 +119,7 @@ fn data_row(
     // The box first: it takes the context mutably for its click listener, before the row
     // borrows it for the colors.
     let enable = request_id.map(|id| enable_box(id, table, n, &row.key, row.enabled, cx));
+    let delete = request_id.map(|id| delete_control(id, table, n, &row.key, cx));
     let value_spans = inspection.spans(&row.value);
     let unresolved = has_unresolved(&value_spans) || has_unresolved(&inspection.spans(&row.key));
     let secret = inspection.references_secret(&row.value);
@@ -215,7 +224,65 @@ fn data_row(
                 .text_color(tone(colors, colors.muted))
                 .child(row.description.clone().unwrap_or_default()),
         )
+        .children(delete)
         .into_any_element()
+}
+
+/// The delete control at the end of the 1-based row `n` of `table`, element id
+/// `request-<table>-delete-<n>`: clicking it removes the row from the request's draft.
+fn delete_control(
+    request_id: &str,
+    table: &str,
+    n: usize,
+    key: &str,
+    cx: &mut Context<Shell>,
+) -> Stateful<Div> {
+    let colors = bolt::colors(cx);
+    let request = request_id.to_owned();
+    let table = table.to_owned();
+    part(format!("request-{table}-delete-{n}"))
+        .role(Role::Button)
+        .aria_label(format!("Delete {key}"))
+        .cursor_pointer()
+        .flex_none()
+        .pl(space::MD)
+        .pr(space::MD)
+        .child(
+            Icon::new(IconName::Close)
+                .size(tokens::GRID_TEXT)
+                .color(colors.muted),
+        )
+        .on_click(cx.listener(move |this, _event, window, cx| {
+            this.delete_grid_row(&request, &table, n, window, cx);
+        }))
+}
+
+/// The `Add` row under the grid of `table`, element id `request-<table>-add`: clicking it
+/// appends an empty enabled row to the request's draft and opens its key cell.
+fn add_row(request_id: &str, table: &str, cx: &mut Context<Shell>) -> Stateful<Div> {
+    let colors = bolt::colors(cx);
+    let request = request_id.to_owned();
+    let table = table.to_owned();
+    part(format!("request-{table}-add"))
+        .role(Role::Button)
+        .aria_label(format!("Add to {table}"))
+        .cursor_pointer()
+        .flex()
+        .items_center()
+        .gap(space::SM)
+        .h(tokens::GRID_ROW)
+        .pl(space::MD)
+        .text_size(tokens::GRID_TEXT)
+        .text_color(colors.muted)
+        .child(
+            Icon::new(IconName::Plus)
+                .size(tokens::GRID_TEXT)
+                .color(colors.muted),
+        )
+        .child("Add")
+        .on_click(cx.listener(move |this, _event, window, cx| {
+            this.add_grid_row(&request, &table, window, cx);
+        }))
 }
 
 /// The key or value cell of the 1-based row `n` of `table`, element id
