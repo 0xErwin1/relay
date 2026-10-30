@@ -18,6 +18,7 @@ use reqflux_script::VariableWrite;
 
 use crate::error::ExecuteError;
 use crate::select::{self, Target};
+use crate::sent::{self, Secrets, SentRequest};
 use resolver::Resolver;
 
 pub use inspect::{Inspection, Span, inspect};
@@ -42,6 +43,24 @@ pub struct Prepared {
     /// Variable names that did not resolve, unique, in first-occurrence order. Their
     /// references are sent as literal text.
     pub unresolved: Vec<String>,
+    /// The values history must mask; see [`Prepared::sent`].
+    pub(crate) secrets: Secrets,
+}
+
+impl Prepared {
+    /// The request as it will be sent, with every secret replaced by
+    /// [`MASK`](crate::MASK): the resolved value of each secret variable the request
+    /// referenced, and the basic password, bearer token or API key value, wherever they
+    /// appear in the URL, the headers and the body.
+    #[must_use]
+    pub fn sent(&self) -> SentRequest {
+        sent::redact(&self.request, &self.secrets)
+    }
+}
+
+/// Percent-encodes `text` the way the query string carries it.
+pub(crate) fn percent_encode(text: &str) -> String {
+    url::encode(text)
 }
 
 /// Prepares the request `selector` of `workspace` without any IO.
@@ -137,6 +156,7 @@ fn prepare_request(
     script_writes: &[VariableWrite],
 ) -> Result<Prepared, ExecuteError> {
     let environment = select_environment(workspace, target.collection, options)?;
+    let secret_names = secret_names(workspace, target.collection, environment);
     let mut scope_map = scopes(workspace, target.collection, environment, options);
     crate::scripts::apply_writes(&mut scope_map, script_writes);
     let mut resolver = Resolver::new(scope_map, dynamic);
@@ -145,8 +165,10 @@ fn prepare_request(
     let mut query = resolver.pairs(&request.params);
     let mut headers = resolver.pairs(&request.headers);
     let auth = auth::effective(request, target);
-    auth::apply(auth, &mut resolver, &mut headers, &mut query)?;
+    let mut secrets = Secrets::default();
+    auth::apply(auth, &mut resolver, &mut headers, &mut query, &mut secrets)?;
     let body = body::prepare(&request.body, root, &headers, &mut resolver)?;
+    resolver.add_secret_values(&secret_names, &mut secrets);
 
     Ok(Prepared {
         request: PreparedRequest {
@@ -157,7 +179,29 @@ fn prepare_request(
             options: request_options(request.settings),
         },
         unresolved: resolver.into_unresolved(),
+        secrets,
     })
+}
+
+/// The names of the secret variables in the scopes a request resolves with: the globals,
+/// its collection and the selected environment.
+fn secret_names<'a>(
+    workspace: &'a Workspace,
+    collection: &'a CollectionNode,
+    environment: Option<&'a EnvironmentNode>,
+) -> Vec<&'a str> {
+    [
+        workspace.manifest.globals.as_slice(),
+        collection.collection.variables.as_slice(),
+        environment.map_or(&[][..], |environment| {
+            environment.environment.variables.as_slice()
+        }),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|variable| variable.secret)
+    .map(|variable| variable.key.as_str())
+    .collect()
 }
 
 /// The environment `options` selects, checked against the collection allowlist (S5).

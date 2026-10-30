@@ -1,4 +1,5 @@
-//! Per-user app state in SQLite (S1, S8).
+//! Per-user app state in SQLite (S1, S8): drafts, and the send history (history S1-S5,
+//! see [`history`](self#history)).
 //!
 //! The state file lives at `$XDG_STATE_HOME/reqflux/state.sqlite3`, or
 //! `$HOME/.local/state/reqflux/state.sqlite3` when the variable is unset, and never inside
@@ -16,6 +17,18 @@
 //! is created owner-only (`0600`) and its directory
 //! owner-only too (`0700`, so other users cannot list the draft names) where the platform
 //! has file modes.
+//!
+//! # Schema versions
+//!
+//! `PRAGMA user_version` holds the schema version and migrations only go forward: version 1
+//! is the drafts table; version 2 adds the `history` table and keeps every draft. A fresh
+//! file is created at the latest version, an older one is upgraded in one transaction, and
+//! a newer one is refused with [`StateError::UnsupportedVersion`].
+//!
+//! # History
+//!
+//! One `history` row per recorded send, keyed by workspace id, newest first by its
+//! autoincrement `id`. See [`AppState::record_history`] for the columns.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -23,8 +36,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
 
+mod history;
+
+pub use history::{
+    HISTORY_MAX_BODY_BYTES, HISTORY_MAX_ENTRIES, HistoryEntry, HistoryLimits, HistoryOutcome,
+    HistoryRecord, RecordedResponse,
+};
+
 /// The schema version this build writes. Raising it is a forward-only migration.
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 /// The drafts table of schema version 1.
 const SCHEMA_V1: &str = "
@@ -68,6 +88,14 @@ pub enum StateError {
         path: PathBuf,
         /// The schema version found in the file.
         version: i64,
+    },
+    /// A stored history entry could not be encoded or decoded.
+    #[error("the app state at {path} holds an unreadable history entry: {reason}")]
+    Corrupt {
+        /// The state file path.
+        path: PathBuf,
+        /// What was wrong with the entry.
+        reason: String,
     },
     /// Reading or writing a draft failed.
     #[error("could not update the app state at {path}: {source}")]
@@ -117,7 +145,7 @@ impl Draft {
     }
 }
 
-/// The per-user app state: a SQLite database holding the drafts table.
+/// The per-user app state: a SQLite database holding the drafts and history tables.
 #[derive(Debug)]
 pub struct AppState {
     path: PathBuf,
@@ -309,32 +337,38 @@ fn query_error(path: &Path) -> impl Fn(rusqlite::Error) -> StateError + '_ {
 
 /// Runs the explicit, forward-only schema migration.
 fn migrate(conn: &Connection, path: &Path) -> Result<(), StateError> {
+    let migrate_error = |source| StateError::Migrate {
+        path: path.to_owned(),
+        source,
+    };
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |row| row.get(0))
-        .map_err(|source| StateError::Migrate {
-            path: path.to_owned(),
-            source,
-        })?;
-    match version {
-        0 => {
-            conn.execute_batch(SCHEMA_V1)
-                .map_err(|source| StateError::Migrate {
-                    path: path.to_owned(),
-                    source,
-                })?;
-            conn.pragma_update(None, "user_version", SCHEMA_VERSION)
-                .map_err(|source| StateError::Migrate {
-                    path: path.to_owned(),
-                    source,
-                })?;
-        }
-        version if version == SCHEMA_VERSION => {}
+        .map_err(migrate_error)?;
+    let steps = match version {
+        0 => [SCHEMA_V1, history::SCHEMA_V2].as_slice(),
+        1 => [history::SCHEMA_V2].as_slice(),
+        version if version == SCHEMA_VERSION => return Ok(()),
         version => {
             return Err(StateError::UnsupportedVersion {
                 path: path.to_owned(),
                 version,
             });
         }
+    };
+    // Every step and the version bump commit together, so a failed upgrade leaves the
+    // file at its old version with its drafts.
+    let mut script = String::from("BEGIN IMMEDIATE;");
+    for step in steps {
+        script.push_str(step);
+    }
+    script.push_str(&format!("PRAGMA user_version = {SCHEMA_VERSION}; COMMIT;"));
+    if let Err(source) = conn.execute_batch(&script) {
+        if !conn.is_autocommit()
+            && let Err(rollback) = conn.execute_batch("ROLLBACK;")
+        {
+            return Err(migrate_error(rollback));
+        }
+        return Err(migrate_error(source));
     }
     Ok(())
 }

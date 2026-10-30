@@ -18,6 +18,7 @@ use crate::prepare::{
     select_environment,
 };
 use crate::scripts as engine_scripts;
+use crate::sent::SentRequest;
 
 /// A loaded workspace that executes its requests. See the crate docs for the threading
 /// model.
@@ -38,6 +39,9 @@ pub struct Execution {
     pub url: String,
     /// Variable names that did not resolve, in first-occurrence order.
     pub unresolved: Vec<String>,
+    /// The request as sent with every secret masked, for history. Available before the
+    /// send completes, so a failed send can be recorded too.
+    pub sent: SentRequest,
     /// Cancels this request only; the task then ends with [`HttpError::Cancelled`].
     pub cancel: CancellationToken,
     /// The task sending the request. Await it from any executor when only the response
@@ -103,6 +107,7 @@ impl Execution {
             method,
             url,
             unresolved,
+            sent,
             handle,
             scripts,
             scripted,
@@ -111,7 +116,7 @@ impl Execution {
         let response = handle
             .await
             .map_err(|error| HttpError::Request(error.to_string()))??;
-        Ok(finalize(method, url, unresolved, scripts, scripted, response).await)
+        Ok(finalize(method, url, unresolved, sent, scripts, scripted, response).await)
     }
 }
 
@@ -123,6 +128,7 @@ async fn finalize(
     method: String,
     url: String,
     unresolved: Vec<String>,
+    sent: SentRequest,
     mut scripts: ScriptOutcome,
     scripted: Option<Box<Scripted>>,
     response: Response,
@@ -135,6 +141,7 @@ async fn finalize(
         method,
         url,
         unresolved,
+        sent,
         response,
         scripts,
     }
@@ -149,6 +156,8 @@ pub struct Executed {
     pub url: String,
     /// Variable names that did not resolve, in first-occurrence order.
     pub unresolved: Vec<String>,
+    /// The request as sent with every secret masked, for history.
+    pub sent: SentRequest,
     /// The response.
     pub response: Response,
     /// What the effective pre-request and test scripts produced: test results, console
@@ -315,9 +324,11 @@ impl Engine {
     /// Spawns a task on the engine runtime that sends `prepared`.
     #[must_use]
     pub fn send(&self, prepared: Prepared) -> Execution {
+        let sent = prepared.sent();
         let Prepared {
             request,
             unresolved,
+            ..
         } = prepared;
         let PreparedRequest { method, url, .. } = &request;
         let (method, url) = (method.clone(), url.clone());
@@ -331,6 +342,7 @@ impl Engine {
             method,
             url,
             unresolved,
+            sent,
             cancel,
             handle,
             scripts: ScriptOutcome::default(),
@@ -454,6 +466,7 @@ impl Engine {
             method,
             url,
             unresolved,
+            sent,
             handle,
             scripts,
             scripted,
@@ -463,7 +476,7 @@ impl Engine {
             let response = handle
                 .await
                 .map_err(|error| ExecuteError::Task(error.to_string()))??;
-            Ok(finalize(method, url, unresolved, scripts, scripted, response).await)
+            Ok(finalize(method, url, unresolved, sent, scripts, scripted, response).await)
         })
     }
 

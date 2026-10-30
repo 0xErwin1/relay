@@ -34,7 +34,7 @@
 //!
 //! # App state
 //!
-//! [`state::AppState`] is the per-user SQLite app state (drafts today, history later), at
+//! [`state::AppState`] is the per-user SQLite app state (drafts and the send history), at
 //! `$XDG_STATE_HOME/reqflux/state.sqlite3`.
 
 mod engine;
@@ -43,6 +43,7 @@ mod import;
 mod prepare;
 mod scripts;
 mod select;
+mod sent;
 pub mod state;
 mod tree;
 
@@ -57,5 +58,6 @@ pub use reqflux_http::{HttpError, PreparedBody, PreparedRequest, Response};
 pub use reqflux_script::{
     ConsoleEntry, ConsoleLevel, ScriptOutcome, TestResult, VariableScope, VariableWrite,
 };
+pub use sent::{MASK, SentBody, SentRequest};
 /// The token type of [`Execution::cancel`], re-exported so front ends can hold it.
 pub use tokio_util::sync::CancellationToken;

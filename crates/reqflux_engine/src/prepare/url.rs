@@ -24,7 +24,7 @@ pub(super) fn append(base: String, query: &[(String, String)]) -> String {
 }
 
 /// Percent-encodes every byte except the RFC 3986 unreserved characters.
-fn encode(text: &str) -> String {
+pub(super) fn encode(text: &str) -> String {
     let mut encoded = String::with_capacity(text.len());
     for byte in text.bytes() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {

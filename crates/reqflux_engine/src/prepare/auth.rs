@@ -9,6 +9,7 @@ use super::has_header;
 use super::resolver::Resolver;
 use crate::error::ExecuteError;
 use crate::select::Target;
+use crate::sent::Secrets;
 
 const AUTHORIZATION: &str = "Authorization";
 
@@ -30,31 +31,32 @@ pub(super) fn effective<'a>(request: &'a Request, target: &Target<'a>) -> &'a Au
 }
 
 /// Adds `auth` to `headers` or `query`. An enabled request header with the same name wins,
-/// and then the auth fields are not resolved at all.
+/// and then the auth fields are not resolved at all. The resolved password, token or key
+/// value, and the encoded basic credentials, go to `secrets` so history masks them.
 pub(super) fn apply<D: DynamicSource>(
     auth: &Auth,
     resolver: &mut Resolver<'_, D>,
     headers: &mut Vec<(String, String)>,
     query: &mut Vec<(String, String)>,
+    secrets: &mut Secrets,
 ) -> Result<(), ExecuteError> {
     match auth {
         Auth::Inherit | Auth::None => {}
         Auth::Basic { username, password } => {
             if !has_header(headers, AUTHORIZATION) {
-                let credentials =
-                    format!("{}:{}", resolver.text(username), resolver.text(password));
-                headers.push((
-                    AUTHORIZATION.to_owned(),
-                    format!("Basic {}", STANDARD.encode(credentials)),
-                ));
+                let password = resolver.text(password);
+                let credentials = format!("{}:{password}", resolver.text(username));
+                let encoded = STANDARD.encode(credentials);
+                secrets.add(password);
+                secrets.add(encoded.clone());
+                headers.push((AUTHORIZATION.to_owned(), format!("Basic {encoded}")));
             }
         }
         Auth::Bearer { token } => {
             if !has_header(headers, AUTHORIZATION) {
-                headers.push((
-                    AUTHORIZATION.to_owned(),
-                    format!("Bearer {}", resolver.text(token)),
-                ));
+                let token = resolver.text(token);
+                headers.push((AUTHORIZATION.to_owned(), format!("Bearer {token}")));
+                secrets.add(token);
             }
         }
         Auth::ApiKey {
@@ -65,8 +67,16 @@ pub(super) fn apply<D: DynamicSource>(
             let key = resolver.text(key);
             match location {
                 ApiKeyLocation::Header if has_header(headers, &key) => {}
-                ApiKeyLocation::Header => headers.push((key, resolver.text(value))),
-                ApiKeyLocation::Query => query.push((key, resolver.text(value))),
+                ApiKeyLocation::Header => {
+                    let value = resolver.text(value);
+                    secrets.add(value.clone());
+                    headers.push((key, value));
+                }
+                ApiKeyLocation::Query => {
+                    let value = resolver.text(value);
+                    secrets.add(value.clone());
+                    query.push((key, value));
+                }
             }
         }
         Auth::Other { kind, .. } => return Err(ExecuteError::UnsupportedAuth(kind.clone())),

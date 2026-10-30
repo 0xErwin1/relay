@@ -332,3 +332,40 @@ fn cancelling_an_execution_ends_it_with_request_cancelled() {
         Err(error) => assert_eq!(error.to_string(), "request cancelled"),
     }
 }
+
+#[test]
+fn executed_carries_the_redacted_request_beside_the_same_response() {
+    let rt = runtime();
+    let server = server(
+        &rt,
+        Mock::given(method("POST"))
+            .and(path("/auth"))
+            .and(header("authorization", "Bearer typed-token"))
+            .respond_with(ok()),
+    );
+    let dir = temp_dir();
+    let url = format!("{}/auth", server.uri());
+    let executed = execute(
+        dir.path(),
+        "",
+        "[auth]\ntype = \"bearer\"\ntoken = \"typed-token\"\n",
+        &url,
+    );
+
+    // The response fields are what they were before history.
+    assert_eq!(executed.response.status, 201);
+    assert_eq!(executed.response.body, b"done");
+    assert_eq!(executed.method, "POST");
+    assert_eq!(executed.url, url);
+    assert!(executed.unresolved.is_empty());
+    // The request as sent, with the token masked.
+    assert_eq!(executed.sent.method, "POST");
+    assert_eq!(executed.sent.url, url);
+    assert_eq!(
+        executed.sent.headers,
+        [(
+            "Authorization".to_owned(),
+            format!("Bearer {}", reqflux_engine::MASK)
+        )]
+    );
+}
