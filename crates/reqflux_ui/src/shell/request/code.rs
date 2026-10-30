@@ -2,7 +2,7 @@
 //! with right-aligned line numbers, a section label, an empty state and a label/value row.
 
 use bolt::tokens::{family, space};
-use gpui::{AnyElement, App, Div, ParentElement, Styled, div, prelude::*};
+use gpui::{AnyElement, App, Div, ParentElement, Stateful, Styled, div, prelude::*};
 use reqflux_engine::Inspection;
 
 use super::pane_model::numbered_lines;
@@ -79,7 +79,7 @@ pub(super) fn field(
     shown: &str,
     value: impl IntoElement,
     cx: &App,
-) -> AnyElement {
+) -> Stateful<Div> {
     let colors = bolt::colors(cx);
     labeled_row(id, format!("{label}: {shown}"))
         .flex()
@@ -103,5 +103,4 @@ pub(super) fn field(
                 .text_color(colors.foreground)
                 .child(value),
         )
-        .into_any_element()
 }

@@ -1,6 +1,6 @@
 //! The open request under the document tabs: the request line, the sub-tab bar and the pane
-//! of the selected sub-tab: the Params and Headers grids or the read-only Body, Auth, Scripts
-//! and Settings panes.
+//! of the selected sub-tab: the Params and Headers grids, the Settings pane, or the read-only
+//! Body, Auth and Scripts panes.
 
 mod auth;
 mod body;
@@ -48,7 +48,7 @@ pub(super) fn render(
 
 fn pane(id: &str, state: &RequestState, shell: &Shell, cx: &mut Context<Shell>) -> Stateful<Div> {
     let inspection = &state.inspection;
-    // The grids show the draft's rows when the request has one, so a toggle is visible
+    // The panes show the draft's request when the request has one, so an edit is visible
     // immediately and survives a restart.
     let request = shell.displayed_request(id, &inspection.request.request);
     let content = match state.tab {
@@ -72,10 +72,10 @@ fn pane(id: &str, state: &RequestState, shell: &Shell, cx: &mut Context<Shell>) 
             shell,
             cx,
         )],
-        SubTab::Body => body::render(inspection, shell, cx),
-        SubTab::Auth => auth::render(inspection, cx),
+        SubTab::Body => body::render(inspection, &request.body, shell, cx),
+        SubTab::Auth => auth::render(inspection, &request.auth, cx),
         SubTab::Scripts => scripts::render(inspection, cx),
-        SubTab::Settings => settings::render(&inspection.request.request.settings, cx),
+        SubTab::Settings => settings::render(id, &request.settings, shell, cx),
     };
     region("request-pane")
         .flex_none()

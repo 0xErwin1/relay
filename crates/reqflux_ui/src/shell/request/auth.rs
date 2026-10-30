@@ -13,9 +13,9 @@ use super::{code, spans};
 use crate::shell::rows::labeled_row;
 use crate::tokens;
 
-pub(super) fn render(inspection: &Inspection, cx: &App) -> Vec<AnyElement> {
+/// The pane of `auth`, the draft's when the request has one, else the saved file's.
+pub(super) fn render(inspection: &Inspection, auth: &Auth, cx: &App) -> Vec<AnyElement> {
     let colors = bolt::colors(cx);
-    let auth = &inspection.request.request.auth;
     let kind = labeled_row("request-auth-type".to_owned(), auth_type(auth).to_owned())
         .pl(space::MD)
         .pt(space::MD)
@@ -36,12 +36,12 @@ pub(super) fn render(inspection: &Inspection, cx: &App) -> Vec<AnyElement> {
                     .gap(space::SM)
                     .child(MASK)
                     .child(secret_badge(colors));
-                code::field(id, &field.label, MASK, value, cx)
+                code::field(id, &field.label, MASK, value, cx).into_any_element()
             } else {
                 let value = div()
                     .flex()
                     .children(spans::render(inspection, &field.value, cx));
-                code::field(id, &field.label, &field.value, value, cx)
+                code::field(id, &field.label, &field.value, value, cx).into_any_element()
             }
         });
     let note = matches!(auth, Auth::Other { .. }).then(|| {

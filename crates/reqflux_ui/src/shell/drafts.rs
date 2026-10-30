@@ -168,7 +168,12 @@ impl Shell {
 
     /// Edits the draft of the request `id` with `edit`, creating the draft from the saved
     /// request when there is none, and persists it in the app state.
-    fn edit_draft(&mut self, id: &str, edit: impl FnOnce(&mut Request), cx: &mut Context<Self>) {
+    pub(super) fn edit_draft(
+        &mut self,
+        id: &str,
+        edit: impl FnOnce(&mut Request),
+        cx: &mut Context<Self>,
+    ) {
         let OpenedWorkspace::Loaded(engine) = &self.workspace else {
             return;
         };

@@ -13,12 +13,13 @@ use crate::shell::Shell;
 use crate::shell::rows::{labeled_row, part};
 use crate::tokens;
 
+/// The pane of `body`, the draft's when the request has one, else the saved file's.
 pub(super) fn render(
     inspection: &Inspection,
+    body: &Body,
     shell: &Shell,
     cx: &mut gpui::Context<Shell>,
 ) -> Vec<AnyElement> {
-    let body = &inspection.request.request.body;
     let mode = labeled_row("request-body-mode".to_owned(), body_mode(body))
         .pl(space::MD)
         .pt(space::MD)

@@ -15,6 +15,7 @@ mod request;
 mod response;
 mod rows;
 mod send;
+mod setting_edit;
 mod sidebar;
 mod status_bar;
 mod tabs;
@@ -75,7 +76,8 @@ pub(crate) struct Shell {
     save_errors: HashMap<String, String>,
     /// The URL field of the request under edit, while it has focus.
     url_edit: Option<UrlEdit>,
-    /// The cell field of the Params or Headers grid under edit, while it has focus.
+    /// The cell field of the Params or Headers grid, or the Settings timeout field, under
+    /// edit, while it has focus.
     cell_edit: Option<CellEdit>,
     /// The per-user app state the drafts persist in; `None` when it could not be opened,
     /// which keeps drafts in memory only.
@@ -334,6 +336,8 @@ mod request_tests;
 mod response_tests;
 #[cfg(test)]
 mod send_tests;
+#[cfg(test)]
+mod settings_edit_tests;
 #[cfg(test)]
 mod sidebar_tests;
 #[cfg(test)]
