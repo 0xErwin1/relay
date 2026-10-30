@@ -62,6 +62,8 @@ struct Scripted {
     request: RequestView,
     /// The merged variables the test script reads, the pre-request writes applied.
     variables: BTreeMap<String, String>,
+    /// What the script's own `pm.sendRequest` sends through (S13).
+    transport: engine_scripts::Transport,
 }
 
 impl Scripted {
@@ -76,8 +78,9 @@ impl Scripted {
             request: self.request,
             variables: self.variables,
             response: Some(engine_scripts::response_view(response)),
+            send_request: None,
         };
-        engine_scripts::run_bounded(&script, &context)
+        engine_scripts::run_off_thread(&script, context, self.transport)
     }
 }
 
@@ -315,8 +318,9 @@ impl Engine {
     }
 
     /// Prepares and sends the request `selector`, running its effective pre-request script
-    /// first (S7). The script runs on the calling thread, bounded by the script time limit;
-    /// its variable writes apply to this execution's scopes only, never to disk.
+    /// first (S7). The script runs on its own thread with a current-thread runtime (S14),
+    /// bounded by the script time limit; its variable writes apply to this execution's
+    /// scopes only, never to disk.
     ///
     /// # Errors
     ///
@@ -378,12 +382,25 @@ impl Engine {
         let environment = select_environment(self.workspace(), target.collection, options)?;
         let scope_view = scopes(self.workspace(), target.collection, environment, options);
         let view = engine_scripts::request_view(request);
-        let outcome =
-            engine_scripts::run_stage(ScriptStage::PreRequest, target, &view, &scope_view, None);
+        // A script's `pm.sendRequest` sends through the same client and settings the real
+        // request will use (S13).
+        let transport = engine_scripts::Transport::new(
+            self.client.clone(),
+            crate::prepare::request_options(request.settings),
+        );
+        let outcome = engine_scripts::run_stage(
+            ScriptStage::PreRequest,
+            target,
+            &view,
+            &scope_view,
+            None,
+            transport.clone(),
+        );
         let mut scripted = Scripted {
             script: engine_scripts::effective_test(target).map(str::to_owned),
             request: view,
             variables: BTreeMap::new(),
+            transport,
         };
         {
             let mut tested = scope_view;

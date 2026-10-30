@@ -168,7 +168,7 @@ fn execute(
     deadline: Instant,
 ) -> Result<ScriptOutcome, ScriptError> {
     let state: SharedState = Arc::new(Mutex::new(State::new(context, deadline)));
-    pm::install(ctx, &state).map_err(|error| {
+    pm::install(ctx, &state, context.send_request.clone()).map_err(|error| {
         internal(
             context.stage,
             format!("installing the pm shim failed: {error}"),

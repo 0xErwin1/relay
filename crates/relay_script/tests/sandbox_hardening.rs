@@ -34,6 +34,7 @@ fn context(stage: ScriptStage) -> ScriptContext {
             body_text: r#"{"ok":true}"#.into(),
             parsed_json: Some(serde_json::json!({ "ok": true })),
         }),
+        send_request: None,
     }
 }
 

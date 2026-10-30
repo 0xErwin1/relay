@@ -9,13 +9,30 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use relay_core::model::{Body, Request};
 use relay_core::template::{ScopeEntry, ScopeKind, Scopes};
-use relay_http::Response;
+use relay_http::{HttpClient, PreparedBody, PreparedRequest, RequestOptions, Response};
 use relay_script::{
     ConsoleEntry, ConsoleLevel, RequestView, ResponseView, ScriptContext, ScriptOutcome,
-    ScriptStage, VariableScope, VariableWrite,
+    ScriptRequest, ScriptResponse, ScriptStage, SendRequest, VariableScope, VariableWrite,
 };
+use tokio::runtime::Runtime;
+use tokio_util::sync::CancellationToken;
 
 use crate::select::Target;
+
+/// What a script's `pm.sendRequest` needs from the engine (S13): the same
+/// [`HttpClient`] the request path uses and the request's own settings, so a send from a
+/// script respects the same timeout, redirect and TLS choices as the real request.
+#[derive(Debug, Clone)]
+pub(crate) struct Transport {
+    client: HttpClient,
+    options: RequestOptions,
+}
+
+impl Transport {
+    pub(crate) fn new(client: HttpClient, options: RequestOptions) -> Self {
+        Self { client, options }
+    }
+}
 
 /// The effective pre-request script of `target`: the request's, else the innermost folder's
 /// that has one, else the collection's.
@@ -151,6 +168,93 @@ pub(crate) fn run_bounded(script: &str, context: &ScriptContext) -> ScriptOutcom
     }
 }
 
+/// Runs one script on a dedicated thread with its own current-thread Tokio runtime (S14),
+/// so a script that waits for the network can block on it without blocking the caller's
+/// thread — a GPU front end's executor — and without a `block_on` inside the engine's async
+/// runtime. The runtime is created once per run and shared by every `pm.sendRequest` call
+/// in it; the caller only joins the outcome. A thread or runtime failure is reported the
+/// way every script failure is: an error console entry, never a failed request.
+pub(crate) fn run_off_thread(
+    script: &str,
+    mut context: ScriptContext,
+    transport: Transport,
+) -> ScriptOutcome {
+    let script = script.to_owned();
+    let stage = context.stage;
+    let spawned = std::thread::Builder::new()
+        .name("relay-script".into())
+        .spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    return failed(
+                        stage,
+                        format!("the script runtime could not start: {error}"),
+                    );
+                }
+            };
+            context.send_request = Some(send_through(runtime, transport));
+            run_bounded(&script, &context)
+        });
+    match spawned {
+        Ok(handle) => match handle.join() {
+            Ok(outcome) => outcome,
+            Err(_) => failed(stage, "the script thread panicked".into()),
+        },
+        Err(error) => failed(stage, format!("the script thread could not start: {error}")),
+    }
+}
+
+/// The host handler behind `pm.sendRequest`: one runtime per script run, one client, the
+/// request's own settings. A transport failure reaches the script as the callback's
+/// `error`; the request's timeout bounds how long the host can take.
+fn send_through(runtime: Runtime, transport: Transport) -> SendRequest {
+    let Transport { client, options } = transport;
+    SendRequest::new(move |request: ScriptRequest| {
+        let prepared = PreparedRequest {
+            method: request.method,
+            url: request.url,
+            headers: request.headers,
+            body: match request.body {
+                Some(text) => PreparedBody::Bytes {
+                    content_type: None,
+                    data: text.into_bytes(),
+                },
+                None => PreparedBody::None,
+            },
+            options,
+        };
+        runtime
+            .block_on(client.send(prepared, CancellationToken::new()))
+            .map(script_response)
+            .map_err(|error| error.to_string())
+    })
+}
+
+/// The response a sendRequest callback receives, in `pm.response` shape.
+fn script_response(response: Response) -> ScriptResponse {
+    ScriptResponse {
+        code: response.status,
+        status: response.reason.clone().unwrap_or_default(),
+        headers: response.headers.iter().cloned().collect(),
+        body: String::from_utf8_lossy(&response.body).into_owned(),
+    }
+}
+
+/// A run that could not even start — the thread or its runtime failed — reported as an
+/// error console entry beside an empty outcome.
+fn failed(stage: ScriptStage, message: String) -> ScriptOutcome {
+    let mut outcome = ScriptOutcome::default();
+    outcome.console.push(ConsoleEntry {
+        level: ConsoleLevel::Error,
+        message: format!("{stage} script: {message}"),
+    });
+    outcome
+}
+
 /// Runs the effective script of `stage` and returns everything it produced.
 ///
 /// A script error — a syntax error, a throw, a limit — never fails the request: the outcome
@@ -161,6 +265,7 @@ pub(crate) fn run_stage(
     request: &RequestView,
     scopes: &Scopes,
     response: Option<&Response>,
+    transport: Transport,
 ) -> ScriptOutcome {
     let script = match stage {
         ScriptStage::PreRequest => effective_pre_request(target),
@@ -174,8 +279,9 @@ pub(crate) fn run_stage(
         request: request.clone(),
         variables: merged(scopes),
         response: response.map(response_view),
+        send_request: None,
     };
-    run_bounded(script, &context)
+    run_off_thread(script, context, transport)
 }
 
 /// Extends `outcome` with `other`, keeping the stage order: pre-request entries first.

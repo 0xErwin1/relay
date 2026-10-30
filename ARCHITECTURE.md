@@ -405,6 +405,10 @@ allows it and without one otherwise.
   cannot bound a run whose time sits in host calls — a loop of `console.log` with a large
   string grew past 3 GB before it existed — so every host call also checks the deadline and
   reports which limit stopped it.
+- A script never runs on the caller's thread (S14): the engine runs it on a dedicated thread
+  with its own current-thread Tokio runtime, so a script that waits for the network can block
+  there without blocking the GPU thread or the engine's async runtime, and the caller only
+  joins the outcome.
 
 What runs today (S7): before preparing a request, the engine runs the effective pre-request
 script — the request's, else the innermost folder's that has one, else the collection's — with
@@ -420,7 +424,7 @@ one line per console entry (`console <level>: <message>`, level one of `log`, `i
 `error`). The exit code is unchanged by a failing test. In the app, the response area shows
 the same results: `Tests` and `Console` entries beside Body and Headers, with one row per
 test and one per console entry, absent when the response has nothing to show (S12). Still
-later slices: `pm.sendRequest` and `require()` of the bundled libraries.
+later: `require()` of the bundled libraries.
 
 ## Postman compatibility
 

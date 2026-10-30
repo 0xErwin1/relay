@@ -37,6 +37,7 @@ fn context(stage: ScriptStage) -> ScriptContext {
             ("count".into(), "2".into()),
         ]),
         response: None,
+        send_request: None,
     }
 }
 

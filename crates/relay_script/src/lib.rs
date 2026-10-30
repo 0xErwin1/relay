@@ -10,6 +10,7 @@ mod sandbox;
 mod shim;
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use serde_json::Value;
 
@@ -123,6 +124,64 @@ pub struct ResponseView {
     pub parsed_json: Option<Value>,
 }
 
+/// The request a script asks the host to send with `pm.sendRequest` (S13). The host turns
+/// it into the same prepared request its own transport sends.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScriptRequest {
+    /// The HTTP method, upper case.
+    pub method: String,
+    /// The request URL.
+    pub url: String,
+    /// The headers in the order the script gave them; a name may repeat.
+    pub headers: Vec<(String, String)>,
+    /// The raw body text, when the script supplied one.
+    pub body: Option<String>,
+}
+
+/// The host's answer to a [`ScriptRequest`], as the script's callback receives it (S13).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScriptResponse {
+    /// The HTTP status code.
+    pub code: u16,
+    /// The HTTP status text.
+    pub status: String,
+    /// The response headers by name.
+    pub headers: BTreeMap<String, String>,
+    /// The raw body text.
+    pub body: String,
+}
+
+/// The host side of `pm.sendRequest` (S13): sends one [`ScriptRequest`] and answers with
+/// the response, or the failure text that reaches the script as the callback's `error`.
+/// The sandbox calls it from the script thread and it may block for as long as the host
+/// needs; cloning shares the handler.
+#[derive(Clone)]
+pub struct SendRequest(
+    pub Arc<dyn Fn(ScriptRequest) -> Result<ScriptResponse, String> + Send + Sync>,
+);
+
+impl std::fmt::Debug for SendRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SendRequest(<host handler>)")
+    }
+}
+
+impl PartialEq for SendRequest {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl SendRequest {
+    /// Wraps a handler.
+    pub fn new<F>(handler: F) -> Self
+    where
+        F: Fn(ScriptRequest) -> Result<ScriptResponse, String> + Send + Sync + 'static,
+    {
+        Self(Arc::new(handler))
+    }
+}
+
 /// Everything a script can read, supplied by the caller.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScriptContext {
@@ -134,6 +193,8 @@ pub struct ScriptContext {
     pub variables: BTreeMap<String, String>,
     /// The response view for `pm.response`, present only in a test script.
     pub response: Option<ResponseView>,
+    /// The host side of `pm.sendRequest`; absent when the host offers no transport.
+    pub send_request: Option<SendRequest>,
 }
 
 /// One recorded `pm.test` result.

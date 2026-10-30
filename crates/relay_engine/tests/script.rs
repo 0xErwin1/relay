@@ -9,15 +9,16 @@
 
 mod common;
 
+use std::net::TcpListener;
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use common::{id_text, temp_dir, write};
 use pretty_assertions::assert_eq;
-use relay_engine::{ExecuteOptions, VariableScope, VariableWrite};
+use relay_engine::{ConsoleLevel, ExecuteOptions, VariableScope, VariableWrite};
 use tokio::runtime::Runtime;
 use wiremock::Mock;
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{header, method, path};
 use wiremock::{MockServer, ResponseTemplate};
 
 /// The mock server runs on its own thread; this runtime only starts and inspects it, and
@@ -69,6 +70,10 @@ fn folder(root: &Path, slug: &str) {
 }
 
 fn request(root: &Path, slug: &str, in_folder: bool, url: &str) {
+    request_with(root, slug, in_folder, url, "");
+}
+
+fn request_with(root: &Path, slug: &str, in_folder: bool, url: &str, extra: &str) {
     let directory = if in_folder {
         "collections/api/f/".to_owned()
     } else {
@@ -78,7 +83,7 @@ fn request(root: &Path, slug: &str, in_folder: bool, url: &str) {
         root,
         &format!("{directory}{slug}.req.toml"),
         &format!(
-            "id = \"{}\"\nname = \"{slug}\"\nmethod = \"GET\"\nurl = \"{url}\"\n",
+            "id = \"{}\"\nname = \"{slug}\"\nmethod = \"GET\"\nurl = \"{url}\"\n{extra}",
             id_text(2)
         ),
     );
@@ -332,6 +337,176 @@ fn a_script_error_is_reported_in_the_outcome() {
         .collect();
     assert_eq!(errors.len(), 1, "{errors:?}");
     assert!(errors[0].starts_with("pre-request script"), "{errors:?}");
+}
+
+// S13: a pre-request `pm.sendRequest` fetches a token through the host and the main request
+// carries it; the send goes through the same transport, against a mock that only answers
+// when the header is there.
+#[test]
+fn a_pre_request_send_request_fetches_a_token_the_request_carries() {
+    let rt = runtime();
+    let token = server(
+        &rt,
+        Mock::given(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"token":"abc"}"#)),
+    );
+    let main = server(
+        &rt,
+        Mock::given(method("GET"))
+            .and(path("/main"))
+            .and(header("authorization", "Bearer abc"))
+            .respond_with(ok()),
+    );
+    let dir = temp_dir();
+    let root = dir.path();
+    manifest(root);
+    collection(root, "");
+    request_with(
+        root,
+        "r",
+        false,
+        &format!("{}/main", main.uri()),
+        "\n[[headers]]\nkey = \"Authorization\"\nvalue = \"Bearer {{token}}\"\n",
+    );
+    write(
+        root,
+        "collections/api/r.pre.js",
+        &format!(
+            "pm.sendRequest(\"{}/token\", function (error, response) {{\n  if (error) {{ throw error; }}\n  pm.variables.set(\"token\", response.json().token);\n}});\n",
+            token.uri()
+        ),
+    );
+    let engine = engine(root);
+    let executed = execute(&engine, "api/r");
+    assert_eq!(executed.response.status, 201, "{:?}", executed.scripts);
+    assert!(
+        executed.scripts.console.is_empty(),
+        "{:?}",
+        executed.scripts
+    );
+}
+
+// S13: a test script sends its own request and asserts on the JSON.
+#[test]
+fn a_test_script_send_request_asserts_on_the_json() {
+    let rt = runtime();
+    let probe = server(
+        &rt,
+        Mock::given(path("/probe"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"ok":true}"#)),
+    );
+    let main = server(&rt, Mock::given(path("/tested")).respond_with(ok()));
+    let dir = temp_dir();
+    let root = dir.path();
+    manifest(root);
+    collection(root, "");
+    request(root, "r", false, &format!("{}/tested", main.uri()));
+    write(
+        root,
+        "collections/api/r.test.js",
+        &format!(
+            "pm.sendRequest(\"{}/probe\", function (error, response) {{\n  pm.test(\"probe ok\", function () {{\n    if (error) {{ throw error; }}\n    pm.expect(response.json().ok).to.eql(true);\n  }});\n}});\n",
+            probe.uri()
+        ),
+    );
+    let engine = engine(root);
+    let executed = execute(&engine, "api/r");
+    assert_eq!(executed.response.status, 201);
+    assert_eq!(executed.scripts.tests.len(), 1);
+    assert!(executed.scripts.tests[0].passed, "{:?}", executed.scripts);
+    assert_eq!(executed.scripts.tests[0].name, "probe ok");
+}
+
+// S13: a send to a closed port is a callback error recorded in the console; the request
+// itself still succeeds.
+#[test]
+fn a_send_request_to_a_closed_port_records_an_error_and_the_request_still_succeeds() {
+    let rt = runtime();
+    let main = server(&rt, Mock::given(path("/main")).respond_with(ok()));
+    let dir = temp_dir();
+    let root = dir.path();
+    manifest(root);
+    collection(root, "");
+    request(root, "r", false, &format!("{}/main", main.uri()));
+    // A port that was listening a moment ago and is closed now: connecting to it fails
+    // immediately, without depending on which ports a machine keeps free.
+    let closed = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|error| panic!("bind: {error}"));
+    let port = closed
+        .local_addr()
+        .unwrap_or_else(|error| panic!("addr: {error}"))
+        .port();
+    drop(closed);
+    write(
+        root,
+        "collections/api/r.pre.js",
+        &format!(
+            "pm.sendRequest(\"http://127.0.0.1:{port}/x\", function (error) {{\n  console.error(\"send failed: \" + error);\n}});\n"
+        ),
+    );
+    let engine = engine(root);
+    let executed = execute(&engine, "api/r");
+    assert_eq!(executed.response.status, 201);
+    let send_errors: Vec<&str> = executed
+        .scripts
+        .console
+        .iter()
+        .filter(|entry| entry.level == ConsoleLevel::Error)
+        .map(|entry| entry.message.as_str())
+        .collect();
+    assert_eq!(send_errors.len(), 1, "{:?}", executed.scripts);
+    assert!(
+        send_errors[0].starts_with("send failed: "),
+        "{send_errors:?}"
+    );
+}
+
+// S14: a pre-request script that waits for its `pm.sendRequest` does not stop the engine's
+// other requests: one started first is still running when this one comes back.
+#[test]
+fn a_pre_request_send_request_does_not_block_another_request() {
+    let rt = runtime();
+    let slow = server(
+        &rt,
+        Mock::given(path("/slow"))
+            .respond_with(ResponseTemplate::new(201).set_delay(Duration::from_millis(1500))),
+    );
+    let fast = server(&rt, Mock::given(path("/fast")).respond_with(ok()));
+    let token = server(
+        &rt,
+        Mock::given(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"token":"t"}"#)),
+    );
+    let dir = temp_dir();
+    let root = dir.path();
+    manifest(root);
+    collection(root, "");
+    request(root, "slow", false, &format!("{}/slow", slow.uri()));
+    request(root, "fast", false, &format!("{}/fast", fast.uri()));
+    write(
+        root,
+        "collections/api/fast.pre.js",
+        &format!(
+            "pm.sendRequest(\"{}/token\", function (error, response) {{\n  if (error) {{ throw error; }}\n  pm.variables.set(\"token\", response.json().token);\n}});\n",
+            token.uri()
+        ),
+    );
+    let engine = std::sync::Arc::new(engine(root));
+    let other = std::thread::spawn({
+        let engine = std::sync::Arc::clone(&engine);
+        move || execute(&engine, "api/slow")
+    });
+    // The other request is in flight inside its slow response before this one starts.
+    std::thread::sleep(Duration::from_millis(300));
+    let started = Instant::now();
+    let executed = execute(&engine, "api/fast");
+    let elapsed = started.elapsed();
+    assert_eq!(executed.response.status, 201, "{:?}", executed.scripts);
+    assert!(
+        elapsed < Duration::from_millis(1200),
+        "the fast request waited {elapsed:?} for the slow one"
+    );
+    let other = other.join().unwrap_or_else(|error| panic!("{error:?}"));
+    assert_eq!(other.response.status, 201);
 }
 
 #[test]

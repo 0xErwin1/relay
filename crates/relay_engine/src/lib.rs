@@ -14,6 +14,8 @@
 //! the request's effective pre-request script (see the `Scripting` section of
 //! `ARCHITECTURE.md`): the most specific script on the request, its folders or the
 //! collection, whose variable writes apply to that execution's scopes only.
+//! Every script runs on its own thread with a current-thread Tokio runtime (S14), so a
+//! script that waits for the network never blocks a front end's executor.
 //! [`Engine::wait`] runs the effective test script once the response arrives and returns
 //! its results beside the response in [`Executed::scripts`].
 //!

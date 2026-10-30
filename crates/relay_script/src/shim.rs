@@ -170,6 +170,48 @@ pub(super) const PRELUDE: &str = r#"
     };
   }
 
+  function makeSendResponse(data) {
+    const response = { code: data.code, status: data.status, headers: makeHeaders(data.headers) };
+    response.text = function () { return data.text; };
+    let cached;
+    response.json = function () {
+      if (cached === undefined) cached = JSON.parse(data.text);
+      return cached;
+    };
+    return response;
+  }
+
+  function sendHeaders(header) {
+    if (header === undefined || header === null) return [];
+    if (Array.isArray(header)) {
+      return header.map(function (row) { return [String(row.key), String(row.value)]; });
+    }
+    return Object.keys(header).map(function (key) { return [key, String(header[key])]; });
+  }
+
+  function sendBody(body) {
+    if (body === undefined || body === null) return null;
+    if (typeof body === "string") return body;
+    if (typeof body === "object" && typeof body.raw === "string") return body.raw;
+    return String(body);
+  }
+
+  function sendSpec(arg) {
+    if (typeof arg === "string") return { method: "GET", url: arg, headers: [], body: null };
+    if (arg === null || typeof arg !== "object") {
+      throw new Error("pm.sendRequest expects a URL string or an object");
+    }
+    if (typeof arg.url !== "string" || arg.url === "") {
+      throw new Error("pm.sendRequest expects a url on the request object");
+    }
+    return {
+      method: typeof arg.method === "string" && arg.method !== "" ? arg.method : "GET",
+      url: arg.url,
+      headers: sendHeaders(arg.header),
+      body: sendBody(arg.body),
+    };
+  }
+
   const pm = {
     variables: makeScope("variables"),
     environment: makeScope("environment"),
@@ -187,6 +229,27 @@ pub(super) const PRELUDE: &str = r#"
       }
     },
     expect: makeExpect,
+    sendRequest(arg, callback) {
+      if (typeof callback !== "function") {
+        throw new Error("pm.sendRequest expects a function as its second argument");
+      }
+      let spec;
+      try {
+        spec = sendSpec(arg);
+      } catch (e) {
+        callback(String(e && e.message !== undefined ? e.message : e), undefined);
+        return;
+      }
+      // __relaySend answers with a JSON document: {"ok":true,"response":...} or
+      // {"ok":false,"error":...}. A limit abort throws out of the host call and ends the
+      // run — it is never the callback's error.
+      const answer = JSON.parse(__relaySend(JSON.stringify(spec)));
+      if (answer.ok) {
+        callback(undefined, makeSendResponse(answer.response));
+      } else {
+        callback(String(answer.error), undefined);
+      }
+    },
   };
   if (pm.request) {
     pm.request.headers = makeHeaders(init.request.headers);

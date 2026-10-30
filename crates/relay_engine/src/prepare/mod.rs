@@ -223,7 +223,9 @@ fn scope(variables: &[Variable]) -> Scope {
         .collect()
 }
 
-fn request_options(settings: Settings) -> RequestOptions {
+/// The transport settings of one request: the request's own, with the workspace defaults
+/// filled in. Shared so a script's `pm.sendRequest` respects the same settings (S13).
+pub(crate) fn request_options(settings: Settings) -> RequestOptions {
     RequestOptions {
         timeout: Duration::from_millis(settings.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS)),
         follow_redirects: settings.follow_redirects.unwrap_or(true),
