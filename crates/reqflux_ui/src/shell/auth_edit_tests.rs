@@ -228,3 +228,21 @@ fn an_unsupported_type_stays_read_only(cx: &mut TestAppContext) {
     assert!(field(cx, &shell).is_none());
     assert!(draft_auth(cx, &shell).is_none());
 }
+
+#[gpui::test]
+fn switching_the_sub_tab_closes_the_type_menu(cx: &mut TestAppContext) {
+    let dir = bearer_workspace();
+    let (_state_dir, state_path) = state_file();
+    let (shell, cx) = render(cx, &dir, &state_path);
+    open_auth(cx);
+
+    click(cx, "request-auth-type");
+    assert!(bounds(cx, "auth-type-none").is_some(), "the menu is open");
+    click(cx, "request-tab-headers");
+    click(cx, "request-tab-auth");
+    assert!(
+        bounds(cx, "auth-type-none").is_none(),
+        "the menu does not outlive its pane"
+    );
+    assert!(cx.update(|_, cx| !shell.read(cx).auth_menu_open));
+}
