@@ -251,10 +251,32 @@ Saving is explicit, as in Postman: an edit never touches the workspace file unti
   workspace id and entity id. Drafts survive a restart and their tabs show them as unsaved.
   The app state is SQLite (`reqflux_engine::state`, `rusqlite`) at
   `$XDG_STATE_HOME/reqflux/state.sqlite3` (`$HOME/.local/state/reqflux/state.sqlite3` when the
-  variable is unset), with an explicit, forward-only schema version so history tables can
-  join later. A draft stores the whole entity document as TOML, so later editable surfaces
-  need no new storage.
+  variable is unset), with an explicit, forward-only schema version (v2 adds the `history`
+  table; a v1 file upgrades in one transaction and keeps its drafts). A draft stores the
+  whole entity document as TOML, so later editable surfaces need no new storage.
 - **Sending** a request with a draft sends the draft. History records what was sent.
+
+### History
+
+Every completed or failed send in the window (not a cancelled one) is recorded in the app
+state under the workspace id: when, the request id, name and path at that time, the request
+document sent (TOML, references as written), the request as sent (method, URL, headers, body,
+or a short description of a multipart, file or binary body) and the outcome (status, headers,
+body, time and size, or the error). `reqflux_engine::state` owns the table (`record_history`,
+`history`, `history_entry`, `clear_history`); front ends never write it. A body over 5 MB is
+stored cut, on a character boundary for text, and flagged truncated; a workspace keeps its
+newest 500 entries. A send that fails before it goes out (an unresolvable request, a failing
+pre-request script) is not recorded, and neither `reqflux run` nor MCP record yet.
+
+Secrets never reach history in clear. The engine builds the request as sent
+(`Executed::sent`, `SentRequest`) with every value of every secret variable in scope replaced
+by `••••••••`, as written, percent-encoded, form-encoded and JSON-escaped, in the URL, header
+values and body; the values of `Authorization`, `Proxy-Authorization` and `Cookie` are always
+masked (keeping the scheme word), so a credential a script assembled is masked too. The same
+masking is available as `Execution::masker()` for any text a front end stores, such as the
+error of a failed send. A very short secret masks every occurrence of its text, erring on
+the side of hiding. Response bodies are stored as received: they are the user's own data in
+per-user state. `PreparedRequest`'s `Debug` prints no URL, header value or body.
 - **Saving** writes the entity file (atomic, hash-checked) and discards the draft. The
   engine entry points are `Engine::save_request`, which writes the request document back
   and returns the new file hash, and `Engine::request_base_hash`, which reports the hash
@@ -621,7 +643,16 @@ the status chip colored by class, the time and size, Body and Headers sub-tabs, 
 Pretty/Raw toggle (Pretty re-indents JSON keeping key order), the body split into lines once
 off the UI thread and drawn with `uniform_list` so only visible lines render, an error banner
 with Retry, and the unresolved variables the send used. Each open request keeps its last
-response in memory only; history comes later.
+response in memory, and every send is recorded in history (see "History").
+
+The rail's History button (`rail-history`) swaps the sidebar tree for the History panel
+(`history-row-<n>`, newest first, `METHOD path · status · time ago` or `failed`; the 200
+newest; `No requests sent yet` when empty), and Collections (`rail-collections`) swaps back.
+Clicking a row opens its request's tab and shows the recorded response under
+`From history · <time>` (`response-history-label`) without touching the request or its draft;
+`Resend` (`history-resend`) sends the recorded document again through `execute_draft` and
+records the result as a new entry. A row whose request was deleted opens a read-only view
+(`history-readonly`) with the recorded method, URL and response, and Resend disabled.
 
 Every region and tree row has a stable element id (`title-bar`, `sidebar`, `document`,
 `status-bar`, `tree-row-<id>`, `doc-tab-<id>`, `request-tab-<name>`,
