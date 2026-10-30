@@ -26,6 +26,7 @@ mod status_bar;
 mod tabs;
 mod text;
 mod title_bar;
+mod tree_drag;
 mod tree_model;
 mod tree_ops;
 mod url_edit;
@@ -397,3 +398,5 @@ mod sidebar_tests;
 mod tests;
 #[cfg(test)]
 mod tree_edit_tests;
+#[cfg(test)]
+mod tree_reorder_tests;

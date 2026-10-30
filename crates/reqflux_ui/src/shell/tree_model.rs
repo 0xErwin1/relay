@@ -170,6 +170,11 @@ impl TreeState {
         self.roots = roots;
     }
 
+    /// The collections, with everything under them.
+    pub(crate) fn roots(&self) -> &[Node] {
+        &self.roots
+    }
+
     /// The number of requests in every collection.
     pub(crate) fn request_count(&self) -> usize {
         self.roots.iter().map(Node::request_count).sum()

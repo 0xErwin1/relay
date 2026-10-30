@@ -1,5 +1,5 @@
 //! Running the sidebar's tree operations (tree-crud S6, S8, S9) through the engine, which
-//! reloads the workspace after each. Tabs, drafts and the active request are keyed by id,
+//! reloads the workspace after each, including the reorder and move of tree-crud S10. Tabs, drafts and the active request are keyed by id,
 //! which a rename or move keeps, so they follow; a delete closes the tabs and drops the
 //! drafts of every request it removed.
 
@@ -31,7 +31,9 @@ impl Shell {
             | TreeCommand::NewRequest(_)
             | TreeCommand::NewFolder(_)
             | TreeCommand::Rename { .. }
-            | TreeCommand::Duplicate(_) => Vec::new(),
+            | TreeCommand::Duplicate(_)
+            | TreeCommand::Reorder { .. }
+            | TreeCommand::Move { .. } => Vec::new(),
         };
         let outcome = self.with_engine(|engine| apply(engine, command));
         match outcome {
@@ -88,7 +90,8 @@ impl Shell {
     }
 }
 
-/// Runs `command` on `engine`; returns the id of the entity it created or changed.
+/// Runs `command` on `engine`; returns the id of the entity it created, or moved so the
+/// sidebar keeps it selected and its new parent expanded.
 fn apply(engine: &mut Engine, command: &TreeCommand) -> Result<Option<Id>, String> {
     let message = |error: TreeError| error.to_string();
     match command {
@@ -107,6 +110,14 @@ fn apply(engine: &mut Engine, command: &TreeCommand) -> Result<Option<Id>, Strin
             .map_err(message),
         TreeCommand::Duplicate(id) => engine.duplicate(parse(id)?).map(Some).map_err(message),
         TreeCommand::Delete(id) => engine.delete(parse(id)?).map(|()| None).map_err(message),
+        TreeCommand::Reorder { id, index } => engine
+            .reorder(parse(id)?, *index)
+            .map(Some)
+            .map_err(message),
+        TreeCommand::Move { id, parent, index } => engine
+            .move_item(parse(id)?, parse(parent)?, *index)
+            .map(Some)
+            .map_err(message),
     }
 }
 

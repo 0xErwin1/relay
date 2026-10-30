@@ -38,6 +38,14 @@ pub(crate) enum TreeCommand {
     Duplicate(String),
     /// Deletes the entity with this id and everything under it.
     Delete(String),
+    /// Moves the request or folder `id` to `index` among its siblings.
+    Reorder { id: String, index: usize },
+    /// Moves the request or folder `id` into the collection or folder `parent` at `index`.
+    Move {
+        id: String,
+        parent: String,
+        index: usize,
+    },
 }
 
 /// The open rename field: the entity it renames, the name it started from and its input.

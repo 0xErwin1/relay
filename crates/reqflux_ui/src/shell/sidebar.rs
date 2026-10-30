@@ -11,16 +11,17 @@
 //! the documents. Tree edits go the same way: see [`super::sidebar_edit`].
 
 use bolt::controls::{Field, IconButton};
-use bolt::tokens::{chrome, space, text};
+use bolt::tokens::{border, chrome, space, text};
 use bolt::{IconName, Island};
 use gpui::{
     App, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement,
     KeyBinding, MouseButton, ParentElement, Render, Styled, Window, actions, div, prelude::*,
 };
 
-use super::rows::RowSlots;
+use super::rows::{NameDecorator, RowSlots};
 use super::sidebar_edit::{TreeCommand, TreeEdit};
-use super::tree_model::{self, Node, TreeState};
+use super::tree_drag::{self, DragPreview, DraggedRow, DropPlace, Step};
+use super::tree_model::{self, Node, NodeKind, TreeState};
 use super::{region, rows, text as text_role, text_region};
 use crate::tokens;
 use crate::workspace::OpenedWorkspace;
@@ -42,6 +43,10 @@ actions!(
         /// Expands or collapses the selected collection or folder, or opens the selected
         /// request.
         ToggleSelected,
+        /// Moves the selected row one place up among its siblings.
+        MoveUp,
+        /// Moves the selected row one place down among its siblings.
+        MoveDown,
     ]
 );
 
@@ -54,6 +59,8 @@ pub(crate) fn bind_keys(cx: &mut App) {
         KeyBinding::new("left", CollapseOrSelectParent, context),
         KeyBinding::new("right", ExpandOrSelectChild, context),
         KeyBinding::new("enter", ToggleSelected, context),
+        KeyBinding::new("alt-up", MoveUp, context),
+        KeyBinding::new("alt-down", MoveDown, context),
     ]);
 }
 
@@ -163,6 +170,49 @@ impl Sidebar {
         }
     }
 
+    /// Alt+Up or Alt+Down: moves the selected row one place among its siblings. Nothing
+    /// happens at either end or on a collection.
+    fn step_selected(&mut self, step: Step, window: &mut Window, cx: &mut Context<Self>) {
+        let command = self.tree.as_ref().and_then(|tree| {
+            tree.selected()
+                .and_then(|id| tree_drag::step_command(tree.roots(), id, step))
+        });
+        if let Some(command) = command {
+            self.command(command, window, cx);
+        }
+    }
+
+    /// Drops the dragged row `dragged` at `place`.
+    fn drop_row(
+        &mut self,
+        dragged: &str,
+        place: DropPlace<'_>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let command = self
+            .tree
+            .as_ref()
+            .and_then(|tree| tree_drag::drop_command(tree.roots(), dragged, place));
+        if let Some(command) = command {
+            self.command(command, window, cx);
+        }
+    }
+
+    /// The drop target on the name of the collection or folder `id`: a drop there puts the
+    /// dragged row inside at the end, and the name shows the drop-target wash meanwhile.
+    fn name_drop(&self, id: &str, cx: &mut Context<Self>) -> NameDecorator {
+        let wash = bolt::accent_washes(cx).drop_target;
+        let id = id.to_owned();
+        let on_drop = cx.listener(move |this, dragged: &DraggedRow, window, cx| {
+            this.drop_row(&dragged.id, DropPlace::Inside(&id), window, cx);
+        });
+        Box::new(move |name| {
+            name.drag_over::<DraggedRow>(move |style, _, _, _| style.bg(wash))
+                .on_drop(on_drop)
+        })
+    }
+
     /// Emits [`OpenRequest`] when `id` is a request; returns whether it did.
     fn open_if_request(&mut self, id: &str, cx: &mut Context<Self>) -> bool {
         let is_request = self.tree.as_ref().is_some_and(|tree| tree.is_request(id));
@@ -247,11 +297,30 @@ impl Render for Sidebar {
                     let on_toggle = cx.listener(move |this, _event, window, cx| {
                         this.click_row(&chevron_id, true, window, cx);
                     });
+                    let draggable = !matches!(row.node.kind, NodeKind::Collection);
                     let slots = RowSlots {
                         name: self.rename_field(&id, cx),
                         trailing: self.row_actions(row.node, selected, window, cx),
+                        name_drop: row.node.is_expandable().then(|| self.name_drop(&id, cx)),
                     };
+                    let dragged = DraggedRow {
+                        id: id.clone(),
+                        name: row.node.name.clone(),
+                    };
+                    let target = id.clone();
+                    let line = bolt::brand(cx).accent_tint;
                     rows::tree_row(row, selected, slots, on_toggle, cx)
+                        .when(draggable, |element| {
+                            element.on_drag(dragged, |dragged, _, _, cx| {
+                                cx.new(|_| DragPreview(dragged.name.clone()))
+                            })
+                        })
+                        .drag_over::<DraggedRow>(move |style, _, _, _| {
+                            style.border_t(border::THICK).border_color(line)
+                        })
+                        .on_drop(cx.listener(move |this, dragged: &DraggedRow, window, cx| {
+                            this.drop_row(&dragged.id, DropPlace::Before(&target), window, cx);
+                        }))
                         .on_click(cx.listener(move |this, _event, window, cx| {
                             this.click_row(&id, false, window, cx);
                         }))
@@ -286,6 +355,12 @@ impl Render for Sidebar {
                         }))
                         .on_action(cx.listener(|this, _: &ToggleSelected, _, cx| {
                             this.activate_selected(cx);
+                        }))
+                        .on_action(cx.listener(|this, _: &MoveUp, window, cx| {
+                            this.step_selected(Step::Up, window, cx);
+                        }))
+                        .on_action(cx.listener(|this, _: &MoveDown, window, cx| {
+                            this.step_selected(Step::Down, window, cx);
                         }))
                         .flex_1()
                         .min_h_0()

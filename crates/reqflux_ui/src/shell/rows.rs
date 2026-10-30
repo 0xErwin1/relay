@@ -37,7 +37,13 @@ pub(super) struct RowSlots {
     pub(super) name: Option<AnyElement>,
     /// Shown after everything else: the row's action button and its menu.
     pub(super) trailing: Vec<AnyElement>,
+    /// Applied to the name, `tree-name-<entity id>`, of a collection or folder: its drop
+    /// target.
+    pub(super) name_drop: Option<NameDecorator>,
 }
+
+/// Adds behavior to the name element of a row.
+pub(super) type NameDecorator = Box<dyn FnOnce(Stateful<Div>) -> Stateful<Div>>;
 
 /// The tree row of `row`, with element id `tree-row-<entity id>`. A click on the chevron
 /// of a collection or folder calls `on_toggle` instead of reaching the row.
@@ -101,7 +107,11 @@ pub(super) fn tree_row(
     };
     let name = match slots.name {
         Some(field) => field,
-        None => div()
+        None => part(format!("tree-name-{}", node.id))
+            .map(|name| match slots.name_drop {
+                Some(decorate) => decorate(name),
+                None => name,
+            })
             .flex_1()
             .min_w_0()
             .overflow_hidden()
