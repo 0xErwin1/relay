@@ -21,11 +21,13 @@ mod rows;
 mod send;
 mod setting_edit;
 mod sidebar;
+mod sidebar_edit;
 mod status_bar;
 mod tabs;
 mod text;
 mod title_bar;
 mod tree_model;
+mod tree_ops;
 mod url_edit;
 
 use std::collections::HashMap;
@@ -45,6 +47,7 @@ use self::last_request::LastSend;
 use self::request::{RequestState, SubTab};
 use self::send::{CancelRequest, RequestSend, SHELL_CONTEXT, SaveRequest, SendRequest};
 use self::sidebar::{OpenRequest, Sidebar};
+use self::sidebar_edit::TreeCommand;
 use self::tree_model::Node;
 use self::url_edit::UrlEdit;
 
@@ -59,7 +62,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
 /// The root view of the main window.
 ///
 /// It owns the open documents: the sidebar reports opened requests through
-/// [`OpenRequest`] events, and the document island renders and changes [`Documents`].
+/// [`OpenRequest`] events and tree edits through [`TreeCommand`] events, and the document island renders and changes [`Documents`].
 pub(crate) struct Shell {
     workspace: OpenedWorkspace,
     sidebar: Entity<Sidebar>,
@@ -113,6 +116,7 @@ pub(crate) struct Shell {
     /// keys (Ctrl+Enter, Escape) keep reaching the shell's key context.
     focus: FocusHandle,
     _open_requests: Subscription,
+    _tree_commands: Subscription,
 }
 
 impl Shell {
@@ -143,6 +147,9 @@ impl Shell {
         let open_requests = cx.subscribe(&sidebar, |this, _, OpenRequest(id), cx| {
             this.open_document(id, cx);
         });
+        let tree_commands = cx.subscribe(&sidebar, |this, _, command: &TreeCommand, cx| {
+            this.run_tree_command(command, cx);
+        });
         let mut shell = Self {
             workspace,
             sidebar,
@@ -169,6 +176,7 @@ impl Shell {
             method_menu_focus: cx.focus_handle(),
             focus: cx.focus_handle(),
             _open_requests: open_requests,
+            _tree_commands: tree_commands,
         };
         shell.load_drafts();
         shell
@@ -387,3 +395,5 @@ mod settings_edit_tests;
 mod sidebar_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tree_edit_tests;

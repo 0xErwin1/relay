@@ -44,11 +44,21 @@ impl Node {
     }
 
     /// The number of requests under the node, at any depth, the node included.
-    fn request_count(&self) -> usize {
+    pub(crate) fn request_count(&self) -> usize {
         match self.kind {
             NodeKind::Request { .. } => 1,
             NodeKind::Collection | NodeKind::Folder => {
                 self.children.iter().map(Node::request_count).sum()
+            }
+        }
+    }
+
+    /// The ids of the requests under the node, at any depth, the node included.
+    pub(crate) fn request_ids(&self) -> Vec<String> {
+        match self.kind {
+            NodeKind::Request { .. } => vec![self.id.clone()],
+            NodeKind::Collection | NodeKind::Folder => {
+                self.children.iter().flat_map(Node::request_ids).collect()
             }
         }
     }
@@ -94,6 +104,24 @@ fn item_node(item: &Item) -> Node {
             children: Vec::new(),
         },
     }
+}
+
+/// The node `id` among `nodes` and their descendants, with its ancestors from the root
+/// down, the node last.
+pub(crate) fn path_to<'a>(nodes: &'a [Node], id: &str) -> Option<Vec<&'a Node>> {
+    nodes.iter().find_map(|node| {
+        if node.id == id {
+            return Some(vec![node]);
+        }
+        let mut path = path_to(&node.children, id)?;
+        path.insert(0, node);
+        Some(path)
+    })
+}
+
+/// The node `id` among `nodes` and their descendants.
+pub(crate) fn find<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Node> {
+    path_to(nodes, id).and_then(|path| path.last().copied())
 }
 
 /// A row of the tree as it is shown.
@@ -170,6 +198,34 @@ impl TreeState {
 
     /// Selects the node `id`.
     pub(crate) fn select(&mut self, id: &str) {
+        self.selected = Some(id.to_owned());
+    }
+
+    /// The node `id`, shown or not.
+    pub(crate) fn node(&self, id: &str) -> Option<&Node> {
+        find(&self.roots, id)
+    }
+
+    /// The collection or folder holding the node `id`; `None` for a collection.
+    pub(crate) fn parent_of(&self, id: &str) -> Option<&Node> {
+        let path = path_to(&self.roots, id)?;
+        path.len()
+            .checked_sub(2)
+            .and_then(|index| path.get(index).copied())
+    }
+
+    /// Selects the node `id` and expands every collection and folder above it, so its row
+    /// shows.
+    pub(crate) fn reveal(&mut self, id: &str) {
+        let ancestors: Vec<String> = match path_to(&self.roots, id) {
+            Some(path) => path
+                .iter()
+                .filter(|node| node.id != id)
+                .map(|node| node.id.clone())
+                .collect(),
+            None => return,
+        };
+        self.expanded.extend(ancestors);
         self.selected = Some(id.to_owned());
     }
 

@@ -12,7 +12,7 @@ mod grid_model;
 mod line;
 mod method_menu;
 mod model;
-mod option_menu;
+pub(super) mod option_menu;
 mod pane_model;
 mod scripts;
 mod send;

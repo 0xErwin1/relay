@@ -118,7 +118,7 @@ fn sidebar_shows_header_filter_rows_and_footer(cx: &mut TestAppContext) {
 
     for selector in [
         "collections-label",
-        "new-request",
+        "sidebar-new-collection",
         "tree-filter",
         "tree-filter-keycap",
         "sidebar-footer",

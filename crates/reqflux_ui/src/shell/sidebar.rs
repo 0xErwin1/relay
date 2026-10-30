@@ -1,22 +1,25 @@
-//! The sidebar island: the `COLLECTIONS` header with the new-request button, the filter
-//! field, the collection tree and a footer with the request and collection counts. The
-//! button and the filter do nothing yet.
+//! The sidebar island: the `COLLECTIONS` header with the new-collection button, the filter
+//! field, the error of the last failed tree operation, the delete confirmation, the
+//! collection tree and a footer with the request and collection counts. The filter does
+//! nothing yet.
 //!
 //! The tree keeps keyboard focus as a whole; its rows are not focusable. Navigation runs
 //! through the actions below, bound in the `SidebarTree` key context.
 //!
 //! Clicking a request row, or Enter on a selected one, emits [`OpenRequest`]; the shell
 //! subscribes to it and opens the request in a document tab. The sidebar knows nothing of
-//! the documents.
+//! the documents. Tree edits go the same way: see [`super::sidebar_edit`].
 
 use bolt::controls::{Field, IconButton};
 use bolt::tokens::{chrome, space, text};
 use bolt::{IconName, Island};
 use gpui::{
     App, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement,
-    KeyBinding, ParentElement, Render, Styled, Window, actions, div, prelude::*,
+    KeyBinding, MouseButton, ParentElement, Render, Styled, Window, actions, div, prelude::*,
 };
 
+use super::rows::RowSlots;
+use super::sidebar_edit::{TreeCommand, TreeEdit};
 use super::tree_model::{self, Node, TreeState};
 use super::{region, rows, text as text_role, text_region};
 use crate::tokens;
@@ -75,7 +78,9 @@ pub(crate) struct OpenRequest(pub(crate) String);
 pub(crate) struct Sidebar {
     /// `None` when no workspace is loaded: the island stays empty.
     tree: Option<TreeState>,
-    focus: FocusHandle,
+    pub(super) focus: FocusHandle,
+    /// The row menu, the rename field, the delete confirmation and the last error.
+    pub(super) edit: TreeEdit,
 }
 
 impl Sidebar {
@@ -89,6 +94,7 @@ impl Sidebar {
         Self {
             tree,
             focus: cx.focus_handle(),
+            edit: TreeEdit::new(cx),
         }
     }
 
@@ -98,7 +104,24 @@ impl Sidebar {
         self.tree.as_ref().and_then(TreeState::selected)
     }
 
-    fn update_tree(&mut self, cx: &mut Context<Self>, change: impl FnOnce(&mut TreeState)) {
+    /// The node `id`, shown or not.
+    pub(super) fn node(&self, id: &str) -> Option<&Node> {
+        self.tree.as_ref().and_then(|tree| tree.node(id))
+    }
+
+    /// The id of the collection or folder holding `id`.
+    pub(super) fn parent(&self, id: &str) -> Option<String> {
+        self.tree
+            .as_ref()
+            .and_then(|tree| tree.parent_of(id))
+            .map(|parent| parent.id.clone())
+    }
+
+    pub(super) fn update_tree(
+        &mut self,
+        cx: &mut Context<Self>,
+        change: impl FnOnce(&mut TreeState),
+    ) {
         if let Some(tree) = &mut self.tree {
             change(tree);
             cx.notify();
@@ -152,13 +175,15 @@ impl Sidebar {
 
 impl EventEmitter<OpenRequest> for Sidebar {}
 
+impl EventEmitter<TreeCommand> for Sidebar {}
+
 impl Focusable for Sidebar {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus.clone()
     }
 }
 
-fn header(cx: &App) -> impl IntoElement {
+fn header(cx: &mut Context<Sidebar>) -> impl IntoElement {
     region("collections-header")
         .flex_none()
         .h(tokens::SIDEBAR_HEADER)
@@ -171,7 +196,13 @@ fn header(cx: &App) -> impl IntoElement {
             text_role::role(text_region("collections-label"), text::LABEL, cx).child("COLLECTIONS"),
         )
         .child(div().flex_1())
-        .child(IconButton::new("new-request", IconName::Plus, "New request").raised())
+        .child(
+            IconButton::new("sidebar-new-collection", IconName::Plus, "New collection")
+                .raised()
+                .on_click(cx.listener(|this, _event, window, cx| {
+                    this.command(TreeCommand::NewCollection, window, cx);
+                })),
+        )
 }
 
 fn filter() -> impl IntoElement {
@@ -201,24 +232,42 @@ fn footer(tree: &TreeState, cx: &App) -> impl IntoElement {
 }
 
 impl Render for Sidebar {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut content = region("sidebar-content").size_full().flex().flex_col();
 
         if let Some(tree) = &self.tree {
-            let tree_rows = tree.visible_rows().into_iter().map(|row| {
-                let selected = tree.selected() == Some(row.node.id.as_str());
-                let id = row.node.id.clone();
-                let chevron_id = id.clone();
-                let on_toggle = cx.listener(move |this, _event, window, cx| {
-                    this.click_row(&chevron_id, true, window, cx);
-                });
-                rows::tree_row(row, selected, on_toggle, cx).on_click(cx.listener(
-                    move |this, _event, window, cx| this.click_row(&id, false, window, cx),
-                ))
-            });
+            let tree_rows: Vec<_> = tree
+                .visible_rows()
+                .into_iter()
+                .map(|row| {
+                    let selected = tree.selected() == Some(row.node.id.as_str());
+                    let id = row.node.id.clone();
+                    let chevron_id = id.clone();
+                    let menu_id = id.clone();
+                    let on_toggle = cx.listener(move |this, _event, window, cx| {
+                        this.click_row(&chevron_id, true, window, cx);
+                    });
+                    let slots = RowSlots {
+                        name: self.rename_field(&id, cx),
+                        trailing: self.row_actions(row.node, selected, window, cx),
+                    };
+                    rows::tree_row(row, selected, slots, on_toggle, cx)
+                        .on_click(cx.listener(move |this, _event, window, cx| {
+                            this.click_row(&id, false, window, cx);
+                        }))
+                        .on_mouse_down(
+                            MouseButton::Right,
+                            cx.listener(move |this, _event, window, cx| {
+                                this.open_menu(&menu_id, window, cx);
+                            }),
+                        )
+                })
+                .collect();
             content = content
                 .child(header(cx))
                 .child(filter())
+                .children(self.error_label(cx))
+                .children(self.delete_prompt(cx))
                 .child(
                     region("collection-tree")
                         .track_focus(&self.focus)

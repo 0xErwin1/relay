@@ -1,6 +1,6 @@
 //! A pane menu under a row: one row per option, drawn above the islands over a backdrop
 //! that closes it on a click outside. Escape closes it too. The Auth type and Body mode
-//! menus are this menu.
+//! menus are this menu, and so is the sidebar's row menu.
 
 use bolt::chamfer::Chamfer;
 use bolt::tokens::{border, cut, icon, space, text};
@@ -11,16 +11,16 @@ use gpui::{
 };
 
 use crate::shell::rows::labeled_row;
-use crate::shell::{Shell, region, text as text_role};
+use crate::shell::{region, text as text_role};
 use crate::tokens;
 
 /// The option row `id` named `name`, checked when `selected`; a click runs `pick`.
-pub(super) fn option(
+pub(in crate::shell) fn option<V: 'static>(
     id: String,
     name: String,
     selected: bool,
-    pick: impl Fn(&mut Shell, &mut Window, &mut Context<Shell>) + 'static,
-    cx: &mut Context<Shell>,
+    pick: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static,
+    cx: &mut Context<V>,
 ) -> AnyElement {
     let colors = bolt::colors(cx);
     let tint = bolt::brand(cx).accent_tint;
@@ -49,13 +49,13 @@ pub(super) fn option(
 
 /// The open menu `id` of `options`, focused through `focus`, anchored under its row;
 /// Escape and a click outside its `backdrop` run `close`.
-pub(super) fn render(
+pub(in crate::shell) fn render<V: 'static>(
     (id, backdrop): (&'static str, &'static str),
     focus: &FocusHandle,
     options: Vec<AnyElement>,
-    close: fn(&mut Shell, &mut Window, &mut Context<Shell>),
+    close: fn(&mut V, &mut Window, &mut Context<V>),
     window: &Window,
-    cx: &mut Context<Shell>,
+    cx: &mut Context<V>,
 ) -> AnyElement {
     let colors = bolt::colors(cx);
     let menu = region(id)

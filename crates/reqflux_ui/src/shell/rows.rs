@@ -5,8 +5,8 @@
 use bolt::tokens::{border, chrome, family, icon, space, text};
 use bolt::{Chevron, ChevronDirection, Icon, IconName};
 use gpui::{
-    App, ClickEvent, Div, ElementId, FontWeight, InteractiveElement, ParentElement, Role, Stateful,
-    Styled, Window, div, prelude::*,
+    AnyElement, App, ClickEvent, Div, ElementId, FontWeight, InteractiveElement, ParentElement,
+    Role, Stateful, Styled, Window, div, prelude::*,
 };
 
 use super::text as text_role;
@@ -31,11 +31,20 @@ pub(super) fn part(id: String) -> Stateful<Div> {
         .debug_selector(move || selector)
 }
 
+/// What the sidebar puts into a tree row beyond the node itself.
+pub(super) struct RowSlots {
+    /// Shown in place of the name: the inline rename field.
+    pub(super) name: Option<AnyElement>,
+    /// Shown after everything else: the row's action button and its menu.
+    pub(super) trailing: Vec<AnyElement>,
+}
+
 /// The tree row of `row`, with element id `tree-row-<entity id>`. A click on the chevron
 /// of a collection or folder calls `on_toggle` instead of reaching the row.
 pub(super) fn tree_row(
     row: VisibleRow<'_>,
     selected: bool,
+    slots: RowSlots,
     on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Stateful<Div> {
@@ -49,6 +58,7 @@ pub(super) fn tree_row(
         cx,
     )
     .aria_selected(selected)
+    .group(super::sidebar_edit::ROW_GROUP)
     .relative()
     .h(chrome::TREE_ROW)
     .flex_none()
@@ -89,15 +99,19 @@ pub(super) fn tree_row(
         (NodeKind::Folder, false) if row.expanded => colors.strong,
         (NodeKind::Folder | NodeKind::Request { .. }, false) => colors.foreground,
     };
-    let name = div()
-        .flex_1()
-        .min_w_0()
-        .overflow_hidden()
-        .text_ellipsis()
-        .text_color(name_color)
-        .child(node.name.clone());
+    let name = match slots.name {
+        Some(field) => field,
+        None => div()
+            .flex_1()
+            .min_w_0()
+            .overflow_hidden()
+            .text_ellipsis()
+            .text_color(name_color)
+            .child(node.name.clone())
+            .into_any_element(),
+    };
 
-    match &node.kind {
+    let element = match &node.kind {
         NodeKind::Request { method } => element
             .child(div().w(icon::SM).flex_none())
             .child(
@@ -149,5 +163,6 @@ pub(super) fn tree_row(
                         .children(node.child_count().map(|count| count.to_string())),
                 )
         }
-    }
+    };
+    element.children(slots.trailing)
 }

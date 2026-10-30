@@ -77,9 +77,10 @@ impl Shell {
         }
     }
 
-    /// Escape: closes the environment, auth type, body mode or method menu when one is open, else cancels the
-    /// send in flight of the active request. The binding takes Escape before the menu's own
-    /// key handler.
+    /// Escape: closes the environment, auth type, body mode or method menu when one is open,
+    /// else the sidebar's row menu or delete confirmation (clearing its error), else cancels
+    /// the send in flight of the active request. The binding takes Escape before the menu's
+    /// own key handler.
     pub(super) fn cancel_active(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.environment_menu_open {
             self.close_environment_menu(window, cx);
@@ -89,6 +90,10 @@ impl Shell {
             self.close_body_menu(window, cx);
         } else if self.method_menu_open {
             self.close_method_menu(window, cx);
+        } else if self
+            .sidebar
+            .update(cx, |sidebar, cx| sidebar.dismiss(window, cx))
+        {
         } else if let Some(id) = self.documents.active().map(str::to_owned) {
             self.cancel(&id, cx);
         }
