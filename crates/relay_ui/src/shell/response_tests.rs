@@ -2,6 +2,9 @@
 //! Retry (S7) and the empty state, against a local HTTP server.
 
 use gpui::{Pixels, TestAppContext, VisualTestContext};
+use std::io::{Read, Write};
+use std::net::TcpListener;
+use std::thread;
 
 use super::send_tests::{
     PING, Server, click, closed_port, render, render_files, response, serve, settle,
@@ -11,6 +14,51 @@ const PASSING_TEST: &str =
     "pm.test(\"status is 200\", function () {\n  pm.expect(pm.response.code).to.eql(200);\n});\n";
 const FAILING_TEST: &str =
     "pm.test(\"wrong code\", function () {\n  pm.expect(200, \"bad code\").to.eql(404);\n});\n";
+/// Records a test only when the response is a 200, so a later response has no results.
+const CONDITIONAL_TEST: &str =
+    "if (pm.response.code === 200) {\n  pm.test(\"ok\", function () {});\n}\n";
+/// Logs only when the response is a 200, so a later response has no console entries. The
+/// guard runs in the test stage, the only one with `pm.response`.
+const CONDITIONAL_CONSOLE: &str =
+    "if (pm.response.code === 200) {\n  console.log(\"logged\");\n}\n";
+
+/// A port whose first connection answers `200 OK` and every later one with
+/// `503 Service Unavailable`, so a script can produce results for the first response only.
+fn flaky_port() -> u16 {
+    let listener = match TcpListener::bind("127.0.0.1:0") {
+        Ok(listener) => listener,
+        Err(error) => panic!("bind: {error}"),
+    };
+    let port = match listener.local_addr() {
+        Ok(address) => address.port(),
+        Err(error) => panic!("address: {error}"),
+    };
+    thread::spawn(move || {
+        for (n, mut stream) in listener.incoming().flatten().enumerate() {
+            thread::spawn(move || {
+                let mut head = Vec::new();
+                let mut byte = [0_u8; 1];
+                while !head.ends_with(b"\r\n\r\n")
+                    && let Ok(1) = stream.read(&mut byte)
+                {
+                    head.extend_from_slice(&byte);
+                }
+                let code = if n == 0 {
+                    "200 OK"
+                } else {
+                    "503 Service Unavailable"
+                };
+                let reply = format!(
+                    "HTTP/1.1 {code}\r\ncontent-type: application/json\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{{}}"
+                );
+                if let Err(error) = stream.write_all(reply.as_bytes()) {
+                    eprintln!("write: {error}");
+                }
+            });
+        }
+    });
+    port
+}
 
 fn present(cx: &mut VisualTestContext, selector: &str) -> gpui::Bounds<Pixels> {
     match cx.debug_bounds(Box::leak(selector.to_owned().into_boxed_str())) {
@@ -160,6 +208,30 @@ fn console_entries_show_their_level_and_message(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn a_failing_send_still_shows_its_pre_request_console(cx: &mut TestAppContext) {
+    let (shell, cx) = render_files(
+        cx,
+        closed_port(),
+        &[(
+            "ping.pre.js",
+            "console.log(\"from the failed pre-request\");\n",
+        )],
+    );
+    click(cx, "request-send");
+    assert!(
+        settle(cx, &shell, PING)
+            .unwrap_or_default()
+            .starts_with("Failed: ")
+    );
+
+    // The pre-request ran before the transport failed; its console row shows under the
+    // error banner.
+    present(cx, "response-error");
+    present(cx, "response-error-console-1");
+    assert!(absent(cx, "response-error-test-1"));
+}
+
+#[gpui::test]
 fn a_response_without_scripts_shows_neither_entry(cx: &mut TestAppContext) {
     let (shell, cx) = render(cx, serve(Server::Ok));
     click(cx, "request-send");
@@ -168,4 +240,41 @@ fn a_response_without_scripts_shows_neither_entry(cx: &mut TestAppContext) {
     assert!(absent(cx, "response-tab-tests"));
     assert!(absent(cx, "response-tab-console"));
     present(cx, "response-tab-headers");
+}
+
+#[gpui::test]
+fn tests_selected_then_a_response_without_tests_falls_back_to_body(cx: &mut TestAppContext) {
+    let (shell, cx) = render_files(cx, flaky_port(), &[("ping.test.js", CONDITIONAL_TEST)]);
+    click(cx, "request-send");
+    assert_eq!(settle(cx, &shell, PING).as_deref(), Some("200 OK"));
+    click(cx, "response-tab-tests");
+    present(cx, "response-test-1");
+
+    click(cx, "request-send");
+    assert_eq!(
+        settle(cx, &shell, PING).as_deref(),
+        Some("503 Service Unavailable")
+    );
+    // The Tests chip is gone with its results; the pane shows the Body again.
+    assert!(absent(cx, "response-tab-tests"));
+    assert!(absent(cx, "response-tests"));
+    present(cx, "response-body");
+}
+
+#[gpui::test]
+fn console_selected_then_a_response_without_entries_falls_back_to_body(cx: &mut TestAppContext) {
+    let (shell, cx) = render_files(cx, flaky_port(), &[("ping.test.js", CONDITIONAL_CONSOLE)]);
+    click(cx, "request-send");
+    assert_eq!(settle(cx, &shell, PING).as_deref(), Some("200 OK"));
+    click(cx, "response-tab-console");
+    present(cx, "response-console-1");
+
+    click(cx, "request-send");
+    assert_eq!(
+        settle(cx, &shell, PING).as_deref(),
+        Some("503 Service Unavailable")
+    );
+    assert!(absent(cx, "response-tab-console"));
+    assert!(absent(cx, "response-console"));
+    present(cx, "response-body");
 }

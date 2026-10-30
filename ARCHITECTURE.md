@@ -411,7 +411,8 @@ allows it and without one otherwise.
 - A script never runs on the caller's thread (S14): the engine runs it on a dedicated thread
   with its own current-thread Tokio runtime, so a script that waits for the network can block
   there without blocking the GPU thread or the engine's async runtime, and the caller only
-  joins the outcome.
+  awaits the outcome through a channel — never on the UI thread and never inside the
+  engine's async runtime.
 
 What runs today (S7): before preparing a request, the engine runs the effective pre-request
 script — the request's, else the innermost folder's that has one, else the collection's — with
@@ -424,7 +425,8 @@ error — reported as an error console entry — never fails the request.
 `relay run` prints the script results to stderr before its summary line, pre-request entries
 first: one line per recorded test (`test pass <name>` or `test fail <name>: <message>`) and
 one line per console entry (`console <level>: <message>`, level one of `log`, `info`, `warn`,
-`error`). The exit code is unchanged by a failing test. In the app, the response area shows
+`error`). The exit code is unchanged by a failing test. On a transport failure the
+pre-request results still print, before the error line. In the app, the response area shows
 the same results: `Tests` and `Console` entries beside Body and Headers, with one row per
 test and one per console entry, absent when the response has nothing to show (S12). Still
 later: `require()` of the bundled libraries.

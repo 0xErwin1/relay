@@ -70,6 +70,9 @@ pub(crate) struct Shell {
     /// The draft of each edited request, by request id; restored from the app state and
     /// persisted on every edit.
     drafts: Drafts,
+    /// Why the last save of a request's draft failed, by request id, when it failed for a
+    /// reason other than a conflict: the tab row shows it as a danger label.
+    save_errors: HashMap<String, String>,
     /// The URL field of the request under edit, while it has focus.
     url_edit: Option<UrlEdit>,
     /// The cell field of the Params or Headers grid under edit, while it has focus.
@@ -128,6 +131,7 @@ impl Shell {
             sends: HashMap::new(),
             last_send: None,
             drafts: HashMap::new(),
+            save_errors: HashMap::new(),
             url_edit: None,
             cell_edit: None,
             state,
@@ -216,10 +220,20 @@ impl Shell {
     }
 
     /// Closes the environment menu without changing the active environment and gives the
-    /// focus back to the shell; the menu's focus handle is no longer rendered.
+    /// focus back: to an open text field, which keeps the keyboard focus the menu took,
+    /// else to the shell, so the window's keys (Ctrl+Enter, Escape) keep reaching the
+    /// shell's key context.
     fn close_environment_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.environment_menu_open = false;
-        self.focus.focus(window, cx);
+        let field = self
+            .cell_edit
+            .as_ref()
+            .map(|edit| edit.input.clone())
+            .or_else(|| self.url_edit.as_ref().map(|edit| edit.input.clone()));
+        match field {
+            Some(input) => input.update(cx, |state, cx| state.focus(window, cx)),
+            None => self.focus.focus(window, cx),
+        }
         cx.notify();
     }
 
@@ -231,20 +245,22 @@ impl Shell {
         }
     }
 
-    /// Activates the tab of the request `id`.
-    fn activate_document(&mut self, id: &str, cx: &mut Context<Self>) {
+    /// Activates the tab of the request `id`. A cell field that is open commits first,
+    /// like clicking another cell does, so switching tabs keeps what was typed.
+    fn activate_document(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.documents.activate(id);
         self.drop_stale_url_edit(id);
-        self.drop_stale_cell_edit(id);
+        self.commit_cell_edit(window, cx);
         cx.notify();
     }
 
-    /// Closes the tab of the request `id`, cancelling its send in flight. Its draft, if it
-    /// has one, stays in the app state and marks the tab when it is opened again.
+    /// Closes the document of the request `id`, cancelling its send in flight. Its draft,
+    /// if it has one, stays in the app state and marks the tab when it is opened again.
     fn close_document(&mut self, id: &str, cx: &mut Context<Self>) {
         self.documents.close(id);
         self.requests.remove(id);
         self.sends.remove(id);
+        self.save_errors.remove(id);
         self.drop_url_edit_of(id);
         self.drop_cell_edit_of(id);
         cx.notify();

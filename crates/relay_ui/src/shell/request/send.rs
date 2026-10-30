@@ -36,12 +36,15 @@ pub(crate) struct Received {
 }
 
 /// A send that ended without a response.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Failure {
     pub(crate) error: String,
     pub(crate) elapsed: Duration,
     /// Variable names that did not resolve, in first-occurrence order.
     pub(crate) unresolved: Vec<String>,
+    /// What the effective pre-request script produced before the failure: test results,
+    /// console entries and variable writes. Empty when the request could not be prepared.
+    pub(crate) scripts: ScriptOutcome,
 }
 
 impl Received {
@@ -291,6 +294,7 @@ mod tests {
             error: "request cancelled".to_owned(),
             elapsed: Duration::ZERO,
             unresolved: Vec::new(),
+            scripts: ScriptOutcome::default(),
         }));
         assert!(!state.is_sending());
         assert_eq!(state.text().as_deref(), Some("Failed: request cancelled"));

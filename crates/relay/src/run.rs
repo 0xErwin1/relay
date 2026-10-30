@@ -66,7 +66,16 @@ fn send(args: RunArgs) -> Result<(), Failure> {
         eprintln!("warning: unresolved variable {{{{{name}}}}}");
     }
     let (method, url) = (execution.method.clone(), execution.url.clone());
-    let executed = engine.wait(execution)?;
+    // The pre-request has already run when the transport fails; its results live on the
+    // execution, so keep them to print before the error line.
+    let scripts = execution.scripts.clone();
+    let executed = match engine.wait(execution) {
+        Ok(executed) => executed,
+        Err(error) => {
+            write_scripts(&scripts);
+            return Err(error.into());
+        }
+    };
     let response = &executed.response;
 
     write_scripts(&executed.scripts);
@@ -83,7 +92,8 @@ fn send(args: RunArgs) -> Result<(), Failure> {
 
 /// Prints the script results in their documented shape, pre-request entries first: one
 /// `test` line per recorded test and one `console` line per console entry. A failing test
-/// does not change the exit code.
+/// does not change the exit code. On a transport failure the pre-request results are
+/// printed before the error line, so they are never lost.
 fn write_scripts(scripts: &ScriptOutcome) {
     for test in &scripts.tests {
         match (&test.passed, &test.message) {

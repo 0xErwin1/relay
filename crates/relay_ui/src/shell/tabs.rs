@@ -34,19 +34,22 @@ pub(super) fn render(shell: &Shell, cx: &mut Context<Shell>) -> Stateful<Div> {
         .children(tabs.into_iter().map(|(id, location)| {
             let is_active = active.as_deref() == Some(id.as_str());
             let drafted = shell.drafts.get(&id);
-            tab(id, &location, is_active, drafted, cx)
+            let save_error = shell.save_errors.get(&id).map(String::as_str);
+            tab(id, &location, is_active, drafted, save_error, cx)
         }))
 }
 
 /// The tab of the request `id`: element id `doc-tab-<id>`, label `<METHOD> <name>`, selected
 /// when active; its close button is `doc-tab-close-<id>`. A draft marks the tab unsaved with
 /// a dot at its top-right, `doc-tab-dirty-<id>`: the brand tint, or the warning color when
-/// the saved file moved underneath the draft, with the label `doc-tab-conflict-<id>`.
+/// the saved file moved underneath the draft, with the label `doc-tab-conflict-<id>`. A save
+/// that failed for another reason shows the danger label `doc-tab-save-error-<id>`.
 fn tab(
     id: String,
     location: &Location,
     active: bool,
     draft: Option<&RequestDraft>,
+    save_error: Option<&str>,
     cx: &mut Context<Shell>,
 ) -> Stateful<Div> {
     let colors = bolt::colors(cx);
@@ -127,6 +130,18 @@ fn tab(
                     .child("File changed on disk"),
             )
         })
+        .when_some(save_error, |tab, error| {
+            tab.child(
+                part(format!("doc-tab-save-error-{id}"))
+                    .role(Role::Label)
+                    .aria_label(format!("Save failed: {error}"))
+                    .flex_none()
+                    .whitespace_nowrap()
+                    .text_size(tokens::NOTICE_TEXT)
+                    .text_color(colors.danger)
+                    .child("Save failed"),
+            )
+        })
         .child(close)
         .when(drafted, |tab| {
             tab.child(
@@ -139,7 +154,7 @@ fn tab(
                     .bg(dot_color),
             )
         })
-        .on_click(cx.listener(move |this, _event, _window, cx| {
-            this.activate_document(&activate_id, cx);
+        .on_click(cx.listener(move |this, _event, window, cx| {
+            this.activate_document(&activate_id, window, cx);
         }))
 }

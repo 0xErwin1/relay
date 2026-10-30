@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 use relay_core::model::{Id, Item, WorkspaceManifest};
 use relay_store::{
     Parent, ScriptHashes, ScriptOwner, collection_file, environment_file, folder_file,
-    manifest_file, request_file, save_collection, save_environment, save_folder, save_manifest,
-    save_request, save_scripts,
+    is_reserved_request_slug, manifest_file, request_file, save_collection, save_environment,
+    save_folder, save_manifest, save_request, save_scripts,
 };
 use serde_json::Value;
 
@@ -41,8 +41,11 @@ pub struct ImportSummary {
 ///
 /// When `root` has no `relay.toml`, a workspace manifest is created first, named after
 /// the collection. An existing workspace keeps its manifest and gains the collection
-/// beside what is there. Every target file is checked before anything is written; a
-/// collision fails with [`ImportError::Exists`] and leaves the workspace untouched.
+/// beside what is there. Every target file is checked before anything is written — the
+/// entities, the two sidecar scripts of every collection, folder and request, and the
+/// request slugs against the reserved ones — so a collision fails with
+/// [`ImportError::Exists`] (a reserved slug with [`ImportError::Store`]) and leaves the
+/// workspace untouched.
 ///
 /// # Errors
 ///
@@ -68,12 +71,13 @@ pub fn postman(
         targets.push(manifest_path.clone());
     }
     targets.push(collection_file(root, &node.slug));
+    targets.extend(sidecars(&ScriptOwner::Collection(node.slug.clone()), root));
     collect_targets(
         root,
         &node.items,
         &Parent::collection(&node.slug),
         &mut targets,
-    );
+    )?;
     for environment in &environment_nodes {
         targets.push(environment_file(root, &environment.slug));
     }
@@ -165,19 +169,48 @@ fn write_items(
     Ok(())
 }
 
-/// Collects every file the import would write for `items` under `parent`.
-fn collect_targets(root: &Path, items: &[Item], parent: &Parent, targets: &mut Vec<PathBuf>) {
+/// Collects every file the import would write for `items` under `parent`: the entity
+/// files and the two sidecar scripts of each folder and request. A request with a slug
+/// the store reserves (`collection`, `folder`) fails here, before anything is written.
+fn collect_targets(
+    root: &Path,
+    items: &[Item],
+    parent: &Parent,
+    targets: &mut Vec<PathBuf>,
+) -> Result<(), ImportError> {
     for item in items {
         match item {
             Item::Folder(folder) => {
                 targets.push(folder_file(root, parent, &folder.slug));
-                collect_targets(root, &folder.items, &parent.child(&folder.slug), targets);
+                targets.extend(sidecars(
+                    &ScriptOwner::Folder(parent.clone(), folder.slug.clone()),
+                    root,
+                ));
+                collect_targets(root, &folder.items, &parent.child(&folder.slug), targets)?;
             }
             Item::Request(request) => {
-                targets.push(request_file(root, parent, &request.slug));
+                let file = request_file(root, parent, &request.slug);
+                if is_reserved_request_slug(&request.slug) {
+                    return Err(ImportError::Store {
+                        path: file,
+                        message: format!("request slug `{}` is reserved", request.slug),
+                    });
+                }
+                targets.push(file);
+                targets.extend(sidecars(
+                    &ScriptOwner::Request(parent.clone(), request.slug.clone()),
+                    root,
+                ));
             }
         }
     }
+    Ok(())
+}
+
+/// The two sidecar script paths of `owner`, in the order the store writes them.
+fn sidecars(owner: &ScriptOwner, root: &Path) -> [PathBuf; 2] {
+    let files = owner.files(root);
+    [files.pre_request, files.test]
 }
 
 /// Maps a store failure on `target` to an [`ImportError`]. A conflict means the file

@@ -3,6 +3,7 @@
 //! carries the whole request document, so later editable surfaces need no new storage.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use gpui::{Context, Window};
 use relay_core::model::Request;
@@ -272,6 +273,7 @@ impl Shell {
             Ok(current) => current,
             Err(error) => {
                 log::warn!("cannot save {id}: {error}");
+                self.set_save_error(id, error.to_string(), cx);
                 return;
             }
         };
@@ -285,11 +287,15 @@ impl Shell {
         match engine.save_request(id, &draft.request, current) {
             Ok(_) => {
                 self.drafts.remove(id);
+                self.save_errors.remove(id);
                 self.delete_stored_draft(id);
                 self.reload_workspace(cx);
             }
             Err(SaveError::Conflict { .. }) => self.mark_conflicted(id, cx),
-            Err(error) => log::warn!("cannot save {id}: {error}"),
+            Err(error) => {
+                log::warn!("cannot save {id}: {error}");
+                self.set_save_error(id, error.to_string(), cx);
+            }
         }
         self.focus.focus(window, cx);
     }
@@ -303,12 +309,20 @@ impl Shell {
         }
     }
 
+    /// Records why the last save of the request `id`'s draft failed, so the tab row shows
+    /// it the way it shows a conflict.
+    fn set_save_error(&mut self, id: &str, error: String, cx: &mut Context<Self>) {
+        self.save_errors.insert(id.to_owned(), error);
+        cx.notify();
+    }
+
     /// Reverts the draft of the request `id`: the view goes back to the saved file, which
     /// the workspace is reloaded for.
     pub(super) fn revert(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.drop_url_edit_of(id);
         self.drop_cell_edit_of(id);
         if self.drafts.remove(id).is_some() {
+            self.save_errors.remove(id);
             self.delete_stored_draft(id);
             self.reload_workspace(cx);
         }
@@ -320,6 +334,16 @@ impl Shell {
     /// workspace as it was.
     fn reload_workspace(&mut self, cx: &mut Context<Self>) {
         let OpenedWorkspace::Loaded(engine) = &mut self.workspace else {
+            return;
+        };
+        let Some(engine) = Arc::get_mut(engine) else {
+            // A send's prepare task still holds the other `Arc` clone while it runs
+            // `execute` on the background executor. That task only reads the same files
+            // this reload would re-read, so skipping once is safe: the next reload sees
+            // them. Forcing it would need to drop the engine, whose runtime owns a send
+            // in flight, and that send would end as a cancellation.
+            log::warn!("cannot reload the workspace while a send is preparing");
+            self.inspect_open_requests(cx);
             return;
         };
         // Re-read into the same engine: replacing it would drop the runtime that owns a send

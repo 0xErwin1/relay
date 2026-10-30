@@ -344,6 +344,32 @@ fn scripts_print_tests_and_console_to_stderr() {
 }
 
 #[test]
+fn a_transport_failure_still_prints_the_pre_request_output() {
+    let dir = workspace("", &[("r", get("http://127.0.0.1:1/"))]);
+    write(
+        dir.path(),
+        "collections/api/r.pre.js",
+        "console.log(\"pre ran\");\n",
+    );
+    let output = run(&dir, &["api/r"]);
+    let stderr = text(&output.stderr);
+    let lines: Vec<&str> = stderr.lines().collect();
+    assert_eq!(
+        lines.first().copied(),
+        Some("console log: pre ran"),
+        "{stderr}"
+    );
+    let error = lines.get(1).copied().unwrap_or_default();
+    assert!(
+        error.starts_with("error: could not connect to 127.0.0.1: "),
+        "{stderr}"
+    );
+    assert_eq!(lines.len(), 2, "{stderr}");
+    assert_eq!(text(&output.stdout), "");
+    assert_eq!(output.status.code(), Some(1));
+}
+
+#[test]
 fn unknown_environment_is_a_usage_error() {
     let dir = workspace("", &[("r", get("http://127.0.0.1:1/"))]);
     assert_failure(

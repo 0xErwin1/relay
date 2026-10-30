@@ -16,6 +16,17 @@ use crate::shell::send::RequestSend;
 use crate::shell::{Shell, region};
 use crate::tokens;
 
+/// The tab the response view shows: a `Tests` or `Console` tab with nothing to show falls
+/// back to `Body`, so a response without script results never leaves the pane without a
+/// selected chip.
+pub(super) fn effective_tab(tab: ResponseTab, received: &Received) -> ResponseTab {
+    match tab {
+        ResponseTab::Tests if received.scripts.tests.is_empty() => ResponseTab::Body,
+        ResponseTab::Console if received.scripts.console.is_empty() => ResponseTab::Body,
+        other => other,
+    }
+}
+
 /// The row of the response `received` of the request `id`.
 pub(super) fn render(
     id: &str,
@@ -24,6 +35,9 @@ pub(super) fn render(
     cx: &mut Context<Shell>,
 ) -> Div {
     let colors = bolt::colors(cx);
+    // A Tests or Console tab whose results are gone falls back to Body, so the row keeps a
+    // selected chip.
+    let tab = effective_tab(send.tab, received);
     let headers = received.headers.len().to_string();
     let mut tabs = vec![
         (ResponseTab::Body, "Body", IconName::Braces, Vec::new()),
@@ -45,20 +59,23 @@ pub(super) fn render(
         .pr(space::MD)
         .border_t(border::THIN)
         .border_color(colors.line)
-        .children(tabs.into_iter().map(|(tab, label, icon_name, counts)| {
-            let request = id.to_owned();
-            chip(
-                format!("response-tab-{}", label.to_lowercase()),
-                label,
-                icon_name,
-                counts,
-                send.tab == tab,
-                cx,
-            )
-            .on_click(cx.listener(move |this, _event, _window, cx| {
-                this.select_response_tab(&request, tab, cx);
-            }))
-        }))
+        .children(
+            tabs.into_iter()
+                .map(|(chip_tab, label, icon_name, counts)| {
+                    let request = id.to_owned();
+                    chip(
+                        format!("response-tab-{}", label.to_lowercase()),
+                        label,
+                        icon_name,
+                        counts,
+                        tab == chip_tab,
+                        cx,
+                    )
+                    .on_click(cx.listener(move |this, _event, _window, cx| {
+                        this.select_response_tab(&request, chip_tab, cx);
+                    }))
+                }),
+        )
         .children(received.content_type().map(|content_type| {
             div()
                 .ml(space::SM)
@@ -69,7 +86,7 @@ pub(super) fn render(
                 .child(content_type.to_owned())
         }))
         .child(div().flex_1());
-    if send.tab == ResponseTab::Body {
+    if tab == ResponseTab::Body {
         let views = [
             (BodyView::Pretty, "Pretty", IconName::Braces),
             (BodyView::Raw, "Raw", IconName::List),

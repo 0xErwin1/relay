@@ -4,12 +4,14 @@ use std::time::{Duration, Instant};
 
 use super::last_request::{LastKind, path_of, summary};
 use super::request::{Completed, Failure, SendState, StatusClass};
+use relay_engine::ScriptOutcome;
 
 fn failed() -> SendState {
     SendState::Done(Completed::Failure(Failure {
         error: "request cancelled".to_owned(),
         elapsed: Duration::from_millis(3020),
         unresolved: Vec::new(),
+        scripts: ScriptOutcome::default(),
     }))
 }
 

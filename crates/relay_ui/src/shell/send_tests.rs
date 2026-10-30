@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use gpui::{AppContext as _, Entity, Modifiers, TestAppContext, VisualTestContext};
 
 use super::Shell;
+use super::response::ResponseTab;
 use crate::workspace::OpenedWorkspace;
 use crate::workspace_tests::{demo_workspace, write};
 
@@ -209,6 +210,52 @@ fn clicking_send_shows_the_status(cx: &mut TestAppContext) {
 fn ctrl_enter_sends_the_active_request(cx: &mut TestAppContext) {
     let (shell, cx) = render(cx, serve(Server::Ok));
     cx.simulate_keystrokes("ctrl-enter");
+    assert_eq!(settle(cx, &shell, PING).as_deref(), Some("200 OK"));
+}
+
+/// A pre-request script that busy-loops for `millis` of wall-clock time.
+fn busy_script(millis: u64) -> String {
+    format!("const start = Date.now();\nwhile (Date.now() - start < {millis}) {{}}\n")
+}
+
+/// S14: a slow pre-request script never blocks the window. Dispatching Ctrl+Enter returns
+/// at once (preparing runs on GPUI's background executor), the shell still answers while
+/// the send is in flight, and the send settles to its response.
+#[gpui::test]
+fn a_slow_pre_request_script_does_not_block_the_window(cx: &mut TestAppContext) {
+    const SCRIPT_MS: u64 = 400;
+    let (shell, cx) = render_files(
+        cx,
+        serve(Server::Ok),
+        &[("ping.pre.js", &busy_script(SCRIPT_MS))],
+    );
+    let started = Instant::now();
+    // Ctrl+Enter dispatches `SendRequest`; `simulate_keystrokes` would run until parked
+    // and hide the block, so the action handler is invoked directly: what this measures is
+    // the work the key does on the UI thread.
+    cx.update(|window, cx| {
+        shell.update(cx, |shell, cx| shell.send_active(window, cx));
+    });
+    let dispatched = started.elapsed();
+    assert!(
+        dispatched < Duration::from_millis(SCRIPT_MS / 2),
+        "ctrl-enter blocked for {dispatched:?} on the pre-request script"
+    );
+    // The window answers at once: the send is in flight and a sub-tab can be selected.
+    assert_eq!(response(cx, &shell, PING).as_deref(), Some("Sending"));
+    cx.update(|_, cx| {
+        shell.update(cx, |shell, cx| {
+            shell.select_response_tab(PING, ResponseTab::Headers, cx);
+        });
+    });
+    let tab = cx.update(|_, cx| {
+        shell
+            .read(cx)
+            .sends
+            .get(PING)
+            .map(|send| (send.tab, send.state.is_sending()))
+    });
+    assert_eq!(tab, Some((ResponseTab::Headers, true)));
     assert_eq!(settle(cx, &shell, PING).as_deref(), Some("200 OK"));
 }
 

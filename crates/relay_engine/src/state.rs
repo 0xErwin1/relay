@@ -11,8 +11,9 @@
 //! Parsing the payload is the caller's job: what goes in comes out byte-identical.
 //!
 //! The store is usable from one thread: it opens one connection with `journal_mode=WAL`
-//! and `foreign_keys=ON`. The file is created owner-only (`0600`) where the platform has
-//! file modes.
+//! and `foreign_keys=ON`. The file is created owner-only (`0600`) and its directory
+//! owner-only too (`0700`, so other users cannot list the draft names) where the platform
+//! has file modes.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -144,10 +145,7 @@ impl AppState {
         if let Some(parent) = path.parent()
             && !parent.as_os_str().is_empty()
         {
-            fs::create_dir_all(parent).map_err(|source| StateError::Io {
-                path: parent.to_owned(),
-                source,
-            })?;
+            create_state_directory(parent)?;
         }
         let conn = Connection::open(path).map_err(|source| StateError::Open {
             path: path.to_owned(),
@@ -333,6 +331,39 @@ fn migrate(conn: &Connection, path: &Path) -> Result<(), StateError> {
     Ok(())
 }
 
+/// Creates the state directory if needed, owner-only where the platform has file modes,
+/// so other users cannot list the draft names.
+fn create_state_directory(dir: &Path) -> Result<(), StateError> {
+    fs::create_dir_all(dir).map_err(|source| StateError::Io {
+        path: dir.to_owned(),
+        source,
+    })?;
+    restrict_dir(dir)
+}
+
+/// Restricts a directory to its owner, where the platform has file modes.
+#[cfg(unix)]
+fn restrict_dir(dir: &Path) -> Result<(), StateError> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut permissions = fs::metadata(dir)
+        .map_err(|source| StateError::Io {
+            path: dir.to_owned(),
+            source,
+        })?
+        .permissions();
+    permissions.set_mode(0o700);
+    fs::set_permissions(dir, permissions).map_err(|source| StateError::Io {
+        path: dir.to_owned(),
+        source,
+    })
+}
+
+/// Restricts a directory to its owner, where the platform has file modes.
+#[cfg(not(unix))]
+fn restrict_dir(_dir: &Path) -> Result<(), StateError> {
+    Ok(())
+}
+
 /// Restricts the state file to its owner, where the platform has file modes.
 #[cfg(unix)]
 fn set_owner_only(path: &Path) -> Result<(), StateError> {
@@ -395,6 +426,26 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             let mode = fs::metadata(&path).unwrap().permissions().mode();
             assert_eq!(mode & 0o777, 0o600, "the state file must be owner-only");
+        }
+    }
+
+    #[test]
+    fn the_state_directory_is_owner_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = state_path(&dir);
+
+        AppState::open(&path).unwrap();
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let relay_dir = path.parent().expect("the state file has a parent");
+            let mode = fs::metadata(relay_dir).unwrap().permissions().mode();
+            assert_eq!(
+                mode & 0o777,
+                0o700,
+                "the state directory must be owner-only"
+            );
         }
     }
 

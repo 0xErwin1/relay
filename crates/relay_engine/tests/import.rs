@@ -209,6 +209,67 @@ fn an_environment_named_like_the_collection_gets_a_distinct_slug() {
 }
 
 #[test]
+fn import_orphan_sidecar_writes_nothing() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    // An orphan sidecar of a request the import is about to write: the import must see it
+    // in the preflight, not after it has already written the entities.
+    write(
+        dir.path(),
+        "collections/basic-collection/create-user.pre.js",
+        "theirs();\n",
+    );
+    let before = snapshot(dir.path());
+    let error = match postman(dir.path(), &document(BASIC), &[document(STAGING)]) {
+        Err(error) => error,
+        Ok(_) => panic!("an import over an orphan sidecar should fail"),
+    };
+    let ImportError::Exists { path } = &error else {
+        panic!("expected Exists, got {error}");
+    };
+    assert!(path.ends_with("create-user.pre.js"), "{path:?}");
+    assert_eq!(snapshot(dir.path()), before);
+}
+
+#[test]
+fn import_reserved_slug_writes_nothing() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    // A request named like the reserved `collection` slug fails before anything is
+    // written, so a retry does not trip over a manifest the failed import left behind.
+    let document = serde_json::json!({
+        "info": { "_postman_id": "x", "name": "Reserved" },
+        "item": [
+            {
+                "name": "Collection",
+                "request": { "method": "GET", "url": "https://api.example.com" },
+            },
+        ],
+    });
+    let error = match postman(dir.path(), &document, &[]) {
+        Err(error) => error,
+        Ok(_) => panic!("a request with a reserved slug should fail"),
+    };
+    let ImportError::Store { message, .. } = &error else {
+        panic!("expected Store, got {error}");
+    };
+    assert_eq!(message, "request slug `collection` is reserved");
+    assert!(snapshot(dir.path()).is_empty());
+}
+
+fn write(root: &Path, relative: &str, content: &str) {
+    let path = root.join(relative);
+    let parent = match path.parent() {
+        Some(parent) => parent,
+        None => panic!("{} has no parent", path.display()),
+    };
+    if let Err(error) = fs::create_dir_all(parent) {
+        panic!("create {}: {error}", parent.display());
+    }
+    if let Err(error) = fs::write(&path, content) {
+        panic!("write {}: {error}", path.display());
+    }
+}
+
+#[test]
 fn a_document_that_does_not_map_writes_nothing() {
     let dir = tempfile::tempdir().expect("temp dir");
     let broken = serde_json::json!({ "info": { "_postman_id": "x" } });

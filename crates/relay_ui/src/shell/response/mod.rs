@@ -71,7 +71,7 @@ fn completed(id: &str, send: &RequestSend, outcome: &Completed, cx: &mut Context
     match outcome {
         Completed::Response(received) => column
             .child(sub_tabs::render(id, send, received, cx))
-            .child(match send.tab {
+            .child(match sub_tabs::effective_tab(send.tab, received) {
                 ResponseTab::Body => body::render(received, send.view, cx),
                 ResponseTab::Headers => sub_tabs::headers(received, cx),
                 ResponseTab::Tests => results::tests(received, cx),
