@@ -1,6 +1,7 @@
 //! The workspace the main window shows, opened through `relay_engine`.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use relay_engine::Engine;
 
@@ -19,8 +20,9 @@ pub(crate) enum OpenedWorkspace {
         /// Why it did not load.
         error: String,
     },
-    /// The workspace loaded.
-    Loaded(Box<Engine>),
+    /// The workspace loaded. Shared, so a send can run the engine's `execute` — whose
+    /// pre-request script can take seconds — on a background executor task that owns it.
+    Loaded(Arc<Engine>),
 }
 
 impl OpenedWorkspace {
@@ -34,7 +36,7 @@ impl OpenedWorkspace {
             return Self::None;
         };
         match Engine::open(path.clone()) {
-            Ok(engine) => Self::Loaded(Box::new(engine)),
+            Ok(engine) => Self::Loaded(Arc::new(engine)),
             Err(error) => {
                 log::warn!("could not open workspace {}: {error}", path.display());
                 Self::Failed {

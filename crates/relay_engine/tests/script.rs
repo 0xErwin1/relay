@@ -11,6 +11,9 @@ mod common;
 
 use std::net::TcpListener;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use common::{id_text, temp_dir, write};
@@ -119,6 +122,121 @@ fn finish(rt: &Runtime, engine: &relay_engine::Engine, selector: &str) -> relay_
 /// Blanks the wall-clock time of a response, which two sends never share.
 fn without_elapsed(executed: &mut relay_engine::Executed) {
     executed.response.elapsed = Duration::ZERO;
+}
+
+/// A script that busy-loops for `millis` of wall-clock time, so a blocked executor shows up
+/// as a stretched ticker.
+fn busy_script(millis: u64) -> String {
+    format!("const start = Date.now();\nwhile (Date.now() - start < {millis}) {{}}\n")
+}
+
+/// S14: finishing an execution never blocks the executor that polls it. The test script
+/// runs for [`BUSY_MS`]; a 10 ms ticker on the polling runtime must not stretch past a
+/// fraction of that while `finish` is awaited, as it would if `finish` joined the script
+/// thread inside its future.
+#[test]
+fn finish_does_not_block_its_executor() {
+    const BUSY_MS: u64 = 600;
+    const TICK: Duration = Duration::from_millis(10);
+    let rt = runtime();
+    let server = server(&rt, Mock::given(path("/finished")).respond_with(ok()));
+    let dir = temp_dir();
+    let root = dir.path();
+    manifest(root);
+    collection(root, "");
+    request(root, "r", false, &format!("{}/finished", server.uri()));
+    write(root, "collections/api/r.test.js", &busy_script(BUSY_MS));
+    let engine = engine(root);
+    let execution = match engine.execute("api/r", &ExecuteOptions::default()) {
+        Ok(execution) => execution,
+        Err(error) => panic!("execute: {error}"),
+    };
+    // A current-thread runtime only makes progress when `finish` yields: a blocked poll
+    // freezes the ticker with it.
+    let single = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(error) => panic!("runtime: {error}"),
+    };
+    let worst = Arc::new(Mutex::new(Duration::ZERO));
+    // The ticker ends itself once `done` is set, so the tick that lands after a stall is
+    // still polled and still records the gap: aborting it would throw the measurement away.
+    let done = Arc::new(AtomicBool::new(false));
+    single.block_on(async {
+        let ticker = tokio::spawn({
+            let worst = Arc::clone(&worst);
+            let done = Arc::clone(&done);
+            async move {
+                let mut last = Instant::now();
+                while !done.load(Ordering::Relaxed) {
+                    tokio::time::sleep(TICK).await;
+                    let gap = last.elapsed();
+                    let mut worst = worst.lock().unwrap_or_else(|error| panic!("{error}"));
+                    if gap > *worst {
+                        *worst = gap;
+                    }
+                    last = Instant::now();
+                }
+            }
+        });
+        let finished = match execution.finish().await {
+            Ok(executed) => executed,
+            Err(error) => panic!("finish: {error}"),
+        };
+        assert_eq!(finished.response.status, 201, "{:?}", finished.scripts);
+        assert!(
+            finished.scripts.console.is_empty(),
+            "the test script failed to run: {:?}",
+            finished.scripts.console
+        );
+        done.store(true, Ordering::Relaxed);
+        match ticker.await {
+            Ok(()) => {}
+            Err(error) => panic!("ticker: {error}"),
+        }
+    });
+    let worst = *worst.lock().unwrap_or_else(|error| panic!("{error}"));
+    assert!(
+        worst < Duration::from_millis(BUSY_MS / 2),
+        "the executor stalled for {worst:?} while the test script ran"
+    );
+}
+
+/// S14: a pre-request script that runs for [`SCRIPT_MS`] on its own thread must not delay
+/// another request completing on the engine's runtime beyond that other request's own
+/// duration.
+#[test]
+fn a_slow_pre_request_script_does_not_delay_another_request() {
+    const SCRIPT_MS: u64 = 400;
+    let rt = runtime();
+    let slow = server(&rt, Mock::given(path("/slow")).respond_with(ok()));
+    let quick = server(&rt, Mock::given(path("/quick")).respond_with(ok()));
+    let dir = temp_dir();
+    let root = dir.path();
+    manifest(root);
+    collection(root, "");
+    request(root, "slow", false, &format!("{}/slow", slow.uri()));
+    request(root, "quick", false, &format!("{}/quick", quick.uri()));
+    write(root, "collections/api/slow.pre.js", &busy_script(SCRIPT_MS));
+    let engine = Arc::new(engine(root));
+    let scripted = thread::spawn({
+        let engine = Arc::clone(&engine);
+        move || execute(&engine, "api/slow")
+    });
+    // The scripted request is inside its pre-request script before this one starts.
+    thread::sleep(Duration::from_millis(50));
+    let started = Instant::now();
+    let executed = execute(&engine, "api/quick");
+    let elapsed = started.elapsed();
+    assert_eq!(executed.response.status, 201, "{:?}", executed.scripts);
+    assert!(
+        elapsed < Duration::from_millis(SCRIPT_MS),
+        "the quick request waited {elapsed:?} for the scripted one"
+    );
+    let scripted = scripted.join().unwrap_or_else(|error| panic!("{error:?}"));
+    assert_eq!(scripted.response.status, 201);
 }
 
 #[test]

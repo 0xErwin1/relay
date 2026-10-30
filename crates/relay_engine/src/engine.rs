@@ -67,9 +67,11 @@ struct Scripted {
 }
 
 impl Scripted {
-    /// Runs the effective test script with `response` in `pm.response` (S7). A script
-    /// error is an error console entry in the outcome, never a failed request.
-    fn run(self, response: &Response) -> ScriptOutcome {
+    /// Runs the effective test script with `response` in `pm.response` (S7) on the script
+    /// thread, delivering the outcome through a channel so awaiting it never blocks the
+    /// polling executor (S14). A script error is an error console entry in the outcome,
+    /// never a failed request.
+    async fn run(self, response: &Response) -> ScriptOutcome {
         let Some(script) = self.script else {
             return ScriptOutcome::default();
         };
@@ -80,7 +82,7 @@ impl Scripted {
             response: Some(engine_scripts::response_view(response)),
             send_request: None,
         };
-        engine_scripts::run_off_thread(&script, context, self.transport)
+        engine_scripts::run_off_thread_async(&script, context, self.transport).await
     }
 }
 
@@ -90,6 +92,8 @@ impl Execution {
     /// what a front end calls instead of awaiting `handle` directly, which returns a
     /// response without the test results. The test script does not run when the request
     /// produced no response — a transport failure comes back alone and carries no results.
+    /// Awaiting never blocks the polling executor: the script runs on its own thread and
+    /// the outcome arrives through a channel (S14).
     ///
     /// # Errors
     ///
@@ -107,15 +111,15 @@ impl Execution {
         let response = handle
             .await
             .map_err(|error| HttpError::Request(error.to_string()))??;
-        Ok(finalize(
-            method, url, unresolved, scripts, scripted, response,
-        ))
+        Ok(finalize(method, url, unresolved, scripts, scripted, response).await)
     }
 }
 
 /// Assembles `Executed`: the response beside the results of the effective test script,
-/// pre-request entries first.
-fn finalize(
+/// pre-request entries first. The test script runs off thread; awaiting it never blocks
+/// the caller (S14). [`Engine::wait`] drives this same future with `block_on`, so both
+/// paths return the same `Executed`.
+async fn finalize(
     method: String,
     url: String,
     unresolved: Vec<String>,
@@ -124,7 +128,7 @@ fn finalize(
     response: Response,
 ) -> Executed {
     if let Some(scripted) = scripted {
-        let outcome = scripted.run(&response);
+        let outcome = scripted.run(&response).await;
         engine_scripts::merge(&mut scripts, outcome);
     }
     Executed {
@@ -436,6 +440,7 @@ impl Engine {
     /// script with the response in `pm.response` (S7) and returns everything beside the
     /// response. A failing test or a script error never fails the request. Must not be
     /// called from inside an async context; async front ends call [`Execution::finish`].
+    /// Drives the same future as [`Execution::finish`], so both return the same `Executed`.
     ///
     /// # Errors
     ///
@@ -450,13 +455,12 @@ impl Engine {
             scripted,
             ..
         } = execution;
-        let response = self
-            .runtime
-            .block_on(handle)
-            .map_err(|error| ExecuteError::Task(error.to_string()))??;
-        Ok(finalize(
-            method, url, unresolved, scripts, scripted, response,
-        ))
+        self.runtime.block_on(async move {
+            let response = handle
+                .await
+                .map_err(|error| ExecuteError::Task(error.to_string()))??;
+            Ok(finalize(method, url, unresolved, scripts, scripted, response).await)
+        })
     }
 
     /// Prepares and sends the request `selector`, blocking until the response and the

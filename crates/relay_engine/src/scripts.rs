@@ -15,6 +15,7 @@ use relay_script::{
     ScriptRequest, ScriptResponse, ScriptStage, SendRequest, VariableScope, VariableWrite,
 };
 use tokio::runtime::Runtime;
+use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 use crate::select::Target;
@@ -176,29 +177,14 @@ pub(crate) fn run_bounded(script: &str, context: &ScriptContext) -> ScriptOutcom
 /// way every script failure is: an error console entry, never a failed request.
 pub(crate) fn run_off_thread(
     script: &str,
-    mut context: ScriptContext,
+    context: ScriptContext,
     transport: Transport,
 ) -> ScriptOutcome {
     let script = script.to_owned();
     let stage = context.stage;
     let spawned = std::thread::Builder::new()
         .name("relay-script".into())
-        .spawn(move || {
-            let runtime = match tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-            {
-                Ok(runtime) => runtime,
-                Err(error) => {
-                    return failed(
-                        stage,
-                        format!("the script runtime could not start: {error}"),
-                    );
-                }
-            };
-            context.send_request = Some(send_through(runtime, transport));
-            run_bounded(&script, &context)
-        });
+        .spawn(move || run_on_thread(&script, context, transport));
     match spawned {
         Ok(handle) => match handle.join() {
             Ok(outcome) => outcome,
@@ -206,6 +192,68 @@ pub(crate) fn run_off_thread(
         },
         Err(error) => failed(stage, format!("the script thread could not start: {error}")),
     }
+}
+
+/// Runs one script like [`run_off_thread`], but delivers the outcome through a channel
+/// instead of joining the thread (S14): awaiting the returned receiver never blocks the
+/// awaiting executor, however long the script runs. A thread that panics or never starts
+/// ends the channel, which the awaiting side reports as an error console entry.
+pub(crate) fn spawn_off_thread(
+    script: &str,
+    context: ScriptContext,
+    transport: Transport,
+) -> oneshot::Receiver<ScriptOutcome> {
+    let script = script.to_owned();
+    let (sender, receiver) = oneshot::channel();
+    // A spawn failure drops the sender together with the closure: the receiver then ends
+    // without a result, which the awaiting side reports as a script failure.
+    drop(
+        std::thread::Builder::new()
+            .name("relay-script".into())
+            .spawn(move || {
+                let outcome = run_on_thread(&script, context, transport);
+                // The awaiting end is gone when the execution is dropped before finishing;
+                // the outcome has nowhere to go and the thread simply ends.
+                drop(sender.send(outcome));
+            }),
+    );
+    receiver
+}
+
+/// Awaits one script run spawned by [`spawn_off_thread`], reporting a thread that ended
+/// without a result — a panic, or a thread that could not start — as an error console
+/// entry beside an empty outcome.
+pub(crate) async fn run_off_thread_async(
+    script: &str,
+    context: ScriptContext,
+    transport: Transport,
+) -> ScriptOutcome {
+    let stage = context.stage;
+    let receiver = spawn_off_thread(script, context, transport);
+    match receiver.await {
+        Ok(outcome) => outcome,
+        Err(_) => failed(stage, "the script thread panicked".into()),
+    }
+}
+
+/// The body of one script run, on whichever thread calls it: a current-thread runtime
+/// created once per run and shared by every `pm.sendRequest` call in it (S14).
+fn run_on_thread(script: &str, mut context: ScriptContext, transport: Transport) -> ScriptOutcome {
+    let stage = context.stage;
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            return failed(
+                stage,
+                format!("the script runtime could not start: {error}"),
+            );
+        }
+    };
+    context.send_request = Some(send_through(runtime, transport));
+    run_bounded(script, &context)
 }
 
 /// The host handler behind `pm.sendRequest`: one runtime per script run, one client, the
