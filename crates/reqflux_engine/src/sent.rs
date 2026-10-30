@@ -91,7 +91,9 @@ impl Secrets {
                 url_path_form(value),
             ];
             for form in forms {
-                if !patterns.contains(&form) {
+                // A form can be empty (`#frag` has no query or path): an empty pattern would
+                // match between every character.
+                if !form.is_empty() && !patterns.contains(&form) {
                     patterns.push(form);
                 }
             }

@@ -402,3 +402,20 @@ fn the_masker_masks_a_secret_in_the_url_crate_serialization() {
 
     assert!(!masked.contains("SECRET"), "{masked}");
 }
+
+#[test]
+fn a_secret_whose_url_form_is_empty_does_not_mask_everything() {
+    // `#frag` serializes to an empty query and path: an empty pattern would match between
+    // every character.
+    let mut doc = post("https://api.test/v1");
+    doc.headers = vec![KeyValue::new("X-Plain", "visible")];
+    let ws = workspace(
+        vec![secret("token", "#frag")],
+        vec![collection("c", vec![request("r", doc)])],
+    );
+
+    let sent = prepare(&ws).sent();
+
+    assert_eq!(sent.url, "https://api.test/v1");
+    assert_eq!(header(&sent, "X-Plain"), "visible");
+}
