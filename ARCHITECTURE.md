@@ -398,8 +398,13 @@ allows it and without one otherwise.
   license.
 - `pm.sendRequest` is asynchronous. The sandbox drives the QuickJS job queue and resolves the
   host promise when `relay_engine` returns the response.
-- Every run has a memory limit and an interrupt-based time limit, so a `while (true)` loop in a
-  shared collection cannot hang the app.
+- Every run is bounded three ways, so a script in a shared collection cannot hang the app or
+  exhaust the machine: a 64 MiB QuickJS heap, a 5 s wall clock enforced by the interrupt
+  handler, and an 8 MiB cap on what the host itself collects (console lines, test results and
+  variable writes). The host cap exists because the interrupt is polled between bytecodes and
+  cannot bound a run whose time sits in host calls — a loop of `console.log` with a large
+  string grew past 3 GB before it existed — so every host call also checks the deadline and
+  reports which limit stopped it.
 
 What runs today (S7): before preparing a request, the engine runs the effective pre-request
 script — the request's, else the innermost folder's that has one, else the collection's — with
