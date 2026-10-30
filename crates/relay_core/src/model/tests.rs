@@ -438,3 +438,24 @@ fn tree_holds_nested_folders_and_requests_with_scripts() {
     assert!(collection.collection.allows_environment(id(ID_A)));
     assert!(!collection.collection.allows_environment(id(ID_B)));
 }
+
+/// An `apikey` without `location` is a header API key, not an unsupported type: the default
+/// location is simply not written to disk.
+#[test]
+fn an_apikey_without_location_is_a_header_api_key() {
+    let document: Request = match toml::from_str(
+        "id = \"01JB7X3K9Q0000000000000003\"\nname = \"R\"\nmethod = \"GET\"\nurl = \"u\"\n\n\
+         [auth]\ntype = \"apikey\"\nkey = \"X-Key\"\nvalue = \"v\"\n",
+    ) {
+        Ok(document) => document,
+        Err(error) => panic!("{error}"),
+    };
+    assert_eq!(
+        document.auth,
+        Auth::ApiKey {
+            key: "X-Key".to_owned(),
+            value: "v".to_owned(),
+            location: ApiKeyLocation::Header,
+        }
+    );
+}

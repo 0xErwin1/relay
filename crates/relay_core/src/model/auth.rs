@@ -123,6 +123,8 @@ struct BearerFields {
 struct ApiKeyFields {
     key: String,
     value: String,
+    /// Where the key is sent; the default header location is not written to disk.
+    #[serde(default)]
     location: ApiKeyLocation,
 }
 
