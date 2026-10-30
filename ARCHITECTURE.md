@@ -139,7 +139,10 @@ Writes are atomic (temporary file plus rename) and carry the content hash the wr
 read. A mismatch means someone else changed the file (another window, `relay mcp`, a `git
 pull`) and the write fails with a conflict instead of overwriting. The check and the rename
 are not locked together, so a write landing between them is lost; the window is one rename.
-The GUI watches the workspace directory and reloads changed files.
+Relay has no live file watcher yet: a change made by another editor, a `git pull` or an agent
+is noticed when the next save hits the changed file (the conflict) or when the workspace is
+reopened. A watcher that reloads changed files while the window is open is a planned
+addition.
 
 ### File schemas
 
@@ -259,7 +262,9 @@ Saving is explicit, as in Postman: an edit never touches the workspace file unti
 - **Reverting** discards the draft.
 - When the file changes underneath a draft (a `git pull`, an agent's write tool, another
   editor), the draft is kept and its tab shows that the saved version moved. Saving then
-  fails with a conflict until the user picks a side.
+  fails with a conflict until the user picks a side. Relay has no live file watcher yet: the
+  change is noticed when the draft is saved (that conflict) or when the workspace is
+  reopened; a watcher that notices it while the window is open is a planned addition.
 - Agent write tools write files directly; they never create or read drafts. An agent and the
   user editing the same request meet at that conflict, not at a silent overwrite.
 
@@ -297,7 +302,7 @@ relay_core ──┬── relay_store ───┐
 | Crate | Owns | Must not |
 |-------|------|----------|
 | `relay_core` | Domain types, validation, variable scopes, `{{}}` templating, dynamic variables. Pure, no IO. | Touch the filesystem, network or GPUI. |
-| `relay_store` | The on-disk format: load, save, atomic writes, conflict detection, file watching, native export bundles. | Know about HTTP or scripts. |
+| `relay_store` | The on-disk format: load, save, atomic writes, conflict detection, native export bundles. | Know about HTTP or scripts. |
 | `relay_postman` | Postman collection v2.1 and environment import and export. | Do IO beyond reading and writing JSON values. |
 | `relay_http` | Building and sending requests: TLS, client certificates, CA bundles, proxies, cookies, redirects, timings, auth signing. | Resolve variables or run scripts. |
 | `relay_script` | The QuickJS sandbox, the `pm` API, bundled libraries, time and memory limits. | Send requests directly; `pm.sendRequest` goes through a host callback. |
@@ -499,8 +504,8 @@ bridge does not already have (see the trust model below), and the help text says
 - **Audit.** Every write and execution is appended to a per-user audit log, with secrets
   redacted.
 
-The GUI and `relay mcp` coordinate through the files themselves: atomic writes, hash-checked
-saves and the file watcher. There is no second runtime that has to agree with the GUI about a
+The GUI and `relay mcp` coordinate through the files themselves: atomic writes and
+hash-checked saves with conflict detection. There is no second runtime that has to agree with the GUI about a
 database, which was DBFlux's most expensive structural mistake.
 
 ## UI

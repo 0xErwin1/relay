@@ -122,6 +122,11 @@ pub(crate) const URL_TEXT: Pixels = px(13.0);
 /// The opacity of the wash behind a `{{name}}` reference in the URL.
 pub(crate) const VARIABLE_WASH: f32 = 0.12;
 
+/// The wash behind a `{{name}}` reference: the color at `VARIABLE_WASH`.
+pub(crate) fn variable_wash(color: Hsla) -> Hsla {
+    wash(color, VARIABLE_WASH)
+}
+
 /// The horizontal and vertical padding of the keycap on the Send button.
 pub(crate) const KEYCAP_PADDING_X: Pixels = px(6.0);
 pub(crate) const KEYCAP_PADDING_Y: Pixels = px(2.0);

@@ -122,13 +122,59 @@ async fn invalid_header_name_and_value_fail_with_typed_error() {
     );
 
     let mut prepared = request("GET", format!("{}/echo", server.uri()));
+    // The transport itself now refuses the line break before reqwest sees it, so the message
+    // names the rule instead of the parser failure it used to surface.
     prepared.headers = vec![("X-Ok".to_owned(), "line\nbreak".to_owned())];
     let error = send(prepared).await.unwrap_err();
     assert_eq!(
         error.to_string(),
-        "invalid header X-Ok: failed to parse header value"
+        "invalid header X-Ok: the header value contains CR or LF"
     );
     assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn crlf_injection_in_a_header_value_is_refused() {
+    let server = ok_server().await;
+    let mut prepared = request("GET", format!("{}/echo", server.uri()));
+    prepared.headers = vec![("X-Tenant".to_owned(), "a\r\nX-Evil: 1".to_owned())];
+    let error = send(prepared).await.unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "invalid header X-Tenant: the header value contains CR or LF"
+    );
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn non_ascii_header_name_and_value_are_refused() {
+    let server = ok_server().await;
+    let mut prepared = request("GET", format!("{}/echo", server.uri()));
+    prepared.headers = vec![("X-Tenant".to_owned(), "caf\u{e9}".to_owned())];
+    let error = send(prepared).await.unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "invalid header X-Tenant: the header value has a non-ASCII character"
+    );
+
+    let mut prepared = request("GET", format!("{}/echo", server.uri()));
+    prepared.headers = vec![("X-Ten\u{e1}nt".to_owned(), "v".to_owned())];
+    let error = send(prepared).await.unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "invalid header X-Tenánt: the header name has a non-ASCII character"
+    );
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn tab_in_a_header_value_is_sent() {
+    let server = ok_server().await;
+    let mut prepared = request("GET", format!("{}/echo", server.uri()));
+    prepared.headers = vec![("X-Tenant".to_owned(), "a\tb".to_owned())];
+    send(prepared).await.unwrap();
+    let received = only_request(&server).await;
+    assert_eq!(header_values(&received, "x-tenant"), vec!["a\tb"]);
 }
 
 // S1: bodies.

@@ -135,6 +135,8 @@ fn header_map(headers: &[(String, String)]) -> Result<HeaderMap, HttpError> {
             name: name.clone(),
             reason,
         };
+        valid_header_text(name, "name").map_err(invalid)?;
+        valid_header_text(value, "value").map_err(invalid)?;
         let header_name =
             HeaderName::from_bytes(name.as_bytes()).map_err(|error| invalid(error.to_string()))?;
         let header_value =
@@ -142,6 +144,25 @@ fn header_map(headers: &[(String, String)]) -> Result<HeaderMap, HttpError> {
         map.append(header_name, header_value);
     }
     Ok(map)
+}
+
+/// Rejects CR, LF, NUL and non-ASCII bytes before the request is built.
+///
+/// A CR or LF would smuggle extra headers into the request (header injection); a NUL or a
+/// non-ASCII byte would either fail deep inside the transport or be sent as raw bytes, which
+/// is never what a header means. Encoded values, such as RFC 2047 words, are the caller's job
+/// and pass unchanged.
+fn valid_header_text(text: &str, part: &str) -> Result<(), String> {
+    for byte in text.bytes() {
+        let reason = match byte {
+            b'\r' | b'\n' => "contains CR or LF".to_owned(),
+            0 => "contains a NUL byte".to_owned(),
+            128.. => "has a non-ASCII character".to_owned(),
+            _ => continue,
+        };
+        return Err(format!("the header {part} {reason}"));
+    }
+    Ok(())
 }
 
 async fn with_body(

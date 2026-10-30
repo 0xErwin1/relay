@@ -6220,9 +6220,11 @@ version = "0.1.0-dev.0"
 dependencies = [
  "pretty_assertions",
  "reqwest",
+ "rustls-pemfile",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-rustls",
  "tokio-util",
  "url",
  "wiremock",
@@ -6650,6 +6652,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
 dependencies = [
  "aws-lc-rs",
+ "log",
  "once_cell",
  "ring",
  "rustls-pki-types",

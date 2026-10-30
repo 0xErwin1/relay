@@ -44,6 +44,8 @@ tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "time", "
 tokio-util = { version = "0.7.20", features = ["io"] }
 url = "2.5.8"
 wiremock = "0.6.5"
+rustls-pemfile = "2.2.0"
+tokio-rustls = "0.26"
 env_logger = "0.11.11"
 log = "0.4.34"
 pretty_assertions = "1.4.1"

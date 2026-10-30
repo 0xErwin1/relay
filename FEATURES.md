@@ -21,7 +21,8 @@ v1.
 | Workspace environments with an active environment selector | MVP |
 | Global, collection and environment variables, with shared and current values | MVP |
 | Secret variables stored in the OS keyring and masked in the UI | MVP |
-| Reload on external file changes (git pull, another editor, an agent) with conflict detection | MVP |
+| Conflict detection for externally changed files (git pull, another editor, an agent) at save, and reload at reopen | MVP |
+| Live workspace watcher that notices external changes while the window is open, without a save or reopen | Later |
 | Global search of requests by name, URL and method (command palette) | MVP |
 | Per-collection environment allowlist | v1 |
 
