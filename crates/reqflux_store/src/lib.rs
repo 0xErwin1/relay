@@ -5,7 +5,9 @@
 //! `save_*` functions write one entity file each, atomically, and refuse to overwrite a file
 //! whose bytes no longer match the hash the caller loaded. The tree operations
 //! ([`create_request`], [`rename`], [`duplicate`], [`delete`], [`move_item`], [`reorder`],
-//! ...) change the collection tree by id against a [`Loaded`] workspace.
+//! ...) change the collection tree by id against a [`Loaded`] workspace, and
+//! [`create_environment`], [`rename_environment`] and [`delete_environment`] the
+//! environments. [`plan_variables`] edits the variables of one scope.
 
 mod error;
 mod hash;
@@ -13,6 +15,7 @@ mod layout;
 mod load;
 mod save;
 mod tree_ops;
+mod variables;
 
 pub use error::{StoreError, Warning, WarningKind};
 pub use hash::ContentHash;
@@ -27,9 +30,10 @@ pub use save::{
     save_scripts,
 };
 pub use tree_ops::{
-    Placed, create_collection, create_folder, create_request, delete, duplicate, move_item, rename,
-    reorder,
+    Placed, create_collection, create_environment, create_folder, create_request, delete,
+    delete_environment, duplicate, move_item, rename, rename_environment, reorder,
 };
+pub use variables::{ScopeFile, VariableChange, VariableWrite, plan_variables, scope_variables};
 
 /// The workspace format this version of ReqFlux reads and writes.
 pub const FORMAT: u32 = 1;

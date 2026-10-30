@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 
 use crate::error::StoreError;
 use crate::layout::{
-    examples_dir_in, request_file_in, script_files, validate_request_slug, validate_slug,
+    environment_file_in, examples_dir_in, request_file_in, script_files, validate_request_slug,
+    validate_slug,
 };
 use crate::save::io_error;
 
@@ -17,6 +18,8 @@ pub(super) enum SlugFor {
     Container,
     /// A request file, which cannot use a reserved slug.
     Request,
+    /// An environment file, `<slug>.env.toml`.
+    Environment,
 }
 
 /// Slugs a display name: lowercase ASCII alphanumerics, every other run of characters a
@@ -48,7 +51,7 @@ pub(super) fn named(name: &str, kind: SlugFor) -> Result<(String, String), Store
     }
     let slug = slugify(name);
     match kind {
-        SlugFor::Container => validate_slug(&slug)?,
+        SlugFor::Container | SlugFor::Environment => validate_slug(&slug)?,
         SlugFor::Request => validate_request_slug(&slug)?,
     }
     Ok((name.to_owned(), slug))
@@ -90,8 +93,12 @@ pub(super) fn ensure_free(dir: &Path, slug: &str, kind: SlugFor) -> Result<(), S
 
 /// The first existing entry of `dir` that holds `slug`: a directory or a request file, and
 /// for a request also its sidecars. A container's slug only clashes with the first two,
-/// so a folder named `folder` may sit beside `folder.pre.js`. A broken symlink counts.
+/// so a folder named `folder` may sit beside `folder.pre.js`. In the environments directory
+/// only `<slug>.env.toml` holds a slug. A broken symlink counts.
 fn holder(dir: &Path, slug: &str, kind: SlugFor) -> Result<Option<PathBuf>, StoreError> {
+    if kind == SlugFor::Environment {
+        return first_existing([environment_file_in(dir, slug)]);
+    }
     let mut candidates = vec![dir.join(slug), request_file_in(dir, slug)];
     if kind == SlugFor::Request {
         let scripts = script_files(dir, slug);
@@ -101,6 +108,12 @@ fn holder(dir: &Path, slug: &str, kind: SlugFor) -> Result<Option<PathBuf>, Stor
             examples_dir_in(dir, slug),
         ]);
     }
+    first_existing(candidates)
+}
+
+fn first_existing(
+    candidates: impl IntoIterator<Item = PathBuf>,
+) -> Result<Option<PathBuf>, StoreError> {
     for path in candidates {
         match fs::symlink_metadata(&path) {
             Ok(_) => return Ok(Some(path)),

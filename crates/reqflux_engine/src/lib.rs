@@ -55,9 +55,10 @@ mod select;
 mod sent;
 pub mod state;
 mod tree;
+mod variables;
 
 pub use engine::{Engine, Executed, Execution};
-pub use error::{ExecuteError, ImportError, OpenError, SaveError, TreeError};
+pub use error::{ExecuteError, ImportError, OpenError, SaveError, TreeError, VariableError};
 pub use import::{ImportSummary, postman};
 pub use prepare::{
     DEFAULT_TIMEOUT_MS, ExecuteOptions, Inspection, Prepared, Span, inspect, prepare, prepare_draft,
@@ -74,3 +75,4 @@ pub use secrets::{
 pub use sent::{MASK, Masker, SentBody, SentRequest};
 /// The token type of [`Execution::cancel`], re-exported so front ends can hold it.
 pub use tokio_util::sync::CancellationToken;
+pub use variables::VariableEdit;

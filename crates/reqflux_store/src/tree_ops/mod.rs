@@ -1,5 +1,6 @@
 //! Tree operations: create, rename, duplicate, delete, move and reorder collections,
-//! folders and requests (tree-crud S1-S7).
+//! folders and requests (tree-crud S1-S7), and create, rename and delete environments
+//! (variables-editor S3).
 //!
 //! Every operation takes the [`Loaded`] workspace the caller holds and names entities by
 //! id. It validates names, slugs and targets and checks the hash of every existing file it
@@ -29,6 +30,7 @@
 //! - Slugs are ASCII only: non-ASCII letters become `-`, so a name without ASCII
 //!   alphanumerics slugs to `item`.
 
+mod environments;
 mod files;
 mod locate;
 mod naming;
@@ -49,6 +51,7 @@ use files::Shape;
 use locate::{Container, Entity, find, find_container};
 use naming::{SlugFor, ensure_free, named, numbered};
 
+pub use environments::{create_environment, delete_environment, rename_environment};
 pub use restructure::{delete, duplicate, move_item, reorder};
 
 /// Where an operation put an entity.
@@ -56,7 +59,8 @@ pub use restructure::{delete, duplicate, move_item, reorder};
 pub struct Placed {
     /// The entity id: new for a created or duplicated entity, kept otherwise.
     pub id: Id,
-    /// Its entity file: `collection.toml`, `folder.toml` or `<slug>.req.toml`.
+    /// Its entity file: `collection.toml`, `folder.toml`, `<slug>.req.toml` or
+    /// `<slug>.env.toml`.
     pub path: PathBuf,
 }
 

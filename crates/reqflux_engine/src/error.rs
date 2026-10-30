@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use reqflux_http::HttpError;
 use reqflux_store::StoreError;
 
+use crate::secrets::SecretError;
+
 /// Why a workspace could not be opened.
 #[derive(Debug, thiserror::Error)]
 pub enum OpenError {
@@ -87,6 +89,46 @@ pub enum SaveError {
     /// The store failed for any other reason.
     #[error(transparent)]
     Store(#[from] StoreError),
+}
+
+/// Why a scope variable edit failed (variables-editor S1, S2). No message contains a
+/// variable's value.
+#[derive(Debug, thiserror::Error)]
+pub enum VariableError {
+    /// The store refused the edit; nothing changed.
+    #[error(transparent)]
+    Store(#[from] StoreError),
+    /// The secret store refused the edit before the file was written; nothing changed.
+    #[error(transparent)]
+    Secret(#[from] SecretError),
+    /// The file was written, but the old secret store entry could not be deleted. The edit
+    /// stands; the entry `account` is left in the store.
+    #[error(
+        "the variable was saved, but the keyring entry {account} could not be deleted: {source}"
+    )]
+    SecretCleanup {
+        /// The keyring account left behind.
+        account: String,
+        /// The secret store error.
+        source: SecretError,
+    },
+    /// The file write failed after a new secret store entry was set, and deleting that entry
+    /// failed too: the file is unchanged but the entry `account` is left in the store.
+    #[error(
+        "{source}; the keyring entry {account} written for it could not be deleted: {rollback}"
+    )]
+    Orphaned {
+        /// Why the file was not written.
+        source: Box<StoreError>,
+        /// The keyring account left behind.
+        account: String,
+        /// Why deleting it failed.
+        rollback: SecretError,
+    },
+    /// The edit was written but the workspace no longer loads; the engine keeps the
+    /// workspace it had.
+    #[error("the workspace does not reload after the change: {0}")]
+    Reload(#[source] OpenError),
 }
 
 /// Why a tree operation (create, rename, duplicate, delete, move, reorder) failed.

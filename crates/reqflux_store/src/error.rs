@@ -108,6 +108,27 @@ pub enum StoreError {
         /// The id given as parent.
         id: Id,
     },
+    /// No environment of the loaded workspace has the id.
+    #[error("no environment has the id {id}")]
+    UnknownEnvironment {
+        /// The id looked up.
+        id: Id,
+    },
+    /// A variable key is empty or only whitespace.
+    #[error("a variable key cannot be empty")]
+    EmptyVariableKey,
+    /// Another variable of the same scope already has the key.
+    #[error("the variable `{key}` already exists in this scope")]
+    DuplicateVariableKey {
+        /// The key that is taken.
+        key: String,
+    },
+    /// The scope has no variable at the index.
+    #[error("no variable at index {index} in this scope")]
+    NoVariable {
+        /// The index given.
+        index: usize,
+    },
     /// The operation applies to folders and requests only.
     #[error("a collection cannot be {operation}")]
     CollectionOperation {

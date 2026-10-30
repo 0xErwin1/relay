@@ -89,7 +89,7 @@ impl Engine {
     }
 
     /// Runs a store operation against the loaded workspace and reloads after it succeeds.
-    fn apply<T>(
+    pub(crate) fn apply<T>(
         &mut self,
         operation: impl FnOnce(&std::path::Path, &Loaded) -> Result<T, StoreError>,
     ) -> Result<T, TreeError> {

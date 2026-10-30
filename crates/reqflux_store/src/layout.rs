@@ -137,7 +137,17 @@ pub fn manifest_file(root: &Path) -> PathBuf {
 /// `<root>/environments/<slug>.env.toml`. Raw: `slug` must already have been validated.
 #[must_use]
 pub(crate) fn environment_file(root: &Path, slug: &str) -> PathBuf {
-    root.join(ENVIRONMENTS).join(format!("{slug}{ENV_SUFFIX}"))
+    environment_file_in(&environments_dir(root), slug)
+}
+
+/// `<root>/environments`.
+pub(crate) fn environments_dir(root: &Path) -> PathBuf {
+    root.join(ENVIRONMENTS)
+}
+
+/// `<dir>/<slug>.env.toml`. Raw: `slug` must already have been validated.
+pub(crate) fn environment_file_in(dir: &Path, slug: &str) -> PathBuf {
+    dir.join(format!("{slug}{ENV_SUFFIX}"))
 }
 
 /// `<root>/environments/<slug>.env.toml` for a validated slug.
