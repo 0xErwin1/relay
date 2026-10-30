@@ -3,7 +3,14 @@
 
 use gpui::{Pixels, TestAppContext, VisualTestContext};
 
-use super::send_tests::{PING, Server, click, closed_port, render, response, serve, settle};
+use super::send_tests::{
+    PING, Server, click, closed_port, render, render_files, response, serve, settle,
+};
+
+const PASSING_TEST: &str =
+    "pm.test(\"status is 200\", function () {\n  pm.expect(pm.response.code).to.eql(200);\n});\n";
+const FAILING_TEST: &str =
+    "pm.test(\"wrong code\", function () {\n  pm.expect(200, \"bad code\").to.eql(404);\n});\n";
 
 fn present(cx: &mut VisualTestContext, selector: &str) -> gpui::Bounds<Pixels> {
     match cx.debug_bounds(Box::leak(selector.to_owned().into_boxed_str())) {
@@ -100,4 +107,65 @@ fn retry_sends_again(cx: &mut TestAppContext) {
     // The failed send stays visible, dimmed, under the progress bar.
     present(cx, "response-progress");
     present(cx, "response-error");
+}
+
+#[gpui::test]
+fn a_passing_test_script_shows_the_tests_tab(cx: &mut TestAppContext) {
+    let (shell, cx) = render_files(cx, serve(Server::Ok), &[("ping.test.js", PASSING_TEST)]);
+    assert!(absent(cx, "response-tab-tests"));
+    click(cx, "request-send");
+    assert_eq!(settle(cx, &shell, PING).as_deref(), Some("200 OK"));
+
+    present(cx, "response-tab-tests");
+    assert!(absent(cx, "response-tab-console"));
+    click(cx, "response-tab-tests");
+    present(cx, "response-test-1");
+    assert!(absent(cx, "response-test-1-message"));
+    assert!(absent(cx, "response-test-2"));
+}
+
+#[gpui::test]
+fn a_failing_test_shows_its_message(cx: &mut TestAppContext) {
+    let (shell, cx) = render_files(cx, serve(Server::Ok), &[("ping.test.js", FAILING_TEST)]);
+    click(cx, "request-send");
+    assert_eq!(settle(cx, &shell, PING).as_deref(), Some("200 OK"));
+
+    click(cx, "response-tab-tests");
+    present(cx, "response-test-1");
+    present(cx, "response-test-1-message");
+}
+
+#[gpui::test]
+fn console_entries_show_their_level_and_message(cx: &mut TestAppContext) {
+    let (shell, cx) = render_files(
+        cx,
+        serve(Server::Ok),
+        &[
+            ("ping.pre.js", "console.warn(\"from the pre-request\");\n"),
+            (
+                "ping.test.js",
+                "console.log(\"from the test\");\npm.test(\"ok\", function () {});\n",
+            ),
+        ],
+    );
+    click(cx, "request-send");
+    assert_eq!(settle(cx, &shell, PING).as_deref(), Some("200 OK"));
+
+    present(cx, "response-tab-console");
+    present(cx, "response-tab-tests");
+    click(cx, "response-tab-console");
+    present(cx, "response-console-1");
+    present(cx, "response-console-2");
+    assert!(absent(cx, "response-console-3"));
+}
+
+#[gpui::test]
+fn a_response_without_scripts_shows_neither_entry(cx: &mut TestAppContext) {
+    let (shell, cx) = render(cx, serve(Server::Ok));
+    click(cx, "request-send");
+    assert_eq!(settle(cx, &shell, PING).as_deref(), Some("200 OK"));
+
+    assert!(absent(cx, "response-tab-tests"));
+    assert!(absent(cx, "response-tab-console"));
+    present(cx, "response-tab-headers");
 }

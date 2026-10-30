@@ -5,7 +5,7 @@ use bolt::chamfer::Chamfer;
 use bolt::tokens::{border, chrome, cut, family, icon, space, text};
 use bolt::{Icon, IconName};
 use gpui::{
-    AnyElement, App, Context, Div, FontWeight, ParentElement, Role, Stateful, Styled, div,
+    AnyElement, App, Context, Div, FontWeight, Hsla, ParentElement, Role, Stateful, Styled, div,
     prelude::*,
 };
 
@@ -25,15 +25,16 @@ pub(super) fn render(
 ) -> Div {
     let colors = bolt::colors(cx);
     let headers = received.headers.len().to_string();
-    let tabs = [
-        (ResponseTab::Body, "Body", IconName::Braces, None),
+    let mut tabs = vec![
+        (ResponseTab::Body, "Body", IconName::Braces, Vec::new()),
         (
             ResponseTab::Headers,
             "Headers",
             IconName::List,
-            Some(headers),
+            vec![(headers, colors.muted)],
         ),
     ];
+    tabs.extend(test_tabs(received, colors));
     let mut row = div()
         .flex_none()
         .h(tokens::SUB_TAB_BAR)
@@ -44,13 +45,13 @@ pub(super) fn render(
         .pr(space::MD)
         .border_t(border::THIN)
         .border_color(colors.line)
-        .children(tabs.map(|(tab, label, icon_name, count)| {
+        .children(tabs.into_iter().map(|(tab, label, icon_name, counts)| {
             let request = id.to_owned();
             chip(
                 format!("response-tab-{}", label.to_lowercase()),
                 label,
                 icon_name,
-                count,
+                counts,
                 send.tab == tab,
                 cx,
             )
@@ -79,7 +80,7 @@ pub(super) fn render(
                 format!("response-view-{}", label.to_lowercase()),
                 label,
                 icon_name,
-                None,
+                Vec::new(),
                 send.view == view,
                 cx,
             )
@@ -91,12 +92,45 @@ pub(super) fn render(
     row
 }
 
-/// A selectable chip `label` with its icon and an optional count, element id `id`.
+/// The `Tests` and `Console` tabs of a response with something to show (S12): `Tests` with
+/// its passed and failed counts, `Console` with its entry count.
+fn test_tabs(received: &Received, colors: &bolt::tokens::Colors) -> Vec<Tab> {
+    let mut tabs = Vec::new();
+    if !received.scripts.tests.is_empty() {
+        let passed = received
+            .scripts
+            .tests
+            .iter()
+            .filter(|test| test.passed)
+            .count();
+        let failed = received.scripts.tests.len() - passed;
+        let mut counts = vec![(format!("{passed} passed"), colors.muted)];
+        if failed > 0 {
+            counts.push((format!("{failed} failed"), colors.danger));
+        }
+        tabs.push((
+            ResponseTab::Tests,
+            "Tests",
+            IconName::CircleCheckBig,
+            counts,
+        ));
+    }
+    if !received.scripts.console.is_empty() {
+        let counts = vec![(received.scripts.console.len().to_string(), colors.muted)];
+        tabs.push((ResponseTab::Console, "Console", IconName::Code, counts));
+    }
+    tabs
+}
+
+/// One entry of the response sub-tab row.
+type Tab = (ResponseTab, &'static str, IconName, Vec<(String, Hsla)>);
+
+/// A selectable chip `label` with its icon and optional counts, element id `id`.
 fn chip(
     id: String,
     label: &'static str,
     icon_name: IconName,
-    count: Option<String>,
+    counts: Vec<(String, Hsla)>,
     selected: bool,
     cx: &App,
 ) -> Stateful<Div> {
@@ -130,11 +164,11 @@ fn chip(
                 .when(selected, |label| label.font_weight(FontWeight::SEMIBOLD))
                 .child(label),
         )
-        .children(count.map(|count| {
+        .children(counts.into_iter().map(|(count, color)| {
             div()
                 .font_family(family::MONO)
                 .text_size(tokens::SMALL_MONO_TEXT)
-                .text_color(colors.muted)
+                .text_color(color)
                 .child(count)
         }))
 }

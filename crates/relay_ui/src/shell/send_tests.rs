@@ -88,16 +88,26 @@ pub(super) fn render(
     cx: &mut TestAppContext,
     port: u16,
 ) -> (Entity<Shell>, &mut VisualTestContext) {
-    render_in(cx, port, false)
+    render_files(cx, port, &[])
+}
+
+/// [`render`], with `files` written next to the request as script sidecars.
+pub(super) fn render_files<'a>(
+    cx: &'a mut TestAppContext,
+    port: u16,
+    files: &[(&str, &str)],
+) -> (Entity<Shell>, &'a mut VisualTestContext) {
+    render_in(cx, port, false, files)
 }
 
 /// [`render`], with the shell inside gpui-component's `Root` when `rooted`, as the app's
-/// window has it.
-fn render_in(
-    cx: &mut TestAppContext,
+/// window has it, and `files` written next to the request as script sidecars.
+fn render_in<'a>(
+    cx: &'a mut TestAppContext,
     port: u16,
     rooted: bool,
-) -> (Entity<Shell>, &mut VisualTestContext) {
+    files: &[(&str, &str)],
+) -> (Entity<Shell>, &'a mut VisualTestContext) {
     // The engine wakes the awaiting task from its own threads.
     cx.executor().allow_parking();
     cx.update(super::bind_keys);
@@ -115,6 +125,9 @@ fn render_in(
             "id = \"{PING}\"\nname = \"Ping\"\nmethod = \"GET\"\nurl = \"http://127.0.0.1:{port}/ping\"\n"
         ),
     );
+    for (name, content) in files {
+        write(root, &format!("collections/api/{name}"), content);
+    }
     let workspace = OpenedWorkspace::open(Some(root.to_path_buf()));
     drop(dir);
     let (shell, cx) = if rooted {
@@ -305,7 +318,7 @@ fn sending_again_on_a_silent_server_stays_in_flight(cx: &mut TestAppContext) {
 
 #[gpui::test]
 fn ctrl_enter_sends_after_the_menu_closes_in_the_app_root(cx: &mut TestAppContext) {
-    let (shell, cx) = render_in(cx, serve(Server::Ok), true);
+    let (shell, cx) = render_in(cx, serve(Server::Ok), true, &[]);
     open_and_escape_the_menu(cx);
     cx.simulate_keystrokes("ctrl-enter");
     assert_eq!(settle(cx, &shell, PING).as_deref(), Some("200 OK"));

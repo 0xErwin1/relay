@@ -1,11 +1,12 @@
 //! The response under the request: the tab row with the status, time and size, then the
 //! empty state before the first send, the progress bar while sending over the previous
 //! outcome dimmed, and the outcome: the unresolved line, then the body and headers of a
-//! response or the error banner of a failure.
+//! response or the error banner of a failure, beside its Tests and Console panes.
 
 mod body;
 mod error;
 mod model;
+mod results;
 mod sub_tabs;
 mod tab_row;
 
@@ -73,6 +74,8 @@ fn completed(id: &str, send: &RequestSend, outcome: &Completed, cx: &mut Context
             .child(match send.tab {
                 ResponseTab::Body => body::render(received, send.view, cx),
                 ResponseTab::Headers => sub_tabs::headers(received, cx),
+                ResponseTab::Tests => results::tests(received, cx),
+                ResponseTab::Console => results::console(received, cx),
             }),
         Completed::Failure(failure) => column.child(error::render(id, failure, cx)),
     }

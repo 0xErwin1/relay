@@ -4,7 +4,7 @@
 use std::time::{Duration, Instant};
 
 use gpui::{App, Context, KeyBinding, Task, Window, actions};
-use relay_engine::{CancellationToken, ExecuteOptions, Execution};
+use relay_engine::{CancellationToken, ExecuteOptions, Executed, Execution};
 
 use super::Shell;
 use super::last_request::{LastSend, path_of};
@@ -183,32 +183,30 @@ impl Shell {
 
 /// Awaits `execution` on GPUI's executor and redraws every [`TICK`] until it ends.
 fn spawn(id: &str, execution: Execution, started: Instant, cx: &mut Context<Shell>) -> Running {
-    let Execution {
-        unresolved,
-        cancel,
-        handle,
-        ..
-    } = execution;
+    let cancel = execution.cancel.clone();
+    let unresolved = execution.unresolved.clone();
     let key = id.to_owned();
     let wait = cx.spawn(async move |this, cx| {
-        let failure = |error: String, unresolved| {
-            Completed::Failure(Failure {
-                error,
-                elapsed: started.elapsed(),
-                unresolved,
-            })
-        };
-        let completed = match handle.await {
-            Ok(Ok(response)) => {
+        let completed = match execution.finish().await {
+            Ok(executed) => {
+                let Executed {
+                    response,
+                    unresolved,
+                    scripts,
+                    ..
+                } = executed;
                 // Splitting a large body into lines stays off the UI thread.
                 let received = cx
                     .background_executor()
-                    .spawn(async move { Received::new(response, unresolved) })
+                    .spawn(async move { Received::new(response, unresolved, scripts) })
                     .await;
                 Completed::Response(received)
             }
-            Ok(Err(error)) => failure(error.to_string(), unresolved),
-            Err(error) => failure(error.to_string(), unresolved),
+            Err(error) => Completed::Failure(Failure {
+                error: error.to_string(),
+                elapsed: started.elapsed(),
+                unresolved,
+            }),
         };
         if let Err(error) = this.update(cx, |shell, cx| shell.finish_send(&key, completed, cx)) {
             log::debug!("send of {key} ended after its shell: {error}");

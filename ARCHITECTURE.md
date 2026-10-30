@@ -417,8 +417,10 @@ error — reported as an error console entry — never fails the request.
 `relay run` prints the script results to stderr before its summary line, pre-request entries
 first: one line per recorded test (`test pass <name>` or `test fail <name>: <message>`) and
 one line per console entry (`console <level>: <message>`, level one of `log`, `info`, `warn`,
-`error`). The exit code is unchanged by a failing test. Still later slices: `pm.sendRequest`,
-`require()` of the bundled libraries, and the results panel and console in the app.
+`error`). The exit code is unchanged by a failing test. In the app, the response area shows
+the same results: `Tests` and `Console` entries beside Body and Headers, with one row per
+test and one per console entry, absent when the response has nothing to show (S12). Still
+later slices: `pm.sendRequest` and `require()` of the bundled libraries.
 
 ## Postman compatibility
 

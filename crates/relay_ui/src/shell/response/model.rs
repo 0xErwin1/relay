@@ -9,6 +9,8 @@ pub(crate) enum ResponseTab {
     #[default]
     Body,
     Headers,
+    Tests,
+    Console,
 }
 
 /// How the body shows: indented and colored, or the bytes as text.

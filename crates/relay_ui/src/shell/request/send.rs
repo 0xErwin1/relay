@@ -5,12 +5,12 @@ use std::time::{Duration, Instant};
 
 use std::sync::Arc;
 
-use relay_engine::Response;
+use relay_engine::{Response, ScriptOutcome};
 
 use crate::shell::response::BodyText;
 
 /// The outcome of a finished send.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Completed {
     /// The server answered.
     Response(Received),
@@ -19,7 +19,7 @@ pub(crate) enum Completed {
 }
 
 /// A response the server sent back.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Received {
     pub(crate) status: u16,
     pub(crate) reason: Option<String>,
@@ -28,6 +28,9 @@ pub(crate) struct Received {
     pub(crate) elapsed: Duration,
     /// Variable names that did not resolve, in first-occurrence order.
     pub(crate) unresolved: Vec<String>,
+    /// What the effective scripts produced: test results, console entries and variable
+    /// writes, pre-request entries first.
+    pub(crate) scripts: ScriptOutcome,
     /// The body split into lines for the view, computed once.
     pub(crate) text: Arc<BodyText>,
 }
@@ -43,7 +46,7 @@ pub(crate) struct Failure {
 
 impl Received {
     /// Splits the body into lines, so build it off the UI thread for a large body.
-    pub(crate) fn new(response: Response, unresolved: Vec<String>) -> Self {
+    pub(crate) fn new(response: Response, unresolved: Vec<String>, scripts: ScriptOutcome) -> Self {
         let content_type = content_type(&response.headers);
         let text = Arc::new(BodyText::new(&response.body, content_type));
         Self {
@@ -53,6 +56,7 @@ impl Received {
             body: response.body,
             elapsed: response.elapsed,
             unresolved,
+            scripts,
             text,
         }
     }
@@ -81,7 +85,7 @@ fn content_type(headers: &[(String, String)]) -> Option<&str> {
 }
 
 /// Where the send of one open request is.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) enum SendState {
     /// Never sent since the tab opened.
     #[default]
@@ -201,6 +205,7 @@ mod tests {
             body: b"{}".to_vec(),
             elapsed: Duration::from_millis(5),
             unresolved: Vec::new(),
+            scripts: ScriptOutcome::default(),
             text: Arc::new(BodyText::new(b"{}", None)),
         }
     }
