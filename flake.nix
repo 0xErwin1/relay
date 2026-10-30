@@ -1,5 +1,5 @@
 {
-  description = "Relay - a local-first HTTP client";
+  description = "ReqFlux - a local-first HTTP client";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -28,7 +28,7 @@
 
         rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
 
-        relayVersion = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
+        reqfluxVersion = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
 
         # Native libraries GPUI needs to build and run.
         buildInputs =
@@ -54,7 +54,7 @@
 
         # scripts/gpui-mcp.sh builds the UI automation server, whose capture
         # backend links PipeWire, libgbm and EGL and generates bindings with
-        # bindgen. Relay itself does not need them.
+        # bindgen. ReqFlux itself does not need them.
         automationBuildInputs = lib.optionals pkgs.stdenv.hostPlatform.isLinux (
           with pkgs;
           [
@@ -86,13 +86,13 @@
           ]
         );
 
-        # Build the `relay` package with rustPlatform, like DBFlux's non-flake
-        # path in default.nix. Builds `-p relay` so the automation crates and
+        # Build the `reqflux` package with rustPlatform, like DBFlux's non-flake
+        # path in default.nix. Builds `-p reqflux` so the automation crates and
         # their capture libraries stay out of the package.
         #
         # Only tracked files reach the build in a git checkout, but filter the
         # common build output anyway so a plain directory copy also builds.
-        relaySrc = lib.cleanSourceWith {
+        reqfluxSrc = lib.cleanSourceWith {
           src = ./.;
           filter =
             path: _type:
@@ -105,12 +105,12 @@
             && (builtins.match ".*(/result-[^/]*)" path) == null;
         };
 
-        relayDesktop = ./assets/icon/relay.desktop;
+        reqfluxDesktop = ./assets/icon/reqflux.desktop;
 
-        relay = pkgs.rustPlatform.buildRustPackage {
-          pname = "relay";
-          version = relayVersion;
-          src = relaySrc;
+        reqflux = pkgs.rustPlatform.buildRustPackage {
+          pname = "reqflux";
+          version = reqfluxVersion;
+          src = reqfluxSrc;
 
           cargoLock = {
             lockFile = ./Cargo.lock;
@@ -122,7 +122,7 @@
 
           cargoBuildFlags = [
             "-p"
-            "relay"
+            "reqflux"
           ];
 
           # Tests run in CI (.github/workflows/ci.yml), not here: GPUI tests
@@ -130,18 +130,18 @@
           doCheck = false;
 
           postInstall = ''
-            install -Dm644 ${relayDesktop} $out/share/applications/relay.desktop
-            install -Dm644 ${./assets/icon/relay.svg} $out/share/icons/hicolor/scalable/apps/relay.svg
-            install -Dm644 ${./assets/icon/relay-16.png} $out/share/icons/hicolor/16x16/apps/relay.png
-            install -Dm644 ${./assets/icon/relay-32.png} $out/share/icons/hicolor/32x32/apps/relay.png
-            install -Dm644 ${./assets/icon/relay-48.png} $out/share/icons/hicolor/48x48/apps/relay.png
-            install -Dm644 ${./assets/icon/relay-64.png} $out/share/icons/hicolor/64x64/apps/relay.png
-            install -Dm644 ${./assets/icon/relay-128.png} $out/share/icons/hicolor/128x128/apps/relay.png
-            install -Dm644 ${./assets/icon/relay-256.png} $out/share/icons/hicolor/256x256/apps/relay.png
+            install -Dm644 ${reqfluxDesktop} $out/share/applications/reqflux.desktop
+            install -Dm644 ${./assets/icon/reqflux.svg} $out/share/icons/hicolor/scalable/apps/reqflux.svg
+            install -Dm644 ${./assets/icon/reqflux-16.png} $out/share/icons/hicolor/16x16/apps/reqflux.png
+            install -Dm644 ${./assets/icon/reqflux-32.png} $out/share/icons/hicolor/32x32/apps/reqflux.png
+            install -Dm644 ${./assets/icon/reqflux-48.png} $out/share/icons/hicolor/48x48/apps/reqflux.png
+            install -Dm644 ${./assets/icon/reqflux-64.png} $out/share/icons/hicolor/64x64/apps/reqflux.png
+            install -Dm644 ${./assets/icon/reqflux-128.png} $out/share/icons/hicolor/128x128/apps/reqflux.png
+            install -Dm644 ${./assets/icon/reqflux-256.png} $out/share/icons/hicolor/256x256/apps/reqflux.png
           '';
 
           postFixup = lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
-            wrapProgram $out/bin/relay \
+            wrapProgram $out/bin/reqflux \
               --prefix LD_LIBRARY_PATH : "${runtimeLibraryPath}" \
               --suffix LD_LIBRARY_PATH : "/run/opengl-driver/lib:/usr/lib/x86_64-linux-gnu:/usr/lib64:/usr/lib"
           '';
@@ -151,7 +151,7 @@
             homepage = "https://github.com/0xErwin1/relay";
             license = licenses.asl20;
             platforms = platforms.linux;
-            mainProgram = "relay";
+            mainProgram = "reqflux";
           };
         };
       in
@@ -171,18 +171,18 @@
         };
 
         packages = {
-          default = relay;
-          relay = relay;
+          default = reqflux;
+          reqflux = reqflux;
         };
 
         apps = {
           default = flake-utils.lib.mkApp {
-            drv = relay;
-            exePath = "/bin/relay";
+            drv = reqflux;
+            exePath = "/bin/reqflux";
           };
-          relay = flake-utils.lib.mkApp {
-            drv = relay;
-            exePath = "/bin/relay";
+          reqflux = flake-utils.lib.mkApp {
+            drv = reqflux;
+            exePath = "/bin/reqflux";
           };
         };
 

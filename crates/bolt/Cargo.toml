@@ -1,6 +1,6 @@
 [package]
 name = "bolt"
-description = "Bolt, the design system shared by Relay and DBFlux: tokens, theme and generic GPUI components."
+description = "Bolt, the design system shared by ReqFlux and DBFlux: tokens, theme and generic GPUI components."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

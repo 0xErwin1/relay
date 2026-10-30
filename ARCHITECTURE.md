@@ -1,6 +1,6 @@
-# Relay architecture
+# ReqFlux architecture
 
-Relay is a local-first HTTP client built on GPUI. It reads and writes Postman
+ReqFlux is a local-first HTTP client built on GPUI. It reads and writes Postman
 v2.1 collections and environments, runs Postman `pm.*` scripts, and exposes the same engine to
 AI agents through MCP. The workspace on disk is a directory of small text files, so the
 collaboration path is git.
@@ -18,15 +18,15 @@ names the alternative it rejects and, where relevant, the DBFlux experience behi
 | Protocols | HTTP only until after v1. |
 | App state | History, recent workspaces, cookies and UI state live in a per-user SQLite file, never in the workspace. |
 | Secrets | Secret variable values live in the OS keyring; workspace files hold only the key and `secret = true`. |
-| Engine | One `relay_engine` crate drives load, resolve, script, send and record. The UI, the MCP server and the CLI all call it. |
-| MCP | `relay mcp` is a stdio server over `relay_engine`. It needs no shared database with the GUI because both read the same files. |
+| Engine | One `reqflux_engine` crate drives load, resolve, script, send and record. The UI, the MCP server and the CLI all call it. |
+| MCP | `reqflux mcp` is a stdio server over `reqflux_engine`. It needs no shared database with the GUI because both read the same files. |
 | Scripting | QuickJS through `rquickjs`, with a `pm` API shim and bundled Postman sandbox libraries. |
 | Postman | Import and export of collection v2.1 and environment files. Unsupported fields are preserved, not dropped. |
 | HTTP | `reqwest` with rustls, per-request clients cached by TLS and proxy configuration. |
 | GPUI | Published `gpui-pre` 0.3.7, `gpui-component` 0.7.0 and `gpui-pre-platform` 0.3.7, the newest the UI automation bridge supports; every other dependency tracks its latest release. `gpui-pre` is patched from the `gpui-mcp` git repository at a pinned rev; nothing is vendored. |
-| Crates | Ten crates in a strict one-way dependency order. Only `bolt`, `relay_ui` and `relay` link GPUI. |
-| Design system | Bolt, copied from DBFlux, in the product-agnostic `bolt` crate. Relay supplies only its accent and its own tokens, so `bolt` can become a shared library without touching Relay's screens. |
-| UI automation | The upstream `gpui-mcp` bridge is always installed. `relay mcp` exposes it as `ui_*` tools under the same policy, so agents declare one MCP server. |
+| Crates | Ten crates in a strict one-way dependency order. Only `bolt`, `reqflux_ui` and `reqflux` link GPUI. |
+| Design system | Bolt, copied from DBFlux, in the product-agnostic `bolt` crate. ReqFlux supplies only its accent and its own tokens, so `bolt` can become a shared library without touching ReqFlux's screens. |
+| UI automation | The upstream `gpui-mcp` bridge is always installed. `reqflux mcp` exposes it as `ui_*` tools under the same policy, so agents declare one MCP server. |
 
 ## Domain model
 
@@ -92,7 +92,7 @@ script that sets an environment value updates the current value, as in Postman.
 
 ```text
 billing/                              workspace root
-├── relay.toml                        workspace manifest: id, name, format version, globals
+├── reqflux.toml                        workspace manifest: id, name, format version, globals
 ├── environments/
 │   ├── dev.env.toml
 │   └── prod.env.toml
@@ -107,7 +107,7 @@ billing/                              workspace root
 │           ├── list-invoices.test.js
 │           └── list-invoices.examples/
 │               └── ok.toml
-└── .relay/                           local, git-ignored: current values, per-user state
+└── .reqflux/                           local, git-ignored: current values, per-user state
 ```
 
 Rules that keep files mergeable:
@@ -123,23 +123,23 @@ Rules that keep files mergeable:
 - **Stable serialization.** Keys are written in a fixed order and tables are only emitted when
   non-empty, so an unchanged entity serializes to the same bytes.
 - **Shared versus current values.** An environment file holds the shared value. The current
-  value a person or script sets lives under `.relay/`. Secret keys have no value in the file.
-- **Format version.** `relay.toml` carries `format = 1`. A newer format refuses to load with a
+  value a person or script sets lives under `.reqflux/`. Secret keys have no value in the file.
+- **Format version.** `reqflux.toml` carries `format = 1`. A newer format refuses to load with a
   clear message rather than guessing.
 
 - **Reserved request slugs.** A request cannot be named `collection` or `folder` on disk: its
   sidecars would be `collection.pre.js` or `folder.pre.js`, the parent's own scripts. Saving
   one fails; loading one skips it with a warning.
-- **Stability scope.** Files Relay wrote reload and save to the same bytes. A file written by
+- **Stability scope.** Files ReqFlux wrote reload and save to the same bytes. A file written by
   hand may be normalized once on its first save (string quoting, inline tables, unknown
   top-level keys moved under `[extensions]`); key order inside `[extensions]` and unmodeled
   auth types is preserved.
 
 Writes are atomic (temporary file plus rename) and carry the content hash the writer last
-read. A mismatch means someone else changed the file (another window, `relay mcp`, a `git
+read. A mismatch means someone else changed the file (another window, `reqflux mcp`, a `git
 pull`) and the write fails with a conflict instead of overwriting. The check and the rename
 are not locked together, so a write landing between them is lost; the window is one rename.
-Relay has no live file watcher yet: a change made by another editor, a `git pull` or an agent
+ReqFlux has no live file watcher yet: a change made by another editor, a `git pull` or an agent
 is noticed when the next save hits the changed file (the conflict) or when the workspace is
 reopened. A watcher that reloads changed files while the window is open is a planned
 addition.
@@ -147,11 +147,11 @@ addition.
 ### File schemas
 
 Keys appear in the order shown. Defaults are never written: `enabled = true`,
-`secret = false`, empty lists, `auth` of type `inherit`, and absent settings. Keys Relay does
-not model are kept under `[extensions]` and written back. `relay_store`'s round-trip test
-(`crates/relay_store/tests/round_trip.rs`) holds a fixture with every shape below.
+`secret = false`, empty lists, `auth` of type `inherit`, and absent settings. Keys ReqFlux does
+not model are kept under `[extensions]` and written back. `reqflux_store`'s round-trip test
+(`crates/reqflux_store/tests/round_trip.rs`) holds a fixture with every shape below.
 
-`relay.toml`
+`reqflux.toml`
 
 ```toml
 id = "01JB7X3K9Q0000000000000001"
@@ -249,8 +249,8 @@ Saving is explicit, as in Postman: an edit never touches the workspace file unti
 
 - An edited entity becomes a **draft**, stored in the per-user app state and keyed by
   workspace id and entity id. Drafts survive a restart and their tabs show them as unsaved.
-  The app state is SQLite (`relay_engine::state`, `rusqlite`) at
-  `$XDG_STATE_HOME/relay/state.sqlite3` (`$HOME/.local/state/relay/state.sqlite3` when the
+  The app state is SQLite (`reqflux_engine::state`, `rusqlite`) at
+  `$XDG_STATE_HOME/reqflux/state.sqlite3` (`$HOME/.local/state/reqflux/state.sqlite3` when the
   variable is unset), with an explicit, forward-only schema version so history tables can
   join later. A draft stores the whole entity document as TOML, so later editable surfaces
   need no new storage.
@@ -262,7 +262,7 @@ Saving is explicit, as in Postman: an edit never touches the workspace file unti
 - **Reverting** discards the draft.
 - When the file changes underneath a draft (a `git pull`, an agent's write tool, another
   editor), the draft is kept and its tab shows that the saved version moved. Saving then
-  fails with a conflict until the user picks a side. Relay has no live file watcher yet: the
+  fails with a conflict until the user picks a side. ReqFlux has no live file watcher yet: the
   change is noticed when the draft is saved (that conflict) or when the workspace is
   reopened; a watcher that notices it while the window is open is a planned addition.
 - Agent write tools write files directly; they never create or read drafts. An agent and the
@@ -299,29 +299,29 @@ Drafts stay out of the workspace directory so that a commit never picks one up.
 ## Crate map
 
 ```text
-relay_core ──┬── relay_store ───┐
-             ├── relay_postman ─┤
-             ├── relay_http ────┼── relay_engine ──┬── relay_mcp ──┐
-             └── relay_script ──┘                  └── relay_ui ───┴── relay (binary)
+reqflux_core ──┬── reqflux_store ───┐
+             ├── reqflux_postman ─┤
+             ├── reqflux_http ────┼── reqflux_engine ──┬── reqflux_mcp ──┐
+             └── reqflux_script ──┘                  └── reqflux_ui ───┴── reqflux (binary)
                                                          │
-                                              bolt ──────┘   (design system, no Relay types)
+                                              bolt ──────┘   (design system, no ReqFlux types)
 ```
 
 | Crate | Owns | Must not |
 |-------|------|----------|
-| `relay_core` | Domain types, validation, variable scopes, `{{}}` templating, dynamic variables. Pure, no IO. | Touch the filesystem, network or GPUI. |
-| `relay_store` | The on-disk format: load, save, atomic writes, conflict detection, native export bundles. | Know about HTTP or scripts. |
-| `relay_postman` | Postman collection v2.1 and environment import and export. | Do IO beyond reading and writing JSON values. |
-| `relay_http` | Building and sending requests: TLS, client certificates, CA bundles, proxies, cookies, redirects, timings, auth signing. | Resolve variables or run scripts. |
-| `relay_script` | The QuickJS sandbox, the `pm` API, bundled libraries, time and memory limits. | Send requests directly; `pm.sendRequest` goes through a host callback. |
-| `relay_engine` | The execution pipeline, collection runner, history and app state (SQLite), keyring secrets. The single API surface for all front ends. | Depend on GPUI or rmcp. |
-| `relay_mcp` | The MCP server: tools, resources, agent policy, audit. | Duplicate engine logic. |
-| `bolt` | Bolt, the design system shared with DBFlux: tokens, theme, generic components. | Know about Relay, HTTP or any product type. |
-| `relay_ui` | Everything GPUI: theme, components, sidebar, documents, keymap. | Contain domain rules that the engine or core should own. |
-| `relay` | The binary: GUI startup and the `mcp`, `run` and `import` subcommands. | Contain logic beyond wiring. |
+| `reqflux_core` | Domain types, validation, variable scopes, `{{}}` templating, dynamic variables. Pure, no IO. | Touch the filesystem, network or GPUI. |
+| `reqflux_store` | The on-disk format: load, save, atomic writes, conflict detection, native export bundles. | Know about HTTP or scripts. |
+| `reqflux_postman` | Postman collection v2.1 and environment import and export. | Do IO beyond reading and writing JSON values. |
+| `reqflux_http` | Building and sending requests: TLS, client certificates, CA bundles, proxies, cookies, redirects, timings, auth signing. | Resolve variables or run scripts. |
+| `reqflux_script` | The QuickJS sandbox, the `pm` API, bundled libraries, time and memory limits. | Send requests directly; `pm.sendRequest` goes through a host callback. |
+| `reqflux_engine` | The execution pipeline, collection runner, history and app state (SQLite), keyring secrets. The single API surface for all front ends. | Depend on GPUI or rmcp. |
+| `reqflux_mcp` | The MCP server: tools, resources, agent policy, audit. | Duplicate engine logic. |
+| `bolt` | Bolt, the design system shared with DBFlux: tokens, theme, generic components. | Know about ReqFlux, HTTP or any product type. |
+| `reqflux_ui` | Everything GPUI: theme, components, sidebar, documents, keymap. | Contain domain rules that the engine or core should own. |
+| `reqflux` | The binary: GUI startup and the `mcp`, `run` and `import` subcommands. | Contain logic beyond wiring. |
 
-`relay_ui` starts as one crate with modules. DBFlux split its UI into six crates and then had
-to forward every feature flag through all of them; Relay splits only when compile times
+`reqflux_ui` starts as one crate with modules. DBFlux split its UI into six crates and then had
+to forward every feature flag through all of them; ReqFlux splits only when compile times
 measurably demand it, and then by one-way layers.
 
 ## HTTP engine
@@ -332,24 +332,24 @@ measurably demand it, and then by one-way layers.
 - Certificates follow Postman's model: a list of client certificates matched by host and port,
   plus an optional custom CA bundle and a per-request "verify TLS" toggle.
 - Timings (DNS, connect, TLS, first byte, download) come from a custom resolver and a connector
-  layer. If that proves insufficient, `relay_http` drops to `hyper-util` directly; the crate
+  layer. If that proves insufficient, `reqflux_http` drops to `hyper-util` directly; the crate
   boundary keeps that change local.
 - Known limits of the reqwest-based transport: repeated headers with the same name are grouped
   at the position of the first one (the order among their values is kept), and the reason
   phrase is the standard one for the status code rather than the server's own text. Both are
-  local to `relay_http`; dropping to `hyper` fixes them if they ever matter.
+  local to `reqflux_http`; dropping to `hyper` fixes them if they ever matter.
 - Responses keep the raw bytes. Pretty-printing, JSON paths and previews are views over them.
-- `relay_engine` owns a Tokio runtime. GPUI tasks await Tokio `JoinHandle`s, which are
+- `reqflux_engine` owns a Tokio runtime. GPUI tasks await Tokio `JoinHandle`s, which are
   executor-agnostic futures, so no GPUI code runs on Tokio and no HTTP code runs on GPUI's
   executor.
 
 ## Command line
 
-`relay` with no arguments opens the window. `relay run` sends one request through
-`relay_engine`, the same path the UI and MCP use:
+`reqflux` with no arguments opens the window. `reqflux run` sends one request through
+`reqflux_engine`, the same path the UI and MCP use:
 
 ```text
-relay run <request> [--workspace <dir>] [--env <slug>] [--var <key>=<value>]... [-i|--include]
+reqflux run <request> [--workspace <dir>] [--env <slug>] [--var <key>=<value>]... [-i|--include]
 ```
 
 - `<request>` is a request id or its slug path, `<collection>/<folder>/.../<request>`.
@@ -376,7 +376,7 @@ and the shell history; prefer reading it from the environment, such as
 
 The engine API behind it: `Engine::open(root)` loads the workspace; `Engine::prepare` selects
 the request, checks the environment and resolves variables, auth, body and settings into a
-`relay_http` request without IO (`relay_engine::prepare` is the same step as a pure function);
+`reqflux_http` request without IO (`reqflux_engine::prepare` is the same step as a pure function);
 `Engine::execute` sends it as a task on the engine runtime and returns an `Execution` with its
 `JoinHandle` and a cancellation token. Auth types other than `inherit`, `none`, `basic`,
 `bearer` and `apikey` fail with `auth type <type> is not supported yet`.
@@ -406,12 +406,12 @@ allows it and without one otherwise.
 - The legacy globals (`tests[...]`, `responseBody`, `postman.setEnvironmentVariable`) are
   supported, because many shared collections still use them.
 - `require()` serves `lodash` 4.17.21, `moment` 2.30.1 and `chai` 4.5.0, vendored unchanged
-  under `crates/relay_script/assets/` with their versions, licences and source URLs in
+  under `crates/reqflux_script/assets/` with their versions, licences and source URLs in
   `assets/LICENSES.md`, and compiled the first time a script asks for one. An unknown module
   fails with its name. The rest of Postman's set (crypto-js, uuid, ajv, cheerio, xml2js, tv4,
   csv-parse) is added when a collection needs it, so the binary carries only what is used.
 - `pm.sendRequest` blocks the script until the host answers, and the engine answers it on the
-  same `relay_http` client the request path uses, bounded by the request's own timeout. Because
+  same `reqflux_http` client the request path uses, bounded by the request's own timeout. Because
   a script can wait for the network, every script runs on a dedicated blocking thread with its
   own current-thread runtime, so neither the GPU thread nor the engine's async runtime waits.
 - Every run is bounded three ways, so a script in a shared collection cannot hang the app or
@@ -435,7 +435,7 @@ response it runs the effective test script the same way, with `pm.response`. Tes
 console entries travel beside the response (`Executed::scripts`); a failing test or a script
 error — reported as an error console entry — never fails the request.
 
-`relay run` prints the script results to stderr before its summary line, pre-request entries
+`reqflux run` prints the script results to stderr before its summary line, pre-request entries
 first: one line per recorded test (`test pass <name>` or `test fail <name>: <message>`) and
 one line per console entry (`console <level>: <message>`, level one of `log`, `info`, `warn`,
 `error`). The exit code is unchanged by a failing test. On a transport failure the
@@ -447,17 +447,17 @@ later: `require()` of the bundled libraries.
 ## Postman compatibility
 
 - Collection v2.1 and environment JSON, import and export.
-- Fields Relay does not model yet are kept in an `extensions` table on the entity and written
+- Fields ReqFlux does not model yet are kept in an `extensions` table on the entity and written
   back on export, so a round trip loses nothing.
 - Import maps Postman items to the on-disk layout: folders to directories, request names to
   slugged file names (with a numeric suffix on collision), scripts to sidecar files.
-- The engine writes the import: `relay_engine::import::postman` maps the documents and writes the
+- The engine writes the import: `reqflux_engine::import::postman` maps the documents and writes the
   collection, its folders and requests with their scripts and the environments through
-  `relay_store`, creating the workspace manifest when the directory is empty and never
+  `reqflux_store`, creating the workspace manifest when the directory is empty and never
   overwriting a file that is already there.
 - A fixture corpus of real exported collections drives round-trip tests: import, export and
   compare the JSON structurally.
-- `relay import <collection.json> [--workspace <dir>] [--environment <file>]...` imports into a
+- `reqflux import <collection.json> [--workspace <dir>] [--environment <file>]...` imports into a
   workspace directory: it creates the manifest when the directory has none, writes the
   collection and its environments, prints what it wrote, and refuses to run when a target file
   already exists, so an import never overwrites existing work.
@@ -472,7 +472,7 @@ later: `require()` of the bundled libraries.
 | Request | Yes | Collection v2.1 containing that request |
 | Environment | Yes | Environment JSON |
 
-A native bundle is a single versioned file (`format_version`, `relay_version`, kind, payload).
+A native bundle is a single versioned file (`format_version`, `reqflux_version`, kind, payload).
 Secrets are excluded by default. Including them requires either an age passphrase, which
 encrypts only the secrets section, or an explicit plaintext flag. This is the DBFlux
 portability model, which held up well.
@@ -482,12 +482,12 @@ git needs no export at all.
 
 ## MCP
 
-`relay mcp [--workspace <path>] [--app-id <id>]` runs an rmcp stdio server. Today it serves
+`reqflux mcp [--workspace <path>] [--app-id <id>]` runs an rmcp stdio server. Today it serves
 the `ui_*` tools of "UI automation"; the engine tools below are the plan.
 
-What exists: `relay_mcp` reads the bridge endpoint descriptors under the runtime directory
-and speaks the framed wire protocol to one window (`relay_mcp::bridge`), and serves thirteen
-`ui_*` tools over stdio (`relay_mcp::server`). A session talks to the only live target, asks
+What exists: `reqflux_mcp` reads the bridge endpoint descriptors under the runtime directory
+and speaks the framed wire protocol to one window (`reqflux_mcp::bridge`), and serves thirteen
+`ui_*` tools over stdio (`reqflux_mcp::server`). A session talks to the only live target, asks
 for `ui_select_target` when several are running, and reports a target that died instead of
 switching. Stdout carries only protocol frames; logs go to stderr. Text the bridge withholds
 as redacted stays withheld, and a bridge failure is a tool error, never a panic.
@@ -512,13 +512,13 @@ bridge does not already have (see the trust model below), and the help text says
 - **Audit.** Every write and execution is appended to a per-user audit log, with secrets
   redacted.
 
-The GUI and `relay mcp` coordinate through the files themselves: atomic writes and
+The GUI and `reqflux mcp` coordinate through the files themselves: atomic writes and
 hash-checked saves with conflict detection. There is no second runtime that has to agree with the GUI about a
 database, which was DBFlux's most expensive structural mistake.
 
 ## UI
 
-What exists today: `relay [<dir>]` opens a workspace through `relay_engine` before the window
+What exists today: `reqflux [<dir>]` opens a workspace through `reqflux_engine` before the window
 appears (a slow disk delays the window). The window is the Bolt shell of
 `design/bolt-v2/01-main.html`: a title bar with the workspace and environment on the left,
 the command search in the middle and the approvals bell on the right; the activity rail
@@ -582,7 +582,7 @@ The plan:
 
 ## Design system
 
-Relay and DBFlux are a family of apps: both use **Bolt** (islands, 45 degree cuts, Archivo and
+ReqFlux and DBFlux are a family of apps: both use **Bolt** (islands, 45 degree cuts, Archivo and
 JetBrains Mono, compact density) with one accent per product. `design/system.md` holds the
 values; `design/bolt-v2/` holds the artboards of every view, built from DBFlux's own.
 
@@ -592,10 +592,10 @@ dependency swap, so the copy lives behind a boundary from the start:
 - **`crates/bolt`** owns everything product-agnostic: color roles and washes, typography roles,
   spacing, cuts and chrome metrics, the chamfer shape, the theme mapping onto gpui-component,
   and generic components (island, button, input, tabs, tree row, table, keycap, status chip).
-  It depends on GPUI and gpui-component only and never names Relay, HTTP or a Relay type.
-- **Relay passes in what differs:** a `Brand` value (accent fill, hover, pressed, tint, app
-  name, logo) and its own extra tokens (`method-*`, `draft`), defined in `relay_ui`.
-- **`relay_ui` never reads gpui-component `Theme` fields or raw colors directly.** It asks
+  It depends on GPUI and gpui-component only and never names ReqFlux, HTTP or a ReqFlux type.
+- **ReqFlux passes in what differs:** a `Brand` value (accent fill, hover, pressed, tint, app
+  name, logo) and its own extra tokens (`method-*`, `draft`), defined in `reqflux_ui`.
+- **`reqflux_ui` never reads gpui-component `Theme` fields or raw colors directly.** It asks
   `bolt` for a role (`text strong`, `panel`, `accent tint`) or uses a `bolt` component.
   A guardrail test rejects color literals and bare pixel values outside the token files, as
   DBFlux does.
@@ -606,22 +606,22 @@ dependency swap, so the copy lives behind a boundary from the start:
 ## UI automation
 
 Every window installs the [`gpui-mcp`](https://github.com/themixednuts/gpui-mcp) bridge. It is
-always on, not a development feature: agents drive the running app through the same `relay mcp`
+always on, not a development feature: agents drive the running app through the same `reqflux mcp`
 server they use for collections and requests, so a client declares one MCP server, not two.
 
 ```text
-agent ── stdio (MCP) ──> relay mcp ──┬── relay_engine          collections, requests, execution
-                                     └── gpui-mcp-protocol ──> bridge in each Relay window
+agent ── stdio (MCP) ──> reqflux mcp ──┬── reqflux_engine          collections, requests, execution
+                                     └── gpui-mcp-protocol ──> bridge in each ReqFlux window
 ```
 
-- `relay_mcp` speaks `gpui-mcp-protocol` to the bridge directly: endpoint discovery, the token
+- `reqflux_mcp` speaks `gpui-mcp-protocol` to the bridge directly: endpoint discovery, the token
   handshake and operations such as reading the element tree, focusing, typing, pressing keys
   and clicking. There is no second process; `gpui-mcp-server` is upstream's own client and
-  Relay does not ship it.
+  ReqFlux does not ship it.
 - UI tools are named `ui_*` and go through the same policy as every other tool. Reading the
   tree is class `read`; any input is class `execute`, because a click on Send executes a
   request just as `request_execute` does. Without that, the UI would be a way around the policy.
-- With several Relay windows or processes, `ui_list_targets` lists them and `ui_select_target`
+- With several ReqFlux windows or processes, `ui_list_targets` lists them and `ui_select_target`
   chooses one; a single target is selected automatically.
 - Screenshots need native window capture, which on Linux only works for X11 windows. They are
   a later addition through `gpui-mcp-capture`; the element tree and input work on Wayland.
@@ -630,47 +630,47 @@ Trust model, and what it costs:
 
 - The bridge listens on an owner-only socket under `$XDG_RUNTIME_DIR/gpui-mcp/` and writes a
   descriptor with a random token. Any process running as the same user can read that token and
-  drive the app or read what it renders, with no policy in between; only `relay mcp` enforces
+  drive the app or read what it renders, with no policy in between; only `reqflux mcp` enforces
   the policy. This is the same exposure the user's files and keyring already have to such a
   process, and it is the price of having automation always on.
 - Secret values must never be rendered in clear text by default. Secret inputs are masked, and
   the bridge withholds masked and `frame_redacted` text from observers.
 - The bridge, the patched `gpui-pre` and `gpui-mcp-protocol` all come from one `gpui-mcp`
   rev, set once in the root `Cargo.toml`. Bump it for all of them at once.
-- `gpui-mcp` supports `gpui-pre` 0.3.5 to 0.3.7, which caps Relay at `gpui-component` 0.7.0
+- `gpui-mcp` supports `gpui-pre` 0.3.5 to 0.3.7, which caps ReqFlux at `gpui-component` 0.7.0
   until upstream supports a newer release.
 
-`relay mcp` serves these tools itself: `ui_list_targets`, `ui_select_target`, `ui_ping`,
+`reqflux mcp` serves these tools itself: `ui_list_targets`, `ui_select_target`, `ui_ping`,
 `ui_tree`, `ui_find`, `ui_element`, `ui_element_bounds`, `ui_wait_for_element`, `ui_click`,
-`ui_type`, `ui_key`, `ui_focus` and `ui_scroll`. Relay reimplements discovery, descriptor
+`ui_type`, `ui_key`, `ui_focus` and `ui_scroll`. ReqFlux reimplements discovery, descriptor
 validation and the framing instead of depending on upstream's server, whose client is private,
 so `scripts/gpui-mcp.sh` is no longer needed to drive the app.
 
 The protocol crate gives the types; the transport, the size caps (1 MiB per request, 24 MiB
-per response) and the 10 s I/O timeout are Relay's. A request carries the descriptor's token
+per response) and the 10 s I/O timeout are ReqFlux's. A request carries the descriptor's token
 and a fresh request id, and a response must match both the id and the protocol version.
 
 ## Packaging and releases
 
-The flake builds a Linux package (`packages.relay`, aliased by `packages.default`) with
-`rustPlatform.buildRustPackage`: the `relay` binary wrapped with the GPUI runtime
-library path, the desktop entry (`assets/icon/relay.desktop`) and the icon set
+The flake builds a Linux package (`packages.reqflux`, aliased by `packages.default`) with
+`rustPlatform.buildRustPackage`: the `reqflux` binary wrapped with the GPUI runtime
+library path, the desktop entry (`assets/icon/reqflux.desktop`) and the icon set
 installed under the standard XDG paths (`share/applications`, `share/icons/hicolor`).
 `nix develop` is unchanged apart from ImageMagick, which is listed so the icon PNGs can
 be regenerated offline.
 
-The icon is a hand-written SVG (`assets/icon/relay.svg`, a paper plane on the brand
-cobalt `#2B45B8`; `relay-small.svg` is a filled variant for 16 and 32 px). The PNGs are
+The icon is a hand-written SVG (`assets/icon/reqflux.svg`, a paper plane on the brand
+cobalt `#2B45B8`; `reqflux-small.svg` is a filled variant for 16 and 32 px). The PNGs are
 committed and regenerated with ImageMagick's librsvg delegate, which works from the dev
 shell offline:
 
 ```sh
-magick -background none assets/icon/relay.svg -depth 8 -resize 256x256 assets/icon/relay-256.png
+magick -background none assets/icon/reqflux.svg -depth 8 -resize 256x256 assets/icon/reqflux-256.png
 ```
 
 Every push to `main` (and manual dispatch) runs `.github/workflows/nightly.yml`, which
-builds `relay` on `ubuntu-latest` and publishes a prerelease tagged `nightly-YYYYMMDD`
-with `relay-linux-amd64.tar.gz` attached. The nightly version is the workspace version
+builds `reqflux` on `ubuntu-latest` and publishes a prerelease tagged `nightly-YYYYMMDD`
+with `reqflux-linux-amd64.tar.gz` attached. The nightly version is the workspace version
 with its pre-release suffix stripped (`0.1.0-dev.0` → `0.1.0`) plus the UTC date and
 short commit as semver build metadata, e.g. `0.1.0-nightly+20260213.928b3d5`. The date
 also forms the tag, so pushes to `main` on the same day replace that day's release, and
@@ -681,7 +681,7 @@ behaviour as DBFlux's nightly.
 
 | Keep | Evidence in DBFlux |
 |------|--------------------|
-| Capability seams so the UI never branches on a backend id. In Relay: auth types and body modes. | `AGENTS.md` "never branch on driver_id" |
+| Capability seams so the UI never branches on a backend id. In ReqFlux: auth types and body modes. | `AGENTS.md` "never branch on driver_id" |
 | GPUI-native keymap with context predicates and a keyboard coverage test. | `dbflux_ui_base/src/keymap/mod.rs` |
 | Semantic theme tokens with a guardrail test against raw colors. | `DESIGN.md`, `dbflux_components/src/theme.rs` |
 | Versioned export bundle with age-encrypted secrets and an explicit plaintext flag. | `dbflux_portability/src/bundle.rs` |
@@ -695,7 +695,7 @@ behaviour as DBFlux's nightly.
 | User content in text files instead of one SQLite file. | Collections must diff, merge and be reviewed in git. |
 | MCP as a thin layer over the shared engine, in one crate. | DBFlux runs a second driver runtime in the MCP process, coordinates through a shared SQLite file and splits MCP across two overlapping crates. |
 | One UI crate to start. | Six UI crates forced feature forwarding through every one of them and spread the keymap over three crates. |
-| Vendor nothing. | DBFlux carries four patched vendored crates, each with its own refresh procedure. Relay uses published crates plus one git patch of `gpui-pre` from the `gpui-mcp` repository, which upstream maintains. |
+| Vendor nothing. | DBFlux carries four patched vendored crates, each with its own refresh procedure. ReqFlux uses published crates plus one git patch of `gpui-pre` from the `gpui-mcp` repository, which upstream maintains. |
 | A hard 1000-line limit on source files from day one, with no grandfathering. | DBFlux carries 2,000 to 3,900 line `lib.rs` and `mod.rs` files. |
 | Persistence never depends on governance crates. | `dbflux_storage` depends on `dbflux_approval`. |
 | Docs updated in the same change as the code they describe. | DBFlux still documents a removed hand-rolled MCP transport. |
@@ -705,9 +705,9 @@ behaviour as DBFlux's nightly.
 | Phase | Outcome |
 |-------|---------|
 | 0 Foundation | This document, a compiling workspace, dev shell, lint and CI. |
-| 1 Model and store | `relay_core` types and templating, `relay_store` load and save with round-trip tests. |
-| 2 HTTP | `relay_http` with basic, bearer and API key auth; `relay run` sends a request from the CLI. |
-| 3 UI MVP | Sidebar, request editor, response view, environment switcher, and `relay mcp` with the `ui_*` tools so agents verify the UI from here on. |
+| 1 Model and store | `reqflux_core` types and templating, `reqflux_store` load and save with round-trip tests. |
+| 2 HTTP | `reqflux_http` with basic, bearer and API key auth; `reqflux run` sends a request from the CLI. |
+| 3 UI MVP | Sidebar, request editor, response view, environment switcher, and `reqflux mcp` with the `ui_*` tools so agents verify the UI from here on. |
 | 4 Postman | v2.1 collection and environment import and export against a fixture corpus. |
 | 5 Scripts | `pm.*` variables, tests and expectations, then `pm.sendRequest` and bundled libraries. Required for v1. |
 | 6 MCP | Workspace, collection, request and runner tools, resources, policy, approvals and audit. |

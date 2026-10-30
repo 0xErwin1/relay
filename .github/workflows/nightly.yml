@@ -1,6 +1,6 @@
 name: Nightly
 
-# Rolling nightly build of the Linux `relay` package, modelled on DBFlux's
+# Rolling nightly build of the Linux `reqflux` package, modelled on DBFlux's
 # nightly workflow but single-platform: one prerelease per day (tag
 # nightly-YYYYMMDD) holding the newest build from main. A later push to main
 # on the same day replaces that day's release, and older nightlies are pruned,
@@ -106,35 +106,35 @@ jobs:
           grep -qF "version = \"${VERSION}\"" Cargo.toml \
             || { echo "::error::Version stamp did not apply."; exit 1; }
 
-      - name: Build Relay
-        run: cargo build --release -p relay
+      - name: Build ReqFlux
+        run: cargo build --release -p reqflux
 
       - name: Assemble the package
         run: |
           mkdir -p pkg/bin pkg/share/applications
           mkdir -p pkg/share/icons/hicolor/scalable/apps
           mkdir -p pkg/share/icons/hicolor/256x256/apps
-          cp target/release/relay pkg/bin/relay
-          cp assets/icon/relay.desktop pkg/share/applications/relay.desktop
-          cp assets/icon/relay.svg pkg/share/icons/hicolor/scalable/apps/relay.svg
-          cp assets/icon/relay-256.png pkg/share/icons/hicolor/256x256/apps/relay.png
+          cp target/release/reqflux pkg/bin/reqflux
+          cp assets/icon/reqflux.desktop pkg/share/applications/reqflux.desktop
+          cp assets/icon/reqflux.svg pkg/share/icons/hicolor/scalable/apps/reqflux.svg
+          cp assets/icon/reqflux-256.png pkg/share/icons/hicolor/256x256/apps/reqflux.png
           cp LICENSE-APACHE pkg/LICENSE-APACHE
 
       - name: Create tar archive
         run: |
           cd pkg
-          tar -czf ../relay-linux-amd64.tar.gz .
+          tar -czf ../reqflux-linux-amd64.tar.gz .
 
       - name: Generate checksum
-        run: sha256sum relay-linux-amd64.tar.gz > relay-linux-amd64.tar.gz.sha256
+        run: sha256sum reqflux-linux-amd64.tar.gz > reqflux-linux-amd64.tar.gz.sha256
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-amd64
           path: |
-            relay-linux-amd64.tar.gz
-            relay-linux-amd64.tar.gz.sha256
+            reqflux-linux-amd64.tar.gz
+            reqflux-linux-amd64.tar.gz.sha256
           retention-days: 90
 
   release:
@@ -193,11 +193,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.compute-version.outputs.tag }}
-          name: Relay Nightly ${{ needs.compute-version.outputs.tag }}
+          name: ReqFlux Nightly ${{ needs.compute-version.outputs.tag }}
           body_path: release_body.md
           prerelease: true
           files: |
-            artifacts/relay-linux-amd64.tar.gz
-            artifacts/relay-linux-amd64.tar.gz.sha256
+            artifacts/reqflux-linux-amd64.tar.gz
+            artifacts/reqflux-linux-amd64.tar.gz.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -5,12 +5,12 @@ on-disk format and the crate boundaries.
 
 ## Rules
 
-- Respect the crate order in ARCHITECTURE.md. Only `bolt`, `relay_ui` and `relay` may depend on
+- Respect the crate order in ARCHITECTURE.md. Only `bolt`, `reqflux_ui` and `reqflux` may depend on
   GPUI; `scripts/lint.py layering` enforces it.
-- `bolt` is the design system shared with DBFlux. It never names Relay, HTTP or a Relay type;
-  Relay-specific tokens and the brand live in `relay_ui`. Screens use `bolt` roles and
+- `bolt` is the design system shared with DBFlux. It never names ReqFlux, HTTP or a ReqFlux type;
+  ReqFlux-specific tokens and the brand live in `reqflux_ui`. Screens use `bolt` roles and
   components, never gpui-component `Theme` fields or raw colors.
-- `relay_engine` is the only API the UI, MCP and CLI use. Never reimplement engine logic in a
+- `reqflux_engine` is the only API the UI, MCP and CLI use. Never reimplement engine logic in a
   front end.
 - No source file over 1000 lines. Split by responsibility before you reach it;
   `scripts/lint.py file-size` enforces it with no exemptions.
@@ -26,7 +26,7 @@ on-disk format and the crate boundaries.
 ## Driving the app
 
 Every window runs the `gpui-mcp` bridge. Agents drive it through the `ui_*` tools of
-`relay mcp`; until that exists, register `scripts/gpui-mcp.sh --app-id relay` (after
+`reqflux mcp`; until that exists, register `scripts/gpui-mcp.sh --app-id reqflux` (after
 `scripts/gpui-mcp.sh install`) to inspect the element tree, click and type. Verify UI changes in the
 running app, not only in tests. See "UI automation" in ARCHITECTURE.md.
 

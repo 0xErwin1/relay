@@ -1,0 +1,18 @@
+[package]
+name = "reqflux_script"
+description = "ReqFlux QuickJS sandbox with the Postman pm API."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reqflux_core.workspace = true
+rquickjs = "0.13.0"
+serde_json.workspace = true
+thiserror.workspace = true

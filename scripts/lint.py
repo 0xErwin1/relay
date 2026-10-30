@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repository checks for Relay.
+"""Repository checks for ReqFlux.
 
 Usage: scripts/lint.py [check ...]
 
@@ -22,21 +22,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MAX_LINES = 1000
 GPUI_PACKAGES = {"gpui-pre", "gpui-component", "gpui-pre-platform", "gpui-mcp"}
-GPUI_CRATES = {"bolt", "relay", "relay_ui"}
+GPUI_CRATES = {"bolt", "reqflux", "reqflux_ui"}
 
 # Each crate may depend only on the internal crates listed here.
 ALLOWED_INTERNAL = {
-    # The design system shared with DBFlux depends on no Relay crate.
+    # The design system shared with DBFlux depends on no ReqFlux crate.
     "bolt": set(),
-    "relay_core": set(),
-    "relay_store": {"relay_core"},
-    "relay_postman": {"relay_core"},
-    "relay_http": {"relay_core"},
-    "relay_script": {"relay_core"},
-    "relay_engine": {"relay_core", "relay_http", "relay_postman", "relay_script", "relay_store"},
-    "relay_mcp": {"relay_core", "relay_engine"},
-    "relay_ui": {"bolt", "relay_core", "relay_engine"},
-    "relay": {"relay_core", "relay_engine", "relay_mcp", "relay_ui"},
+    "reqflux_core": set(),
+    "reqflux_store": {"reqflux_core"},
+    "reqflux_postman": {"reqflux_core"},
+    "reqflux_http": {"reqflux_core"},
+    "reqflux_script": {"reqflux_core"},
+    "reqflux_engine": {"reqflux_core", "reqflux_http", "reqflux_postman", "reqflux_script", "reqflux_store"},
+    "reqflux_mcp": {"reqflux_core", "reqflux_engine"},
+    "reqflux_ui": {"bolt", "reqflux_core", "reqflux_engine"},
+    "reqflux": {"reqflux_core", "reqflux_engine", "reqflux_mcp", "reqflux_ui"},
 }
 
 

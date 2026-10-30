@@ -1,6 +1,6 @@
-# Relay features
+# ReqFlux features
 
-What Relay will do, by release level. ARCHITECTURE.md explains how each piece is built.
+What ReqFlux will do, by release level. ARCHITECTURE.md explains how each piece is built.
 
 | Level | Meaning |
 |-------|---------|
@@ -90,7 +90,7 @@ v1.
 | Feature | Level |
 |---------|-------|
 | Run a collection or folder in order, with `setNextRequest` | v1 |
-| `relay run` on the command line, with an exit code for CI (single requests work today; running a collection or folder is still v1) | v1 |
+| `reqflux run` on the command line, with an exit code for CI (single requests work today; running a collection or folder is still v1) | v1 |
 | Iterations over CSV or JSON data | Later |
 
 ## History
@@ -112,7 +112,7 @@ v1.
 
 ## MCP for agents
 
-One MCP server, `relay`, for everything.
+One MCP server, `reqflux`, for everything.
 
 | Feature | Level |
 |---------|-------|

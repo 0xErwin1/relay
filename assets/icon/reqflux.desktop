@@ -1,0 +1,15 @@
+# Desktop entry for the ReqFlux GUI. Shared verbatim by the Nix package
+# (flake.nix) and the nightly tarball (.github/workflows/nightly.yml); keep
+# both installs consistent when editing.
+[Desktop Entry]
+Type=Application
+Name=ReqFlux
+GenericName=HTTP Client
+Comment=A local-first HTTP client
+Exec=reqflux %F
+Icon=reqflux
+Terminal=false
+StartupNotify=true
+StartupWMClass=reqflux
+Categories=Development;Network;
+Keywords=http;rest;api;postman;

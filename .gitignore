@@ -2,6 +2,6 @@
 /.tools
 /result
 /.direnv
-.relay/
+.reqflux/
 /odd
 /.atl

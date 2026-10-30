@@ -1,4 +1,4 @@
-//! Bolt, the design system shared by Relay and DBFlux.
+//! Bolt, the design system shared by ReqFlux and DBFlux.
 //!
 //! Bolt owns everything that does not depend on the product: color roles and washes,
 //! typography roles, spacing, cut corners, chrome metrics, the theme mapping onto

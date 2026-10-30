@@ -3,7 +3,7 @@
 # bridge uses, so both sides speak the same protocol version.
 #
 #   scripts/gpui-mcp.sh install     build it into .tools/ (run once, in nix develop)
-#   scripts/gpui-mcp.sh [args...]   run it, e.g. as an MCP server: --app-id relay
+#   scripts/gpui-mcp.sh [args...]   run it, e.g. as an MCP server: --app-id reqflux
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

@@ -6158,7 +6158,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "relay"
+name = "renderdoc-sys"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
+
+[[package]]
+name = "reqflux"
 version = "0.1.0-dev.0"
 dependencies = [
  "anyhow",
@@ -6168,9 +6174,9 @@ dependencies = [
  "gpui-pre-platform",
  "log",
  "pretty_assertions",
- "relay_engine",
- "relay_mcp",
- "relay_ui",
+ "reqflux_engine",
+ "reqflux_mcp",
+ "reqflux_ui",
  "serde_json",
  "signal-hook",
  "tempfile",
@@ -6179,7 +6185,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "relay_core"
+name = "reqflux_core"
 version = "0.1.0-dev.0"
 dependencies = [
  "pretty_assertions",
@@ -6193,16 +6199,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "relay_engine"
+name = "reqflux_engine"
 version = "0.1.0-dev.0"
 dependencies = [
  "base64 0.23.1",
  "pretty_assertions",
- "relay_core",
- "relay_http",
- "relay_postman",
- "relay_script",
- "relay_store",
+ "reqflux_core",
+ "reqflux_http",
+ "reqflux_postman",
+ "reqflux_script",
+ "reqflux_store",
  "rusqlite",
  "serde_json",
  "tempfile",
@@ -6215,7 +6221,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "relay_http"
+name = "reqflux_http"
 version = "0.1.0-dev.0"
 dependencies = [
  "pretty_assertions",
@@ -6231,14 +6237,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "relay_mcp"
+name = "reqflux_mcp"
 version = "0.1.0-dev.0"
 dependencies = [
  "anyhow",
  "gpui-mcp-protocol",
  "interprocess",
  "log",
- "relay_engine",
+ "reqflux_engine",
  "rmcp",
  "schemars",
  "serde",
@@ -6249,32 +6255,32 @@ dependencies = [
 ]
 
 [[package]]
-name = "relay_postman"
+name = "reqflux_postman"
 version = "0.1.0-dev.0"
 dependencies = [
- "relay_core",
+ "reqflux_core",
  "serde_json",
  "thiserror 2.0.21",
  "toml 1.1.8+spec-1.1.0",
 ]
 
 [[package]]
-name = "relay_script"
+name = "reqflux_script"
 version = "0.1.0-dev.0"
 dependencies = [
- "relay_core",
+ "reqflux_core",
  "rquickjs",
  "serde_json",
  "thiserror 2.0.21",
 ]
 
 [[package]]
-name = "relay_store"
+name = "reqflux_store"
 version = "0.1.0-dev.0"
 dependencies = [
  "log",
  "pretty_assertions",
- "relay_core",
+ "reqflux_core",
  "serde",
  "sha2 0.11.1",
  "tempfile",
@@ -6283,7 +6289,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "relay_ui"
+name = "reqflux_ui"
 version = "0.1.0-dev.0"
 dependencies = [
  "anyhow",
@@ -6292,18 +6298,12 @@ dependencies = [
  "gpui-mcp",
  "gpui-pre",
  "log",
- "relay_core",
- "relay_engine",
+ "reqflux_core",
+ "reqflux_engine",
  "serde_json",
  "tempfile",
  "toml 1.1.8+spec-1.1.0",
 ]
-
-[[package]]
-name = "renderdoc-sys"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "reqwest"
