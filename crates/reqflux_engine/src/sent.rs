@@ -1,12 +1,14 @@
 //! The request as sent, redacted for history (history S3).
 //!
-//! Preparing a request collects the values that must never be stored in clear: the resolved
-//! value of every secret variable the request referenced, and the resolved basic password,
+//! Preparing a request collects the values that must never be stored in clear: every value
+//! of every secret variable in the scopes the request resolves with, and the basic password,
 //! bearer token and API key value whether they came from a variable or were typed. The
 //! redacted copy replaces each of them by [`MASK`] wherever it appears in the URL, the
 //! header values and the body, as text, in the forms a request carries it: as written,
-//! percent-encoded, form-encoded and JSON-string-escaped. Header names are never masked.
-//! The values of `Authorization`, `Proxy-Authorization` and `Cookie` are always masked
+//! percent-encoded, form-encoded, as the `url` crate serializes it into a query or a path,
+//! and JSON-string-escaped. A header name that contains a secret value of two or more
+//! characters is replaced by [`MASK`] whole; shorter secrets never touch names, so a
+//! one-character secret cannot mangle `Content-Type`. The values of `Authorization`, `Proxy-Authorization` and `Cookie` are always masked
 //! whole, keeping an auth scheme word, since a script can transform a secret (base64, for
 //! example) beyond what text matching finds. A [`Masker`] applies the same replacement to
 //! any other text, such as the error of a failed send. Text replacement masks a secret also where something
@@ -85,6 +87,8 @@ impl Secrets {
                 crate::prepare::percent_encode(value),
                 url::form_urlencoded::byte_serialize(value.as_bytes()).collect(),
                 json_escaped(value),
+                url_query_form(value),
+                url_path_form(value),
             ];
             for form in forms {
                 if !patterns.contains(&form) {
@@ -113,6 +117,13 @@ impl fmt::Debug for Masker {
 }
 
 impl Masker {
+    /// Whether `text` contains a secret value form of two or more characters.
+    fn contains_long(&self, text: &str) -> bool {
+        self.patterns
+            .iter()
+            .any(|pattern| pattern.chars().count() >= 2 && text.contains(pattern.as_str()))
+    }
+
     /// `text` with every secret value replaced by [`MASK`].
     #[must_use]
     pub fn mask(&self, text: &str) -> String {
@@ -120,6 +131,24 @@ impl Masker {
             text.replace(pattern.as_str(), MASK)
         })
     }
+}
+
+/// `value` as the `url` crate serializes it in a query string, which leaves characters such
+/// as `/` and `:` that [`crate::prepare::percent_encode`] encodes. A transport error echoes
+/// the URL in this form.
+fn url_query_form(value: &str) -> String {
+    url::Url::parse(&format!("http://h/?{value}"))
+        .ok()
+        .and_then(|url| url.query().map(str::to_owned))
+        .unwrap_or_else(|| value.to_owned())
+}
+
+/// `value` as the `url` crate serializes it in a path segment.
+fn url_path_form(value: &str) -> String {
+    url::Url::parse(&format!("http://h/{value}"))
+        .ok()
+        .and_then(|url| url.path().strip_prefix('/').map(str::to_owned))
+        .unwrap_or_else(|| value.to_owned())
 }
 
 /// `value` as a JSON string carries it, without the quotes.
@@ -154,6 +183,16 @@ fn header_value(name: &str, value: &str, masker: &Masker) -> String {
     }
 }
 
+/// The recorded name of a header: [`MASK`] when it carries a secret of two or more
+/// characters, else the name as sent.
+fn header_name(name: &str, masker: &Masker) -> String {
+    if masker.contains_long(name) {
+        MASK.to_owned()
+    } else {
+        name.to_owned()
+    }
+}
+
 /// The redacted copy of `request`.
 pub(crate) fn redact(request: &PreparedRequest, masker: &Masker) -> SentRequest {
     let mask = |text: &str| masker.mask(text);
@@ -163,7 +202,7 @@ pub(crate) fn redact(request: &PreparedRequest, masker: &Masker) -> SentRequest 
         headers: request
             .headers
             .iter()
-            .map(|(key, value)| (key.clone(), header_value(key, value, masker)))
+            .map(|(key, value)| (header_name(key, masker), header_value(key, value, masker)))
             .collect(),
         body: match &request.body {
             PreparedBody::None => SentBody::None,

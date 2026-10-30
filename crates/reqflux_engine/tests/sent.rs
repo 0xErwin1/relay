@@ -359,3 +359,46 @@ fn a_failed_send_error_never_echoes_a_query_secret() {
     assert!(masked.contains(MASK), "{masked}");
     assert!(!masked.contains("k-SECRET-123"), "{masked}");
 }
+
+#[test]
+fn a_secret_in_a_header_name_is_masked() {
+    let mut doc = post("https://api.test/");
+    doc.headers = vec![KeyValue::new("X-{{token}}", "v")];
+    let ws = workspace(
+        vec![secret("token", "name-tok")],
+        vec![collection("c", vec![request("r", doc)])],
+    );
+
+    let sent = prepare(&ws).sent();
+
+    assert!(
+        sent.headers
+            .iter()
+            .all(|(key, value)| !key.contains("name-tok") && !value.contains("name-tok")),
+        "{:?}",
+        sent.headers
+    );
+    assert!(
+        sent.headers.iter().any(|(key, _)| key == MASK),
+        "{:?}",
+        sent.headers
+    );
+}
+
+#[test]
+fn the_masker_masks_a_secret_in_the_url_crate_serialization() {
+    let doc = post("https://api.test/v1?k={{token}}");
+    let ws = workspace(
+        vec![secret("token", "k SECRET/x")],
+        vec![collection("c", vec![request("r", doc)])],
+    );
+    let masker = prepare(&ws).masker();
+    let wire = match url::Url::parse("https://api.test/v1?k=k SECRET/x") {
+        Ok(url) => url.to_string(),
+        Err(error) => panic!("{error}"),
+    };
+
+    let masked = masker.mask(&wire);
+
+    assert!(!masked.contains("SECRET"), "{masked}");
+}

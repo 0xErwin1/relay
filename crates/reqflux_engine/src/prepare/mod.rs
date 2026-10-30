@@ -49,9 +49,9 @@ pub struct Prepared {
 
 impl Prepared {
     /// The request as it will be sent, with every secret replaced by
-    /// [`MASK`](crate::MASK): the resolved value of each secret variable the request
-    /// referenced, and the basic password, bearer token or API key value, wherever they
-    /// appear in the URL, the headers and the body.
+    /// [`MASK`](crate::MASK): every value of every secret variable in scope, and the basic
+    /// password, bearer token or API key value, wherever they appear in the URL, the
+    /// headers and the body.
     #[must_use]
     pub fn sent(&self) -> SentRequest {
         sent::redact(&self.request, &self.masker())
