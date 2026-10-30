@@ -240,3 +240,30 @@ fn toggling_and_editing_an_existing_row_still_writes_that_row(cx: &mut TestAppCo
     assert!(!edited.params[1].enabled, "row 2 toggled");
     assert!(edited.params[0].enabled && edited.params[2].enabled);
 }
+
+#[gpui::test]
+fn the_empty_value_cell_of_a_new_row_opens_on_click(cx: &mut TestAppContext) {
+    let dir = rows_workspace();
+    let (_state_dir, state_path) = state_file();
+    let (shell, cx) = render(cx, &dir, &state_path);
+    open(cx, "params");
+
+    click(cx, "request-params-add");
+    type_text(cx, "d");
+    enter(cx);
+    let cell = bounds(cx, "request-params-value-4").expect("the value cell is drawn");
+    assert!(
+        cell.size.height > gpui::px(0.),
+        "an empty cell keeps the row's height"
+    );
+    click(cx, "request-params-value-4");
+    assert_eq!(
+        open_cell(cx, &shell),
+        Some(("params".to_owned(), 4, String::new())),
+        "the empty value cell opens its field"
+    );
+    type_text(cx, "4");
+    enter(cx);
+    let edited = draft(cx, &shell).expect("the draft");
+    assert_eq!(edited.params[3].value, "4");
+}

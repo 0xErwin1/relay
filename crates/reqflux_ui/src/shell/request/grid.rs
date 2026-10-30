@@ -298,8 +298,12 @@ fn cell_part(
     field: CellField,
     cx: &mut Context<Shell>,
 ) -> Stateful<Div> {
+    // The cell fills the row's height, so an empty key or value still has a place to click.
     let cell = part(id)
         .w(width)
+        .h_full()
+        .flex()
+        .items_center()
         .flex_none()
         .pl(space::MD)
         .pr(space::MD)
