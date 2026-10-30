@@ -203,6 +203,44 @@ pub fn temp_dir() -> TempDir {
     }
 }
 
+/// Every file under `root` with its bytes, in path order, so a test can prove a run left
+/// the workspace untouched.
+pub fn snapshot(root: &Path) -> Vec<(String, Vec<u8>)> {
+    let mut out = Vec::new();
+    walk(root, root, &mut out);
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
+fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, Vec<u8>)>) {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) => panic!("read {}: {error}", dir.display()),
+    };
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => panic!("list {}: {error}", dir.display()),
+        };
+        let path = entry.path();
+        if path.is_dir() {
+            walk(root, &path, out);
+        } else {
+            let bytes = match fs::read(&path) {
+                Ok(bytes) => bytes,
+                Err(error) => panic!("read {}: {error}", path.display()),
+            };
+            out.push((
+                path.strip_prefix(root).map_or_else(
+                    |_| path.to_string_lossy().into_owned(),
+                    |relative| relative.to_string_lossy().into_owned(),
+                ),
+                bytes,
+            ));
+        }
+    }
+}
+
 pub fn write(root: &Path, relative: &str, content: &str) {
     let path = root.join(relative);
     if let Some(parent) = path.parent()

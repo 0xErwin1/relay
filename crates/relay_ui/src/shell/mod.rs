@@ -325,6 +325,8 @@ mod environment_tests;
 #[cfg(test)]
 mod grid_edit_tests;
 #[cfg(test)]
+mod interaction_tests;
+#[cfg(test)]
 mod last_request_tests;
 #[cfg(test)]
 mod request_tests;
