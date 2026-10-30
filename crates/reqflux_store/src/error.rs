@@ -81,6 +81,39 @@ pub enum StoreError {
         /// What already holds it: `"request"` or `"folder"`.
         held: &'static str,
     },
+    /// A tree operation would give an entity a slug a sibling already holds: a request,
+    /// folder, collection or a request's sidecar.
+    #[error("{}: the slug `{slug}` is already taken in this parent", path.display())]
+    SlugTaken {
+        /// The existing file or directory that holds the slug.
+        path: PathBuf,
+        /// The slug that is taken.
+        slug: String,
+    },
+    /// A name is empty or only whitespace.
+    #[error("a name cannot be empty")]
+    EmptyName,
+    /// A folder would move into itself or one of the folders below it.
+    #[error("a folder cannot move into itself or one of its descendants")]
+    MoveIntoDescendant,
+    /// No collection, folder or request of the loaded workspace has the id.
+    #[error("no collection, folder or request has the id {id}")]
+    NotFound {
+        /// The id looked up.
+        id: Id,
+    },
+    /// The id names a request where a collection or folder is needed.
+    #[error("{id} is not a collection or folder")]
+    NotAContainer {
+        /// The id given as parent.
+        id: Id,
+    },
+    /// The operation applies to folders and requests only.
+    #[error("a collection cannot be {operation}")]
+    CollectionOperation {
+        /// The refused operation, in past participle: `"moved"`.
+        operation: &'static str,
+    },
 }
 
 /// A non-fatal problem found while loading.

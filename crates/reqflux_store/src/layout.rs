@@ -194,7 +194,7 @@ pub fn checked_folder_file(
 /// validated.
 #[must_use]
 pub(crate) fn request_file(root: &Path, parent: &Parent, slug: &str) -> PathBuf {
-    parent.dir(root).join(format!("{slug}{REQUEST_SUFFIX}"))
+    request_file_in(&parent.dir(root), slug)
 }
 
 /// `<parent dir>/<slug>.req.toml` for a validated parent and request slug.
@@ -214,7 +214,22 @@ pub fn checked_request_file(
 }
 
 pub(crate) fn collection_dir(root: &Path, slug: &str) -> PathBuf {
-    root.join(COLLECTIONS).join(slug)
+    collections_dir(root).join(slug)
+}
+
+/// `<root>/collections`.
+pub(crate) fn collections_dir(root: &Path) -> PathBuf {
+    root.join(COLLECTIONS)
+}
+
+/// `<dir>/<slug>.req.toml`. Raw: `slug` must already have been validated.
+pub(crate) fn request_file_in(dir: &Path, slug: &str) -> PathBuf {
+    dir.join(format!("{slug}{REQUEST_SUFFIX}"))
+}
+
+/// `<dir>/<slug>.examples`. Raw: `slug` must already have been validated.
+pub(crate) fn examples_dir_in(dir: &Path, slug: &str) -> PathBuf {
+    dir.join(format!("{slug}{EXAMPLES_SUFFIX}"))
 }
 
 /// A slug is one visible path component: non-empty, no separator, not hidden.

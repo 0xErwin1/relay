@@ -158,7 +158,10 @@ pub fn save_scripts(
     })
 }
 
-fn write_script(path: &Path, script: Option<&str>) -> Result<Option<ContentHash>, StoreError> {
+pub(crate) fn write_script(
+    path: &Path,
+    script: Option<&str>,
+) -> Result<Option<ContentHash>, StoreError> {
     match script.filter(|text| !text.is_empty()) {
         Some(text) => write_atomic(path, text.as_bytes()).map(Some),
         None => match fs::remove_file(path) {
@@ -169,7 +172,7 @@ fn write_script(path: &Path, script: Option<&str>) -> Result<Option<ContentHash>
     }
 }
 
-fn save_document<T: Serialize>(
+pub(crate) fn save_document<T: Serialize>(
     path: &Path,
     document: &T,
     expected: Option<ContentHash>,
@@ -183,7 +186,7 @@ fn save_document<T: Serialize>(
 }
 
 /// Fails with a conflict unless the file matches `expected` (`None`: does not exist).
-fn check(path: &Path, expected: Option<ContentHash>) -> Result<(), StoreError> {
+pub(crate) fn check(path: &Path, expected: Option<ContentHash>) -> Result<(), StoreError> {
     let current = match fs::read(path) {
         Ok(bytes) => Some(ContentHash::of(&bytes)),
         Err(error) if error.kind() == io::ErrorKind::NotFound => None,
