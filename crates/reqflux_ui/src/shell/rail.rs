@@ -1,12 +1,14 @@
-//! The activity rail on the desk: one button per view, Settings at the bottom. Only
-//! Collections exists yet, so it is the active entry and the others do nothing.
+//! The activity rail on the desk: one button per view, Settings at the bottom. Collections
+//! and History swap what the sidebar island shows and the active one is marked; the others
+//! do nothing yet.
 
 use bolt::IconName;
 use bolt::controls::RailButton;
 use bolt::tokens::{chrome, space};
-use gpui::{IntoElement, ParentElement, Styled, div};
+use gpui::{Context, IntoElement, ParentElement, Styled, div};
 
-use super::region;
+use super::sidebar_history::Panel;
+use super::{Shell, region};
 
 /// The views of the rail above the spacer: element id, icon and label.
 pub(crate) const VIEWS: [(&str, IconName, &str); 5] = [
@@ -20,7 +22,25 @@ pub(crate) const VIEWS: [(&str, IconName, &str); 5] = [
 /// The element id of the Settings button at the bottom of the rail.
 pub(crate) const SETTINGS: &str = "rail-settings";
 
-pub(super) fn render() -> impl IntoElement {
+/// The rail with the button of `panel` active.
+pub(super) fn render(panel: Panel, cx: &mut Context<Shell>) -> impl IntoElement {
+    let buttons: Vec<_> = VIEWS
+        .iter()
+        .map(|&(id, icon, label)| {
+            let target = match id {
+                "rail-collections" => Some(Panel::Collections),
+                "rail-history" => Some(Panel::History),
+                _ => None,
+            };
+            let button = RailButton::new(id, icon, label).active(target == Some(panel));
+            match target {
+                Some(target) => button.on_click(cx.listener(move |this, _event, _, cx| {
+                    this.show_panel(target, cx);
+                })),
+                None => button,
+            }
+        })
+        .collect();
     region("activity-rail")
         .flex_none()
         .w(chrome::RAIL_WIDTH)
@@ -31,9 +51,7 @@ pub(super) fn render() -> impl IntoElement {
         .gap(space::HALF)
         .pt(space::XS)
         .pb(space::XS)
-        .children(VIEWS.iter().map(|&(id, icon, label)| {
-            RailButton::new(id, icon, label).active(id == "rail-collections")
-        }))
+        .children(buttons)
         .child(div().flex_1())
         .child(RailButton::new(SETTINGS, IconName::Settings, "Settings"))
 }

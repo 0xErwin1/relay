@@ -1,7 +1,8 @@
 //! The sidebar island: the `COLLECTIONS` header with the new-collection button, the filter
 //! field, the error of the last failed tree operation, the delete confirmation, the
 //! collection tree and a footer with the request and collection counts. The filter does
-//! nothing yet.
+//! nothing yet. While the rail's History view is active, the History panel of
+//! [`super::sidebar_history`] takes the tree's place.
 //!
 //! The tree keeps keyboard focus as a whole; its rows are not focusable. Navigation runs
 //! through the actions below, bound in the `SidebarTree` key context.
@@ -20,6 +21,7 @@ use gpui::{
 
 use super::rows::{NameDecorator, RowSlots};
 use super::sidebar_edit::{TreeCommand, TreeEdit};
+use super::sidebar_history::{HistoryRow, OpenHistory, Panel};
 use super::tree_drag::{self, DragPreview, DraggedRow, DropPlace, Step};
 use super::tree_model::{self, Node, NodeKind, TreeState};
 use super::{region, rows, text as text_role, text_region};
@@ -88,6 +90,10 @@ pub(crate) struct Sidebar {
     pub(super) focus: FocusHandle,
     /// The row menu, the rename field, the delete confirmation and the last error.
     pub(super) edit: TreeEdit,
+    /// Whether the island shows the tree or the History panel.
+    pub(super) panel: Panel,
+    /// The rows of the History panel, newest first.
+    pub(super) history: Vec<HistoryRow>,
 }
 
 impl Sidebar {
@@ -102,6 +108,8 @@ impl Sidebar {
             tree,
             focus: cx.focus_handle(),
             edit: TreeEdit::new(cx),
+            panel: Panel::default(),
+            history: Vec::new(),
         }
     }
 
@@ -227,6 +235,8 @@ impl EventEmitter<OpenRequest> for Sidebar {}
 
 impl EventEmitter<TreeCommand> for Sidebar {}
 
+impl EventEmitter<OpenHistory> for Sidebar {}
+
 impl Focusable for Sidebar {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus.clone()
@@ -285,7 +295,9 @@ impl Render for Sidebar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut content = region("sidebar-content").size_full().flex().flex_col();
 
-        if let Some(tree) = &self.tree {
+        if self.panel == Panel::History && self.tree.is_some() {
+            content = content.children(self.history_panel(cx));
+        } else if let Some(tree) = &self.tree {
             let tree_rows: Vec<_> = tree
                 .visible_rows()
                 .into_iter()

@@ -10,6 +10,7 @@ mod document;
 mod documents;
 mod drafts;
 mod environment_menu;
+mod history;
 mod last_request;
 mod method_edit;
 mod path_bar;
@@ -22,6 +23,7 @@ mod send;
 mod setting_edit;
 mod sidebar;
 mod sidebar_edit;
+mod sidebar_history;
 mod status_bar;
 mod tabs;
 mod text;
@@ -49,6 +51,7 @@ use self::request::{RequestState, SubTab};
 use self::send::{CancelRequest, RequestSend, SHELL_CONTEXT, SaveRequest, SendRequest};
 use self::sidebar::{OpenRequest, Sidebar};
 use self::sidebar_edit::TreeCommand;
+use self::sidebar_history::OpenHistory;
 use self::tree_model::Node;
 use self::url_edit::UrlEdit;
 
@@ -116,6 +119,10 @@ pub(crate) struct Shell {
     /// The shell's own focus, given back when the environment menu closes, so the window's
     /// keys (Ctrl+Enter, Escape) keep reaching the shell's key context.
     focus: FocusHandle,
+    /// The read-only view of a history entry whose request no longer exists, shown over
+    /// the tabs until a request is opened or activated.
+    orphan: Option<history::Orphan>,
+    _open_history: Subscription,
     _open_requests: Subscription,
     _tree_commands: Subscription,
 }
@@ -148,6 +155,9 @@ impl Shell {
         let open_requests = cx.subscribe(&sidebar, |this, _, OpenRequest(id), cx| {
             this.open_document(id, cx);
         });
+        let open_history = cx.subscribe(&sidebar, |this, _, OpenHistory(entry), cx| {
+            this.open_history_entry(*entry, cx);
+        });
         let tree_commands = cx.subscribe(&sidebar, |this, _, command: &TreeCommand, cx| {
             this.run_tree_command(command, cx);
         });
@@ -176,15 +186,19 @@ impl Shell {
             method_menu_open: false,
             method_menu_focus: cx.focus_handle(),
             focus: cx.focus_handle(),
+            orphan: None,
+            _open_history: open_history,
             _open_requests: open_requests,
             _tree_commands: tree_commands,
         };
         shell.load_drafts();
+        shell.refresh_history(cx);
         shell
     }
 
     /// Opens the request `id` in a tab, inspecting it when it was not open.
     fn open_document(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.close_orphan();
         self.documents.open(id);
         self.drop_stale_url_edit(id);
         self.drop_stale_cell_edit(id);
@@ -291,6 +305,7 @@ impl Shell {
     /// Activates the tab of the request `id`. A cell field that is open commits first,
     /// like clicking another cell does, so switching tabs keeps what was typed.
     fn activate_document(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.close_orphan();
         self.documents.activate(id);
         self.auth_menu_open = false;
         self.body_menu_open = false;
@@ -344,7 +359,7 @@ impl Render for Shell {
                     .gap(chrome::ISLAND_GAP)
                     .pl(chrome::ISLAND_GAP)
                     .pr(chrome::ISLAND_GAP)
-                    .child(rail::render())
+                    .child(rail::render(self.sidebar.read(cx).panel, cx))
                     .child(self.sidebar.clone())
                     .child(document::render(self, window, cx)),
             )
@@ -376,6 +391,8 @@ mod draft_tests;
 mod environment_tests;
 #[cfg(test)]
 mod grid_edit_tests;
+#[cfg(test)]
+mod history_tests;
 #[cfg(test)]
 mod interaction_tests;
 #[cfg(test)]

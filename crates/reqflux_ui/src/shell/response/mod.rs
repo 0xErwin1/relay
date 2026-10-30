@@ -1,10 +1,12 @@
 //! The response under the request: the tab row with the status, time and size, then the
 //! empty state before the first send, the progress bar while sending over the previous
 //! outcome dimmed, and the outcome: the unresolved line, then the body and headers of a
-//! response or the error banner of a failure, beside its Tests and Console panes.
+//! response or the error banner of a failure, beside its Tests and Console panes. A response
+//! reopened from history carries the `From history` bar with Resend under the tab row.
 
 mod body;
 mod error;
+mod history_bar;
 mod model;
 mod results;
 mod sub_tabs;
@@ -52,6 +54,10 @@ pub(super) fn render(
         .border_t(border::THIN)
         .border_color(line_2)
         .child(tab_row::render(state, cx))
+        .children(
+            send.and_then(|send| send.history.as_ref())
+                .map(|reopened| history_bar::render(id, reopened, cx)),
+        )
         .children(content)
 }
 

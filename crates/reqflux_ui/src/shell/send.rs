@@ -5,9 +5,14 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gpui::{App, Context, KeyBinding, Task, Window, actions};
-use reqflux_engine::{CancellationToken, ExecuteOptions, Executed, Execution, ScriptOutcome};
+use reqflux_core::model::Request;
+use reqflux_engine::state::{HistoryOutcome, RecordedResponse};
+use reqflux_engine::{
+    CancellationToken, ExecuteOptions, Executed, Execution, HttpError, ScriptOutcome,
+};
 
 use super::Shell;
+use super::history::{Pending, Reopened};
 use super::last_request::{LastSend, path_of};
 use super::request::{Completed, Failure, Received, SendState};
 use super::response::{BodyView, ResponseTab};
@@ -48,6 +53,9 @@ pub(crate) struct RequestSend {
     pub(crate) state: SendState,
     pub(crate) tab: ResponseTab,
     pub(crate) view: BodyView,
+    /// The history entry the response shows, while it shows a reopened one; a new send
+    /// clears it.
+    pub(crate) history: Option<Reopened>,
     running: Option<Running>,
     /// The task preparing the current send: it runs the engine's `execute` on the
     /// background executor and hands the execution to `running`. Held so it is not
@@ -66,6 +74,17 @@ struct Running {
 impl Drop for Running {
     fn drop(&mut self) {
         self.cancel.cancel();
+    }
+}
+
+impl RequestSend {
+    /// A send showing `completed`, reopened from history as `reopened`.
+    pub(crate) fn reopened(completed: Completed, reopened: Reopened) -> Self {
+        Self {
+            state: SendState::Done(completed),
+            history: Some(reopened),
+            ..Self::default()
+        }
     }
 }
 
@@ -110,8 +129,21 @@ impl Shell {
     /// Preparing runs on GPUI's background executor — it runs the effective pre-request
     /// script, which can take seconds — so the window never waits for a script (S14). The
     /// send shows as in flight at once; a request the engine cannot prepare fails when the
-    /// prepare task returns.
+    /// prepare task returns. A send that completes or fails, not one cancelled, is recorded
+    /// in history.
     pub(super) fn send(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.send_document(id, None, window, cx);
+    }
+
+    /// [`Shell::send`] of `document` in place of the request's draft or file when given:
+    /// Resend sends a recorded document this way, leaving the draft and the file alone.
+    pub(super) fn send_document(
+        &mut self,
+        id: &str,
+        document: Option<Request>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         // The cell field shows text the draft does not have yet: commit it, so a send never
         // silently drops what was typed.
         self.commit_cell_edit(window, cx);
@@ -127,7 +159,8 @@ impl Shell {
             ..ExecuteOptions::default()
         };
         // A request with a draft sends the draft, not the file on disk.
-        let drafted = self.drafts.get(id).map(|draft| draft.request.clone());
+        let drafted = document.or_else(|| self.drafts.get(id).map(|draft| draft.request.clone()));
+        let pending = self.pending_record(id, drafted.as_ref());
         // Until the execution reports its own method and URL, the request view labels the
         // status bar and the send in flight.
         let (method, url) = self
@@ -148,6 +181,7 @@ impl Shell {
         let started = Instant::now();
         let send = self.sends.entry(id.to_owned()).or_default();
         send.running = None;
+        send.history = None;
         send.state.start(started);
         let key = id.to_owned();
         let selector = key.clone();
@@ -165,7 +199,7 @@ impl Shell {
                     let (method, path) =
                         (execution.method.clone(), path_of(&execution.url));
                     if let Err(error) = this.update(cx, |shell, cx| {
-                        let running = spawn(&key, execution, started, cx);
+                        let running = spawn(&key, execution, started, pending, cx);
                         match shell.sends.get_mut(&key) {
                             Some(send) => {
                                 // The status bar names what was actually sent, unless a
@@ -247,38 +281,71 @@ impl Shell {
     }
 }
 
-/// Awaits `execution` on GPUI's executor and redraws every [`TICK`] until it ends.
-fn spawn(id: &str, execution: Execution, started: Instant, cx: &mut Context<Shell>) -> Running {
+/// Awaits `execution` on GPUI's executor and redraws every [`TICK`] until it ends, then
+/// records it in history with `pending` unless it was cancelled.
+fn spawn(
+    id: &str,
+    execution: Execution,
+    started: Instant,
+    pending: Option<Pending>,
+    cx: &mut Context<Shell>,
+) -> Running {
     let cancel = execution.cancel.clone();
     let unresolved = execution.unresolved.clone();
     // The pre-request has already run when the transport fails; its results live on the
     // execution, so keep them to show beside the error banner.
     let scripts = execution.scripts.clone();
+    // The redacted request as sent, kept for a failure, which consumes the execution.
+    let sent = execution.sent.clone();
+    // A transport error can echo the URL with a query secret: history keeps it masked.
+    let masker = execution.masker();
     let key = id.to_owned();
     let wait = cx.spawn(async move |this, cx| {
-        let completed = match execution.finish().await {
+        let (completed, recorded) = match execution.finish().await {
             Ok(executed) => {
                 let Executed {
                     response,
                     unresolved,
                     scripts,
+                    sent,
                     ..
                 } = executed;
+                let recorded = (
+                    sent,
+                    HistoryOutcome::Response(RecordedResponse::from_response(&response)),
+                );
                 // Splitting a large body into lines stays off the UI thread.
                 let received = cx
                     .background_executor()
                     .spawn(async move { Received::new(response, unresolved, scripts) })
                     .await;
-                Completed::Response(received)
+                (Completed::Response(received), Some(recorded))
             }
-            Err(error) => Completed::Failure(Failure {
-                error: error.to_string(),
-                elapsed: started.elapsed(),
-                unresolved,
-                scripts,
-            }),
+            Err(error) => {
+                let elapsed = started.elapsed();
+                // A cancelled send is not recorded.
+                let recorded = (!matches!(error, HttpError::Cancelled)).then(|| {
+                    let outcome = HistoryOutcome::Failed {
+                        error: masker.mask(&error.to_string()),
+                        elapsed_ms: u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
+                    };
+                    (sent, outcome)
+                });
+                let failure = Failure {
+                    error: error.to_string(),
+                    elapsed,
+                    unresolved,
+                    scripts,
+                };
+                (Completed::Failure(failure), recorded)
+            }
         };
-        if let Err(error) = this.update(cx, |shell, cx| shell.finish_send(&key, completed, cx)) {
+        if let Err(error) = this.update(cx, |shell, cx| {
+            if let (Some(pending), Some((sent, outcome))) = (pending, recorded) {
+                shell.record_send(pending, sent, outcome, cx);
+            }
+            shell.finish_send(&key, completed, cx);
+        }) {
             log::debug!("send of {key} ended after its shell: {error}");
         }
     });

@@ -2,14 +2,19 @@
 //! there is none.
 //!
 //! The active request shows the action strip at its left and the request beside it, with
-//! its response under it.
+//! its response under it. A history entry whose request no longer exists shows read-only in
+//! its place, `history-readonly`: the recorded name, method and URL over the recorded
+//! response.
 
 use bolt::Island;
-use bolt::tokens::border;
-use gpui::{Context, IntoElement, ParentElement, Styled, Window};
+use bolt::tokens::{border, space, text};
+use gpui::{Context, IntoElement, ParentElement, Styled, Window, prelude::*};
 
 use super::documents::locate;
-use super::{Shell, action_strip, path_bar, region, request, response, tabs, text_region};
+use super::history::Orphan;
+use super::{
+    Shell, action_strip, path_bar, region, request, response, tabs, text as text_role, text_region,
+};
 
 pub(super) fn render(shell: &Shell, window: &Window, cx: &mut Context<Shell>) -> impl IntoElement {
     let colors = bolt::colors(cx);
@@ -30,6 +35,10 @@ pub(super) fn render(shell: &Shell, window: &Window, cx: &mut Context<Shell>) ->
                 .text_color(colors.muted)
                 .child(message),
         ),
+        (None, _) if shell.orphan.is_some() => match &shell.orphan {
+            Some(orphan) => body.child(read_only(shell, orphan, cx)),
+            None => body,
+        },
         (None, Some(_)) => {
             let content = region("document-content")
                 .flex_1()
@@ -61,4 +70,38 @@ pub(super) fn render(shell: &Shell, window: &Window, cx: &mut Context<Shell>) ->
             .child(path_bar::render(active.as_ref(), cx))
             .child(body),
     )
+}
+
+/// The read-only view of `orphan`: its recorded name, method and URL over its response.
+fn read_only(shell: &Shell, orphan: &Orphan, cx: &mut Context<Shell>) -> impl IntoElement {
+    let line = orphan.request_line();
+    let title = format!("{} (deleted)", orphan.name);
+    region("history-readonly")
+        .flex_1()
+        .min_w_0()
+        .flex()
+        .flex_col()
+        .child(
+            text_role::role(text_region("history-readonly-name"), text::BODY, cx)
+                .aria_label(title.clone())
+                .flex_none()
+                .pt(space::SM)
+                .pl(space::MD)
+                .pr(space::MD)
+                .child(title),
+        )
+        .child(
+            text_role::role(text_region("history-readonly-request"), text::BODY, cx)
+                .aria_label(line.clone())
+                .flex_none()
+                .p(space::MD)
+                .whitespace_nowrap()
+                .overflow_hidden()
+                .child(line),
+        )
+        .child(response::render(
+            &orphan.request_id,
+            shell.sends.get(&orphan.request_id),
+            cx,
+        ))
 }
