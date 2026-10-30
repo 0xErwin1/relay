@@ -282,8 +282,37 @@ reference. The row counts next to the Params and Headers sub-tabs read the draft
 toggle moves them. A drafted tab carries a tint dot, Save and Revert
 wake up, `Ctrl+S` saves and reloads the workspace so the tree and later sends see the file,
 and a moved file shows `File changed on disk` with the draft kept until Revert. Sending a
-drafted request goes through `Engine::execute_draft`. Still read-only are the body, the
-auth and the settings: they are the next slices, and each lands in the same draft record.
+drafted request goes through `Engine::execute_draft`.
+
+Every other part of a request edits the same draft, and every pane shows the draft while one
+exists:
+
+- **Method.** The method chip (`request-method`) opens a menu of the standard verbs
+  (`method-<verb>`) and `Custom…` (`method-custom`), which opens a field
+  (`request-method-input`) that takes any HTTP token, uppercased; other text leaves the
+  draft unchanged.
+- **Rows.** Params, Headers and the urlencoded or form-data body grid end with an `Add` row
+  (`request-<table>-add`) that appends an empty enabled row and opens its key cell, and every
+  row has a delete control (`request-<table>-delete-<n>`). An open cell commits before a row
+  is added or deleted, so typed text never lands in a shifted row.
+- **Body.** The mode row (`request-body-mode`) opens a menu (`body-mode-<none|json|xml|text|
+  urlencoded|formdata>`); switching between raw languages keeps the text, any other switch
+  starts empty. Raw text opens a multi-line editor (`request-body-input`) that writes the
+  draft as it is typed: Enter inserts a newline, Ctrl+Enter sends, Escape leaves it. The
+  urlencoded and form-data grids edit like Params and Headers (a file part's value is its
+  path). GraphQL and binary bodies stay read-only.
+- **Auth.** The type row (`request-auth-type`) opens a menu
+  (`auth-type-<inherit|none|basic|bearer|apikey>`); a new type starts with empty fields.
+  Username and Key open seeded; Password, Token and the API key value open empty with a
+  `Secret value` placeholder, a typed commit replaces the stored value and an empty commit
+  keeps it, so a secret is never shown in a field. Add to toggles header and query. Auth
+  types ReqFlux does not support stay read-only and masked.
+- **Settings.** The timeout opens a field (`request-setting-timeout-input`) that takes a
+  whole number of milliseconds, or empty for the default; other text leaves the draft
+  unchanged. Follow redirects and Verify TLS cycle Default, on and off on click.
+
+Picking the value a request already has, with no draft, creates no draft. A menu closes on
+Escape or a click outside. A stored secret cannot be cleared to empty from the window yet.
 Undo, Redo and Split stay disabled.
 
 Two rules keep a workspace's paths unambiguous. Saving a request whose slug is already a
@@ -534,8 +563,9 @@ click outside closes the menu without a change. Icons are Lucide, from `gpui-kit
 installed by the binary as the application's asset source.
 
 The document island shows the open requests as tabs, the path bar of the active one
-(collection, folders, request), and the request read-only: an action strip (Save, Revert,
-Undo, Redo, Split, disabled until editing exists), the request line (method, URL with the
+(collection, folders, request), and the request, editable as "Drafts and saving" describes:
+an action strip (Save and Revert, live while the request has a draft; Undo, Redo and Split,
+not built yet), the request line (method, URL with the
 enabled params, Send), and the Params, Headers, Body, Auth,
 Scripts and Settings sub-tabs. What it shows comes from `Engine::inspect` with the window's
 active environment, which lives in memory, starts as none and re-inspects every open request
