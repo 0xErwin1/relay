@@ -301,8 +301,16 @@ async fn decompresses_gzip_bodies() {
         .unwrap();
     assert_eq!(response.body, b"decompressed text");
     assert_eq!(response.size(), 17);
-    let accept = &only_request(&server).await.headers;
-    let accept = accept.get("accept-encoding").unwrap().to_str().unwrap();
+    // The request that carries the header is what this test is about; a retry after a closed
+    // pooled connection can leave more than one, so the last one answers.
+    let mut requests = server.received_requests().await.unwrap();
+    let last = requests.pop().expect("the mock received the request");
+    let accept = last
+        .headers
+        .get("accept-encoding")
+        .unwrap()
+        .to_str()
+        .unwrap();
     for coding in ["gzip", "br", "deflate", "zstd"] {
         assert!(accept.contains(coding), "{accept}");
     }
@@ -409,10 +417,10 @@ async fn timeout_error() {
 
 #[tokio::test]
 async fn connect_error() {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    drop(listener);
-    let error = send(request("GET", format!("http://127.0.0.1:{port}/")))
+    // Port 1 needs privileges to bind, so nothing else in the test process or the machine can
+    // take it: binding a free port and dropping it races with every other test's mock server,
+    // which is how this test once got a 404 from someone else's listener.
+    let error = send(request("GET", "http://127.0.0.1:1/".to_owned()))
         .await
         .unwrap_err();
     let message = error.to_string();
