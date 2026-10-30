@@ -1,6 +1,7 @@
 //! The Relay binary: the GUI when started without a subcommand, on the workspace given as
 //! `relay [<DIR>]`, `relay run` to send one request from the command line, and
-//! `relay mcp` to serve the agent tools. Later, the `import` subcommand.
+//! `relay mcp` to serve the agent tools, and `relay import` to bring in a Postman
+//! collection.
 
 mod cli;
 mod gui;

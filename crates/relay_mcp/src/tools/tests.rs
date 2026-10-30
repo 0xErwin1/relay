@@ -918,3 +918,32 @@ async fn an_input_that_settles_badly_is_still_delivered() {
         "the text reached the bridge: {ops:?}"
     );
 }
+
+#[tokio::test]
+async fn a_node_marked_redacted_never_hands_its_text_out() {
+    // The bridge withholds redacted text itself; this proves the tool does not depend on that
+    // and blanks the value even when it is present.
+    let log = OperationLog::default();
+    let mut tree = canned_tree();
+    if let Some(node) = tree.nodes.get_mut("secret-field") {
+        node.text = Some(TextInfo {
+            text: "SECRET-VALUE".to_owned(),
+            caret: None,
+            selection: None,
+            redacted: true,
+        });
+    }
+    let bridge = tree_bridge(log, tree);
+    let mut state = ServerState::new(bridge.session("relay"));
+    let value = found(
+        element(
+            &mut state,
+            IdArgs {
+                id: "secret-field".to_owned(),
+            },
+        )
+        .await,
+    );
+    assert_eq!(value["text"]["text"], serde_json::json!(""));
+    assert_eq!(value["text"]["redacted"], serde_json::json!(true));
+}

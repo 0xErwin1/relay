@@ -52,7 +52,14 @@ fn run(args: McpArgs) -> Result<(), Failure> {
         .map_err(|error| {
             Failure::Execution(format!("could not start the async runtime: {error}"))
         })?;
-    runtime
-        .block_on(serve(endpoint_dir, app_id))
-        .map_err(|error| Failure::Execution(error.to_string()))
+    match runtime.block_on(serve(endpoint_dir, app_id)) {
+        Ok(()) => Ok(()),
+        // The client closing its side before the handshake finishes is the documented clean
+        // shutdown, not a failure (S1: "0 the client closed the connection").
+        Err(error) if error.to_string().contains("connection closed") => {
+            log::debug!("the client closed the connection before the handshake: {error}");
+            Ok(())
+        }
+        Err(error) => Err(Failure::Execution(error.to_string())),
+    }
 }

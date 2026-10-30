@@ -251,7 +251,30 @@ pub async fn find(state: &mut ServerState, args: FindArgs) -> Result<String, Too
 pub async fn element(state: &mut ServerState, args: IdArgs) -> Result<String, ToolError> {
     let tree = fetch_tree(state).await?;
     let node = lookup(&tree, &args.id)?;
-    Ok(serde_json::to_string(node)?)
+    Ok(serde_json::to_string(&without_redacted_text(node))?)
+}
+
+/// A node with the text the bridge marked redacted blanked out.
+///
+/// The bridge already withholds those values, so this is defence in depth: a bridge that
+/// changes its mind, or a node built by something else, still cannot leak a secret through a
+/// tool.
+fn without_redacted_text(node: &UiNode) -> serde_json::Value {
+    let mut value = serde_json::to_value(node).unwrap_or(serde_json::Value::Null);
+    for key in ["text", "value"] {
+        let Some(field) = value.get_mut(key).and_then(|field| field.as_object_mut()) else {
+            continue;
+        };
+        if field.get("redacted").and_then(serde_json::Value::as_bool) != Some(true) {
+            continue;
+        }
+        for secret in ["text", "value"] {
+            if let Some(slot) = field.get_mut(secret) {
+                *slot = serde_json::Value::String(String::new());
+            }
+        }
+    }
+    value
 }
 
 /// Return one element's bounds.

@@ -481,3 +481,11 @@ fn run_help_describes_arguments_and_exit_codes() {
     }
     assert_eq!(output.status.code(), Some(0));
 }
+
+#[test]
+fn mcp_exits_cleanly_when_the_client_closes_before_the_handshake() {
+    // An empty stdin is the documented clean shutdown ("0 the client closed the connection").
+    let output = relay(&["mcp"]);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert!(output.stdout.is_empty(), "{output:?}");
+}

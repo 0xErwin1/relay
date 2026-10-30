@@ -96,7 +96,7 @@ impl FromStr for TargetId {
             return Err(InvalidTargetId);
         };
         AppId::new(app_id).map_err(|_| InvalidTargetId)?;
-        if instance.len() != 16 || !instance.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        if instance.len() != 16 || !instance.bytes().all(is_lower_hex) {
             return Err(InvalidTargetId);
         }
         let instance = u64::from_str_radix(instance, 16)
@@ -106,6 +106,12 @@ impl FromStr for TargetId {
         let _ = instance;
         Ok(Self(value.to_owned()))
     }
+}
+
+/// Whether `byte` is a lowercase hexadecimal digit. The bridge writes its token and instance
+/// id in lowercase; anything else is a descriptor Relay does not accept.
+fn is_lower_hex(byte: u8) -> bool {
+    byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
 }
 
 /// A target id that does not match `<valid app id>-<16 hex digits>`.
@@ -211,12 +217,7 @@ pub(crate) fn validate(
             expected: PROTOCOL_VERSION,
         });
     }
-    if descriptor.token.len() != TOKEN_LENGTH
-        || !descriptor
-            .token
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit())
-    {
+    if descriptor.token.len() != TOKEN_LENGTH || !descriptor.token.bytes().all(is_lower_hex) {
         return Err(DescriptorError::TokenShape);
     }
     if descriptor.capabilities.supports(Capability::Screenshot)
