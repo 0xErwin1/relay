@@ -117,12 +117,40 @@ fn container(
             });
         }
     }
+    warn_shared_slugs(&children, warnings);
     Ok(Some(Container {
         slug,
         file,
         scripts: script_files(dir, stem),
         children,
     }))
+}
+
+/// A request file and a folder directory can share a slug in a workspace written before
+/// saving refused the pair. Both still load, but `Collection::order` holds slugs only: an
+/// entry with the slug matches both, so the two cannot be ordered separately.
+fn warn_shared_slugs(children: &[Child], warnings: &mut Vec<Warning>) {
+    let folder_slugs: Vec<&str> = children
+        .iter()
+        .filter_map(|child| match child {
+            Child::Folder(container) => Some(container.slug.as_str()),
+            Child::Request { .. } => None,
+        })
+        .collect();
+    for child in children {
+        let Child::Request { slug, file, .. } = child else {
+            continue;
+        };
+        if !folder_slugs.contains(&slug.as_str()) {
+            continue;
+        }
+        let warning = Warning {
+            path: file.clone(),
+            kind: WarningKind::SharedSlug { slug: slug.clone() },
+        };
+        log::warn!("{warning}");
+        warnings.push(warning);
+    }
 }
 
 fn warn_missing(warnings: &mut Vec<Warning>, path: PathBuf, file: &'static str) {

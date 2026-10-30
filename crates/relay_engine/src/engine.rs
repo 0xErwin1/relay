@@ -274,7 +274,8 @@ impl Engine {
     /// No request has this id or slug path.
     pub fn request_base_hash(&self, selector: &str) -> Result<Option<ContentHash>, ExecuteError> {
         let target = crate::select::find(self.workspace(), selector)?;
-        let file = relay_store::request_file(&self.root, &target.parent(), &target.request.slug);
+        let file =
+            relay_store::checked_request_file(&self.root, &target.parent(), &target.request.slug)?;
         Ok(self.loaded.hash(&file))
     }
 

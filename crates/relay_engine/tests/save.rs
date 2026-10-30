@@ -9,13 +9,22 @@
 mod common;
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use common::{id, id_text, temp_dir, write};
 use pretty_assertions::assert_eq;
 use relay_core::model::{Body, Item, KeyValue, Method, RawLanguage, Request};
 use relay_engine::{Engine, SaveError};
-use relay_store::{ContentHash, Parent, load, request_file};
+use relay_store::{ContentHash, Parent, load};
+
+/// The file of the workspace's request `c/r`. The slug is valid, so the checked layout
+/// path cannot fail.
+fn request_file(dir: &Path) -> PathBuf {
+    match relay_store::checked_request_file(dir, &Parent::collection("c"), "r") {
+        Ok(file) => file,
+        Err(error) => panic!("request path: {error}"),
+    }
+}
 
 /// Writes a workspace whose collection `c` holds request `c/r` with the document
 /// `request`, created through the store so the on-disk format is the real one.
@@ -90,7 +99,7 @@ fn base_hash_matches_the_hash_the_store_reported_at_load_time() {
         &Request::new(id(2), "R", Method::GET, "https://old"),
     );
     let engine = open(dir.path());
-    let file = request_file(dir.path(), &Parent::collection("c"), "r");
+    let file = request_file(dir.path());
     let stored = match load(dir.path()) {
         Ok(loaded) => loaded.hash(&file),
         Err(error) => panic!("load: {error}"),
@@ -140,7 +149,7 @@ fn save_with_the_current_hash_returns_the_new_file_hash() {
     let engine = open(dir.path());
     let base = base_of(&engine, "c/r");
     let new_hash = save(&engine, "c/r", &draft(), base);
-    let file = request_file(dir.path(), &Parent::collection("c"), "r");
+    let file = request_file(dir.path());
     let bytes = match fs::read(&file) {
         Ok(bytes) => bytes,
         Err(error) => panic!("read {}: {error}", file.display()),
@@ -165,7 +174,7 @@ fn save_with_a_stale_hash_conflicts_and_keeps_the_other_edit() {
         Ok(_) => {}
         Err(error) => panic!("other edit: {error}"),
     }
-    let file = request_file(dir.path(), &Parent::collection("c"), "r");
+    let file = request_file(dir.path());
     match engine.save_request("c/r", &draft(), base) {
         Err(SaveError::Conflict { path }) => assert_eq!(path, file),
         Err(error) => panic!("expected a conflict, got: {error}"),
@@ -189,7 +198,7 @@ fn save_with_an_unknown_selector_errors_and_writes_nothing() {
         &Request::new(id(2), "R", Method::GET, "https://old"),
     );
     let engine = open(dir.path());
-    let file = request_file(dir.path(), &Parent::collection("c"), "r");
+    let file = request_file(dir.path());
     let before = match fs::read(&file) {
         Ok(bytes) => ContentHash::of(&bytes),
         Err(error) => panic!("read {}: {error}", file.display()),

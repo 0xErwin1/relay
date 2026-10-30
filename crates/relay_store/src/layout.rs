@@ -7,6 +7,11 @@
 //! <root>/collections/<slug>/.../<folder>/folder.toml   (+ folder.pre.js, folder.test.js)
 //! <root>/collections/<slug>/.../<slug>.req.toml   (+ <slug>.pre.js, <slug>.test.js)
 //! ```
+//!
+//! The public helpers that compose a path from a slug are the `checked_` ones: they
+//! validate every slug and fail with a [`StoreError`] instead of ever building a path
+//! outside the root. The raw, validation-free composers of the same names are
+//! `pub(crate)`, for the store itself at the points where the slug was just validated.
 
 use std::path::{Path, PathBuf};
 
@@ -54,9 +59,10 @@ impl Parent {
         }
     }
 
-    /// The directory of this parent under `root`.
+    /// The directory of this parent under `root`. Raw: the slugs must already have been
+    /// validated; see [`Self::collection`], [`Self::child`] and the `checked_` helpers.
     #[must_use]
-    pub fn dir(&self, root: &Path) -> PathBuf {
+    pub(crate) fn dir(&self, root: &Path) -> PathBuf {
         let mut dir = collection_dir(root, &self.collection);
         dir.extend(&self.folders);
         dir
@@ -128,28 +134,83 @@ pub fn manifest_file(root: &Path) -> PathBuf {
     root.join(MANIFEST)
 }
 
-/// `<root>/environments/<slug>.env.toml`.
+/// `<root>/environments/<slug>.env.toml`. Raw: `slug` must already have been validated.
 #[must_use]
-pub fn environment_file(root: &Path, slug: &str) -> PathBuf {
+pub(crate) fn environment_file(root: &Path, slug: &str) -> PathBuf {
     root.join(ENVIRONMENTS).join(format!("{slug}{ENV_SUFFIX}"))
 }
 
-/// `<root>/collections/<slug>/collection.toml`.
+/// `<root>/environments/<slug>.env.toml` for a validated slug.
+///
+/// # Errors
+///
+/// [`StoreError::InvalidSlug`] when `slug` is not a single, visible path component.
+pub fn checked_environment_file(root: &Path, slug: &str) -> Result<PathBuf, StoreError> {
+    validate_slug(slug)?;
+    Ok(environment_file(root, slug))
+}
+
+/// `<root>/collections/<slug>/collection.toml`. Raw: `slug` must already have been
+/// validated.
 #[must_use]
-pub fn collection_file(root: &Path, slug: &str) -> PathBuf {
+pub(crate) fn collection_file(root: &Path, slug: &str) -> PathBuf {
     collection_dir(root, slug).join(COLLECTION_FILE)
 }
 
-/// `<parent dir>/<slug>/folder.toml`.
+/// `<root>/collections/<slug>/collection.toml` for a validated slug.
+///
+/// # Errors
+///
+/// [`StoreError::InvalidSlug`] when `slug` is not a single, visible path component.
+pub fn checked_collection_file(root: &Path, slug: &str) -> Result<PathBuf, StoreError> {
+    validate_slug(slug)?;
+    Ok(collection_file(root, slug))
+}
+
+/// `<parent dir>/<slug>/folder.toml`. Raw: the parent and `slug` must already have been
+/// validated.
 #[must_use]
-pub fn folder_file(root: &Path, parent: &Parent, slug: &str) -> PathBuf {
+pub(crate) fn folder_file(root: &Path, parent: &Parent, slug: &str) -> PathBuf {
     parent.dir(root).join(slug).join(FOLDER_FILE)
 }
 
-/// `<parent dir>/<slug>.req.toml`.
+/// `<parent dir>/<slug>/folder.toml` for a validated parent and slug.
+///
+/// # Errors
+///
+/// [`StoreError::InvalidSlug`] when the collection slug, a folder slug or `slug` is not a
+/// single, visible path component.
+pub fn checked_folder_file(
+    root: &Path,
+    parent: &Parent,
+    slug: &str,
+) -> Result<PathBuf, StoreError> {
+    validate_parent(parent)?;
+    validate_slug(slug)?;
+    Ok(folder_file(root, parent, slug))
+}
+
+/// `<parent dir>/<slug>.req.toml`. Raw: the parent and `slug` must already have been
+/// validated.
 #[must_use]
-pub fn request_file(root: &Path, parent: &Parent, slug: &str) -> PathBuf {
+pub(crate) fn request_file(root: &Path, parent: &Parent, slug: &str) -> PathBuf {
     parent.dir(root).join(format!("{slug}{REQUEST_SUFFIX}"))
+}
+
+/// `<parent dir>/<slug>.req.toml` for a validated parent and request slug.
+///
+/// # Errors
+///
+/// As [`checked_folder_file`], plus [`StoreError::ReservedSlug`] when `slug` is reserved
+/// for the sidecar scripts of the containing collection or folder.
+pub fn checked_request_file(
+    root: &Path,
+    parent: &Parent,
+    slug: &str,
+) -> Result<PathBuf, StoreError> {
+    validate_parent(parent)?;
+    validate_request_slug(slug)?;
+    Ok(request_file(root, parent, slug))
 }
 
 pub(crate) fn collection_dir(root: &Path, slug: &str) -> PathBuf {

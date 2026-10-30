@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 
 use relay_core::model::{Id, Item, WorkspaceManifest};
 use relay_store::{
-    Parent, ScriptHashes, ScriptOwner, collection_file, environment_file, folder_file,
-    is_reserved_request_slug, manifest_file, request_file, save_collection, save_environment,
+    Parent, ScriptHashes, ScriptOwner, checked_collection_file, checked_environment_file,
+    checked_folder_file, checked_request_file, manifest_file, save_collection, save_environment,
     save_folder, save_manifest, save_request, save_scripts,
 };
 use serde_json::Value;
@@ -70,7 +70,12 @@ pub fn postman(
     if create_manifest {
         targets.push(manifest_path.clone());
     }
-    targets.push(collection_file(root, &node.slug));
+    let collection_path = target_path(checked_collection_file(root, &node.slug), root)?;
+    let mut targets = Vec::new();
+    if create_manifest {
+        targets.push(manifest_path.clone());
+    }
+    targets.push(collection_path.clone());
     targets.extend(sidecars(&ScriptOwner::Collection(node.slug.clone()), root));
     collect_targets(
         root,
@@ -79,7 +84,8 @@ pub fn postman(
         &mut targets,
     )?;
     for environment in &environment_nodes {
-        targets.push(environment_file(root, &environment.slug));
+        let file = target_path(checked_environment_file(root, &environment.slug), root)?;
+        targets.push(file);
     }
     for target in &targets {
         if target.exists() {
@@ -108,14 +114,14 @@ pub fn postman(
         warnings: Vec::new(),
     };
     save_collection(root, &node.slug, &node.collection, None)
-        .map_err(|error| store_error(&collection_file(root, &node.slug), error))?;
+        .map_err(|error| store_error(&collection_path, error))?;
     save_scripts(
         root,
         &ScriptOwner::Collection(node.slug.clone()),
         &node.scripts,
         ScriptHashes::default(),
     )
-    .map_err(|error| store_error(&collection_file(root, &node.slug), error))?;
+    .map_err(|error| store_error(&collection_path, error))?;
     write_items(
         root,
         &Parent::collection(&node.slug),
@@ -123,8 +129,9 @@ pub fn postman(
         &mut summary,
     )?;
     for environment in &environment_nodes {
+        let file = target_path(checked_environment_file(root, &environment.slug), root)?;
         save_environment(root, &environment.slug, &environment.environment, None)
-            .map_err(|error| store_error(&environment_file(root, &environment.slug), error))?;
+            .map_err(|error| store_error(&file, error))?;
     }
     Ok(summary)
 }
@@ -138,7 +145,7 @@ fn write_items(
     for item in items {
         match item {
             Item::Folder(folder) => {
-                let file = folder_file(root, parent, &folder.slug);
+                let file = target_path(checked_folder_file(root, parent, &folder.slug), root)?;
                 save_folder(root, parent, &folder.slug, &folder.folder, None)
                     .map_err(|error| store_error(&file, error))?;
                 save_scripts(
@@ -152,7 +159,7 @@ fn write_items(
                 summary.folders += 1;
             }
             Item::Request(request) => {
-                let file = request_file(root, parent, &request.slug);
+                let file = target_path(checked_request_file(root, parent, &request.slug), root)?;
                 save_request(root, parent, &request.slug, &request.request, None)
                     .map_err(|error| store_error(&file, error))?;
                 save_scripts(
@@ -170,8 +177,9 @@ fn write_items(
 }
 
 /// Collects every file the import would write for `items` under `parent`: the entity
-/// files and the two sidecar scripts of each folder and request. A request with a slug
-/// the store reserves (`collection`, `folder`) fails here, before anything is written.
+/// files and the two sidecar scripts of each folder and request. A request whose slug the
+/// store rejects (not a path component, or reserved: `collection`, `folder`) fails here,
+/// before anything is written.
 fn collect_targets(
     root: &Path,
     items: &[Item],
@@ -181,7 +189,8 @@ fn collect_targets(
     for item in items {
         match item {
             Item::Folder(folder) => {
-                targets.push(folder_file(root, parent, &folder.slug));
+                let file = target_path(checked_folder_file(root, parent, &folder.slug), root)?;
+                targets.push(file);
                 targets.extend(sidecars(
                     &ScriptOwner::Folder(parent.clone(), folder.slug.clone()),
                     root,
@@ -189,13 +198,7 @@ fn collect_targets(
                 collect_targets(root, &folder.items, &parent.child(&folder.slug), targets)?;
             }
             Item::Request(request) => {
-                let file = request_file(root, parent, &request.slug);
-                if is_reserved_request_slug(&request.slug) {
-                    return Err(ImportError::Store {
-                        path: file,
-                        message: format!("request slug `{}` is reserved", request.slug),
-                    });
-                }
+                let file = target_path(checked_request_file(root, parent, &request.slug), root)?;
                 targets.push(file);
                 targets.extend(sidecars(
                     &ScriptOwner::Request(parent.clone(), request.slug.clone()),
@@ -205,6 +208,18 @@ fn collect_targets(
         }
     }
     Ok(())
+}
+
+/// Unwraps a checked layout path, mapping a slug that fails validation to an import
+/// error. Nothing has been written; the error names the workspace root and the slug.
+fn target_path(
+    path: Result<PathBuf, relay_store::StoreError>,
+    root: &Path,
+) -> Result<PathBuf, ImportError> {
+    path.map_err(|error| ImportError::Store {
+        path: root.to_owned(),
+        message: error.to_string(),
+    })
 }
 
 /// The two sidecar script paths of `owner`, in the order the store writes them.

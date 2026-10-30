@@ -1,8 +1,14 @@
 //! S5 and S9: loading and saving an unchanged workspace rewrites every file byte for byte.
 
+#![allow(
+    clippy::panic,
+    clippy::indexing_slicing,
+    reason = "test helpers fail the calling test"
+)]
+
 mod common;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use common::*;
 use pretty_assertions::assert_eq;
@@ -125,11 +131,20 @@ fn fixture(root: &Path) -> Vec<(String, String)> {
     files
 }
 
+/// The checked layout path of an entity from the loaded workspace; every slug of a
+/// loaded workspace is a single visible path component, so this cannot fail.
+fn layout_path(path: Result<PathBuf, relay_store::StoreError>) -> PathBuf {
+    match path {
+        Ok(file) => file,
+        Err(error) => panic!("layout path: {error}"),
+    }
+}
+
 fn save_items(root: &Path, loaded: &Loaded, parent: &Parent, items: &[Item]) {
     for item in items {
         match item {
             Item::Folder(node) => {
-                let file = relay_store::folder_file(root, parent, &node.slug);
+                let file = layout_path(relay_store::checked_folder_file(root, parent, &node.slug));
                 let saved = relay_store::save_folder(
                     root,
                     parent,
@@ -143,7 +158,7 @@ fn save_items(root: &Path, loaded: &Loaded, parent: &Parent, items: &[Item]) {
                 save_items(root, loaded, &parent.child(&node.slug), &node.items);
             }
             Item::Request(node) => {
-                let file = relay_store::request_file(root, parent, &node.slug);
+                let file = layout_path(relay_store::checked_request_file(root, parent, &node.slug));
                 let saved = relay_store::save_request(
                     root,
                     parent,
@@ -174,13 +189,13 @@ fn save_all(root: &Path, loaded: &Loaded) {
     let manifest = relay_store::manifest_file(root);
     assert!(relay_store::save_manifest(root, &workspace.manifest, loaded.hash(&manifest)).is_ok());
     for node in &workspace.environments {
-        let file = relay_store::environment_file(root, &node.slug);
+        let file = layout_path(relay_store::checked_environment_file(root, &node.slug));
         let saved =
             relay_store::save_environment(root, &node.slug, &node.environment, loaded.hash(&file));
         assert!(saved.is_ok(), "{saved:?}");
     }
     for node in &workspace.collections {
-        let file = relay_store::collection_file(root, &node.slug);
+        let file = layout_path(relay_store::checked_collection_file(root, &node.slug));
         let saved =
             relay_store::save_collection(root, &node.slug, &node.collection, loaded.hash(&file));
         assert!(saved.is_ok(), "{saved:?}");

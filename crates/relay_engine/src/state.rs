@@ -11,7 +11,9 @@
 //! Parsing the payload is the caller's job: what goes in comes out byte-identical.
 //!
 //! The store is usable from one thread: it opens one connection with `journal_mode=WAL`
-//! and `foreign_keys=ON`. The file is created owner-only (`0600`) and its directory
+//! and `foreign_keys=ON`, and a 250 ms busy timeout so a write held up by another
+//! connection's lock fails fast as a [`StateError::Query`] instead of stalling. The file
+//! is created owner-only (`0600`) and its directory
 //! owner-only too (`0700`, so other users cannot list the draft names) where the platform
 //! has file modes.
 
@@ -173,11 +175,17 @@ impl AppState {
 
     /// Sets the pragmas every connection needs and the owner-only file mode.
     fn configure(conn: &Connection, path: &Path) -> Result<(), StateError> {
-        conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")
-            .map_err(|source| StateError::Open {
-                path: path.to_owned(),
-                source,
-            })?;
+        // The busy timeout bounds how long a write waits for a lock another connection
+        // holds (for example an exclusive transaction): without it a draft write can
+        // stall for seconds before failing. 250 ms keeps the failure fast and surfaces
+        // as the usual `StateError::Query`.
+        conn.execute_batch(
+            "PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 250;",
+        )
+        .map_err(|source| StateError::Open {
+            path: path.to_owned(),
+            source,
+        })?;
         set_owner_only(path)
     }
 
@@ -402,7 +410,7 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use std::thread::sleep;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     /// A state file nested two directories deep, to prove `open` creates parents.
     fn state_path(dir: &tempfile::TempDir) -> PathBuf {
@@ -545,6 +553,33 @@ value = \"application/json; charset=utf-8\"
         let after = store.draft("ws", "req").unwrap().unwrap().updated_at;
 
         assert!(after > before, "updated_at must increase on overwrite");
+    }
+
+    #[test]
+    fn a_write_blocked_by_an_exclusive_lock_fails_fast() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = state_path(&dir);
+        let mut store = AppState::open(&path).unwrap();
+
+        // Another connection holds the write lock; the store must give up quickly
+        // instead of stalling the caller.
+        let holder = Connection::open(&path).unwrap();
+        holder.execute_batch("BEGIN EXCLUSIVE;").unwrap();
+
+        let started = Instant::now();
+        let error = store.put_draft("ws", "req", draft("a = 1")).unwrap_err();
+        let elapsed = started.elapsed();
+
+        holder.execute_batch("ROLLBACK;").unwrap();
+
+        assert!(
+            matches!(error, StateError::Query { .. }),
+            "expected a query error, got: {error}"
+        );
+        assert!(
+            elapsed < Duration::from_millis(1000),
+            "the write must fail fast, took {elapsed:?}"
+        );
     }
 
     #[test]

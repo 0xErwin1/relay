@@ -5,7 +5,7 @@ mod common;
 use common::*;
 use pretty_assertions::assert_eq;
 use relay_core::model::{Item, Scripts};
-
+use relay_store::Parent;
 #[test]
 fn loads_every_entity_kind_and_sidecar_script_from_the_layout() {
     let dir = minimal_workspace();
@@ -277,4 +277,105 @@ fn a_toml_parse_error_names_the_file() {
 
     let prefix = format!("{}: ", path(root, "collections/api/bad.req.toml").display());
     assert!(message.starts_with(&prefix), "{message}");
+}
+
+#[test]
+fn a_request_and_a_folder_sharing_a_slug_load_with_a_warning() {
+    // A workspace written before saving refused the pair; loading keeps both entities.
+    let dir = minimal_workspace();
+    let root = dir.path();
+    write(
+        root,
+        "collections/api/collection.toml",
+        &collection_toml(1, "API", ""),
+    );
+    write(root, "collections/api/a.req.toml", &request_toml(2, "A"));
+    write(
+        root,
+        "collections/api/a/folder.toml",
+        &folder_toml(3, "A folder", ""),
+    );
+
+    let loaded = load(root);
+
+    assert_eq!(
+        warnings(&loaded),
+        vec![format!(
+            "{}: a request file and a folder directory share the slug `a`; both are loaded, but an `order` entry with this slug matches both, so they cannot be ordered separately",
+            path(root, "collections/api/a.req.toml").display()
+        )],
+    );
+    let items = &loaded.workspace.collections[0].items;
+    let mut kinds: Vec<&str> = items
+        .iter()
+        .map(|item| match item {
+            Item::Folder(_) => "folder",
+            Item::Request(_) => "request",
+        })
+        .collect();
+    kinds.sort_unstable();
+    assert_eq!(kinds, vec!["folder", "request"], "both entities must load");
+}
+
+// --- Checked layout paths (S4) ----------------------------------------------
+
+#[test]
+fn checked_layout_helpers_reject_slugs_that_escape_the_root() {
+    let dir = minimal_workspace();
+    let root = dir.path();
+    let parent = Parent::collection("api");
+
+    for slug in ["../escape", "a/b", "a\\b"] {
+        let results = [
+            relay_store::checked_environment_file(root, slug),
+            relay_store::checked_collection_file(root, slug),
+            relay_store::checked_folder_file(root, &parent, slug),
+            relay_store::checked_request_file(root, &parent, slug),
+        ];
+        for result in results {
+            assert_eq!(
+                result.map_err(|e| e.to_string()),
+                Err(format!("invalid slug `{slug}`")),
+            );
+        }
+    }
+    assert_eq!(files(root), vec!["relay.toml"]);
+}
+
+#[test]
+fn checked_layout_helpers_build_the_unchanged_paths_for_valid_slugs() {
+    let dir = minimal_workspace();
+    let root = dir.path();
+    let nested = Parent::collection("api").child("f");
+
+    assert_eq!(
+        relay_store::checked_environment_file(root, "dev").unwrap(),
+        root.join("environments/dev.env.toml")
+    );
+    assert_eq!(
+        relay_store::checked_collection_file(root, "api").unwrap(),
+        root.join("collections/api/collection.toml")
+    );
+    assert_eq!(
+        relay_store::checked_folder_file(root, &nested, "inv").unwrap(),
+        root.join("collections/api/f/inv/folder.toml")
+    );
+    assert_eq!(
+        relay_store::checked_request_file(root, &nested, "list").unwrap(),
+        root.join("collections/api/f/list.req.toml")
+    );
+}
+
+#[test]
+fn a_checked_request_path_rejects_a_reserved_slug() {
+    let dir = minimal_workspace();
+    let root = dir.path();
+
+    for slug in ["collection", "folder"] {
+        assert_eq!(
+            relay_store::checked_request_file(root, &Parent::collection("api"), slug)
+                .map_err(|e| e.to_string()),
+            Err(format!("request slug `{slug}` is reserved")),
+        );
+    }
 }

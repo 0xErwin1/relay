@@ -68,6 +68,19 @@ pub enum StoreError {
         /// The rejected slug.
         slug: String,
     },
+    /// A request and a folder in the same parent would share a slug. `Collection::order`
+    /// holds slugs only, so it could not name the two apart (S4).
+    #[error(
+        "{path}: a {held} already uses the slug `{slug}` in this parent; a request and a folder cannot share a slug"
+    )]
+    SlugCollision {
+        /// The existing request file or folder directory that holds the slug.
+        path: PathBuf,
+        /// The slug both entities would share.
+        slug: String,
+        /// What already holds it: `"request"` or `"folder"`.
+        held: &'static str,
+    },
 }
 
 /// A non-fatal problem found while loading.
@@ -109,6 +122,14 @@ pub enum WarningKind {
     /// A directory is a symlink; it was not followed so a hand-edited workspace cannot
     /// make loading read files outside the root.
     SymlinkedDirectory,
+    /// A request file and a folder directory share a slug in the same parent: a workspace
+    /// written before saving refused the pair. Both entities still load, but
+    /// `Collection::order` holds slugs only, so an entry with the slug matches both and
+    /// the two cannot be ordered separately.
+    SharedSlug {
+        /// The slug both entities share.
+        slug: String,
+    },
 }
 
 impl fmt::Display for Warning {
@@ -134,6 +155,10 @@ impl fmt::Display for Warning {
             WarningKind::SymlinkedDirectory => {
                 write!(f, "{path}: directory is a symlink; it was ignored")
             }
+            WarningKind::SharedSlug { slug } => write!(
+                f,
+                "{path}: a request file and a folder directory share the slug `{slug}`; both are loaded, but an `order` entry with this slug matches both, so they cannot be ordered separately"
+            ),
         }
     }
 }

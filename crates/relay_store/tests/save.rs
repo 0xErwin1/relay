@@ -244,6 +244,88 @@ fn a_reserved_request_slug_is_rejected_without_writing() {
     assert_eq!(files(root), vec!["relay.toml"]);
 }
 
+// --- Shared slugs ------------------------------------------------------------
+
+fn folder(id_n: u32, name: &str) -> Folder {
+    Folder {
+        id: id(id_n),
+        name: name.into(),
+        order: Vec::new(),
+        auth: relay_core::model::Auth::Inherit,
+        extensions: toml::Table::new(),
+    }
+}
+
+#[test]
+fn saving_a_request_whose_slug_is_already_a_folder_fails_without_writing() {
+    let dir = minimal_workspace();
+    let root = dir.path();
+    write(
+        root,
+        "collections/api/collection.toml",
+        &collection_toml(1, "API", ""),
+    );
+    write(
+        root,
+        "collections/api/invoices/folder.toml",
+        &folder_toml(2, "Invoices", ""),
+    );
+
+    let result =
+        relay_store::save_request(root, &parent(), "invoices", &request(3, "Invoices"), None);
+
+    assert_eq!(
+        result.map_err(|e| e.to_string()),
+        Err(format!(
+            "{}: a folder already uses the slug `invoices` in this parent; a request and a folder cannot share a slug",
+            path(root, "collections/api/invoices").display()
+        )),
+    );
+    assert_eq!(
+        files(root),
+        vec![
+            "collections/api/collection.toml",
+            "collections/api/invoices/folder.toml",
+            "relay.toml"
+        ]
+    );
+}
+
+#[test]
+fn saving_a_folder_whose_slug_is_already_a_request_fails_without_writing() {
+    let dir = minimal_workspace();
+    let root = dir.path();
+    write(
+        root,
+        "collections/api/collection.toml",
+        &collection_toml(1, "API", ""),
+    );
+    write(
+        root,
+        "collections/api/invoices.req.toml",
+        &request_toml(2, "Invoices"),
+    );
+
+    let result =
+        relay_store::save_folder(root, &parent(), "invoices", &folder(3, "Invoices"), None);
+
+    assert_eq!(
+        result.map_err(|e| e.to_string()),
+        Err(format!(
+            "{}: a request already uses the slug `invoices` in this parent; a request and a folder cannot share a slug",
+            path(root, "collections/api/invoices.req.toml").display()
+        )),
+    );
+    assert_eq!(
+        files(root),
+        vec![
+            "collections/api/collection.toml",
+            "collections/api/invoices.req.toml",
+            "relay.toml"
+        ]
+    );
+}
+
 // --- Durability --------------------------------------------------------------
 
 fn collection() -> relay_core::model::Collection {

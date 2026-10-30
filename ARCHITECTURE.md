@@ -286,6 +286,14 @@ drafted request goes through `Engine::execute_draft`. Still read-only are the bo
 auth and the settings: they are the next slices, and each lands in the same draft record.
 Undo, Redo and Split stay disabled.
 
+Two rules keep a workspace's paths unambiguous. Saving a request whose slug is already a
+folder in the same parent, or the other way round, fails with `SlugCollision` instead of
+writing an ambiguous tree; a workspace that already has one still loads, with a `SharedSlug`
+warning that says an `order` entry reaches both. And the layout helpers that compose a path
+from a slug are checked: `checked_request_file` and its siblings validate the slug and return
+`Result`, while the raw composers are crate-private, so no caller outside the store can build
+a path that escapes the root.
+
 Drafts stay out of the workspace directory so that a commit never picks one up.
 
 ## Crate map

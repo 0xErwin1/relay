@@ -45,6 +45,9 @@ pub enum ExecuteError {
     /// The execution task panicked or was aborted.
     #[error("execution task failed: {0}")]
     Task(String),
+    /// The store failed, for example when a slug from the workspace cannot form a path.
+    #[error(transparent)]
+    Store(#[from] StoreError),
 }
 
 /// Why a Postman import could not be written (S9).

@@ -14,7 +14,7 @@
 
 use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use relay_core::model::{Collection, Environment, Folder, Request, Scripts, WorkspaceManifest};
 use serde::Serialize;
@@ -84,7 +84,9 @@ pub fn save_collection(
 ///
 /// # Errors
 ///
-/// As [`save_environment`].
+/// As [`save_environment`], plus [`StoreError::SlugCollision`] when
+/// `<parent>/<slug>.req.toml` already exists: a request and a folder cannot share a
+/// slug, because `Collection::order` holds slugs only.
 pub fn save_folder(
     root: &Path,
     parent: &Parent,
@@ -94,6 +96,7 @@ pub fn save_folder(
 ) -> Result<ContentHash, StoreError> {
     validate_parent(parent)?;
     validate_slug(slug)?;
+    refuse_shared_slug(request_file(root, parent, slug), slug, "request")?;
     save_document(&folder_file(root, parent, slug), folder, expected)
 }
 
@@ -101,7 +104,9 @@ pub fn save_folder(
 ///
 /// # Errors
 ///
-/// As [`save_environment`].
+/// As [`save_environment`], plus [`StoreError::SlugCollision`] when the folder directory
+/// `<parent>/<slug>` already exists: a request and a folder cannot share a slug, because
+/// `Collection::order` holds slugs only.
 pub fn save_request(
     root: &Path,
     parent: &Parent,
@@ -111,7 +116,23 @@ pub fn save_request(
 ) -> Result<ContentHash, StoreError> {
     validate_parent(parent)?;
     validate_request_slug(slug)?;
+    refuse_shared_slug(parent.dir(root).join(slug), slug, "folder")?;
     save_document(&request_file(root, parent, slug), request, expected)
+}
+
+/// Fails with [`StoreError::SlugCollision`] when `path`, the sibling entity that would
+/// share `slug` with the one being saved, already exists. The check looks at the symlink
+/// itself, so a broken symlink holding the slug is refused too.
+fn refuse_shared_slug(path: PathBuf, slug: &str, held: &'static str) -> Result<(), StoreError> {
+    match fs::symlink_metadata(&path) {
+        Ok(_) => Err(StoreError::SlugCollision {
+            path,
+            slug: slug.to_owned(),
+            held,
+        }),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(source) => Err(io_error(&path, source)),
+    }
 }
 
 /// Saves the sidecar scripts of `owner`. Each file is checked against its own expected

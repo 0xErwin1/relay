@@ -14,8 +14,9 @@ mod save;
 pub use error::{StoreError, Warning, WarningKind};
 pub use hash::ContentHash;
 pub use layout::{
-    Parent, RESERVED_REQUEST_SLUGS, ScriptFiles, ScriptOwner, collection_file, environment_file,
-    folder_file, is_reserved_request_slug, manifest_file, request_file,
+    Parent, RESERVED_REQUEST_SLUGS, ScriptFiles, ScriptOwner, checked_collection_file,
+    checked_environment_file, checked_folder_file, checked_request_file, is_reserved_request_slug,
+    manifest_file,
 };
 pub use load::{Loaded, load};
 pub use save::{
