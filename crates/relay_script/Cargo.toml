@@ -13,3 +13,6 @@ workspace = true
 
 [dependencies]
 relay_core.workspace = true
+rquickjs = "0.13.0"
+serde_json.workspace = true
+thiserror.workspace = true
