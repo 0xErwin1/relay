@@ -176,6 +176,19 @@ impl Engine {
         })
     }
 
+    /// Re-reads the workspace from disk into this engine, keeping its runtime, its client and
+    /// any request already in flight on that runtime. A save uses this instead of opening a
+    /// new engine, which would drop the runtime and with it the send it owns.
+    ///
+    /// # Errors
+    ///
+    /// The load error, when the workspace no longer loads; the engine keeps the workspace it
+    /// had.
+    pub fn reload(&mut self) -> Result<(), OpenError> {
+        self.loaded = relay_store::load(&self.root)?;
+        Ok(())
+    }
+
     /// The workspace root.
     #[must_use]
     pub fn root(&self) -> &Path {

@@ -65,9 +65,9 @@ impl Drop for Running {
 
 impl Shell {
     /// Sends the active request.
-    pub(super) fn send_active(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn send_active(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(id) = self.documents.active().map(str::to_owned) {
-            self.send(&id, cx);
+            self.send(&id, window, cx);
         }
     }
 
@@ -90,7 +90,10 @@ impl Shell {
 
     /// Sends the request `id` with the active environment, cancelling its send in flight. A
     /// request the engine cannot prepare fails at once.
-    pub(super) fn send(&mut self, id: &str, cx: &mut Context<Self>) {
+    pub(super) fn send(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        // The cell field shows text the draft does not have yet: commit it, so a send never
+        // silently drops what was typed.
+        self.commit_cell_edit(window, cx);
         let OpenedWorkspace::Loaded(engine) = &self.workspace else {
             return;
         };

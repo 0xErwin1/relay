@@ -6,8 +6,8 @@ use std::collections::HashMap;
 
 use gpui::{Context, Window};
 use relay_core::model::Request;
+use relay_engine::SaveError;
 use relay_engine::state::Draft;
-use relay_engine::{Engine, SaveError};
 
 use super::Shell;
 use super::cell_edit::CellField;
@@ -259,7 +259,9 @@ impl Shell {
     /// the tree, the request view and later sends see the saved file.
     pub(super) fn save(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.drop_url_edit_of(id);
-        self.drop_cell_edit_of(id);
+        // A cell field shows text the draft does not have yet: commit it, so saving never
+        // silently drops what was typed.
+        self.commit_cell_edit(window, cx);
         let Some(draft) = self.drafts.get(id).cloned() else {
             return;
         };
@@ -317,17 +319,17 @@ impl Shell {
     /// environment, the open requests and their sub-tabs. A failure keeps the loaded
     /// workspace as it was.
     fn reload_workspace(&mut self, cx: &mut Context<Self>) {
-        let root = match &self.workspace {
-            OpenedWorkspace::Loaded(engine) => engine.root().to_path_buf(),
-            OpenedWorkspace::None | OpenedWorkspace::Failed { .. } => return,
+        let OpenedWorkspace::Loaded(engine) = &mut self.workspace else {
+            return;
         };
-        match Engine::open(root) {
-            Ok(engine) => {
+        // Re-read into the same engine: replacing it would drop the runtime that owns a send
+        // in flight, and that send would end as a cancellation.
+        match engine.reload() {
+            Ok(()) => {
                 self.workspace_id = Some(engine.workspace().manifest.id.to_string());
                 let roots = tree_model::nodes(engine.workspace());
                 self.sidebar
                     .update(cx, |sidebar, cx| sidebar.set_roots(roots, cx));
-                self.workspace = OpenedWorkspace::Loaded(Box::new(engine));
             }
             Err(error) => log::warn!("cannot reload the workspace: {error}"),
         }

@@ -176,7 +176,7 @@ fn editing_url(input: Entity<InputState>, cx: &mut Context<Shell>) -> Stateful<D
             // Ctrl+Enter maps to the input's `secondary-enter` while the field has focus:
             // it sends instead of committing.
             if action.secondary {
-                this.send_active(cx);
+                this.send_active(window, cx);
             } else {
                 this.commit_url_edit(window, cx);
             }
@@ -227,7 +227,7 @@ fn send(id: &str, cx: &mut Context<Shell>) -> Div {
                 )
                 .child("Send")
                 .child(accent_keycap())
-                .on_click(cx.listener(move |this, _event, _window, cx| this.send(&id, cx))),
+                .on_click(cx.listener(move |this, _event, window, cx| this.send(&id, window, cx))),
         )
         .child(div().w(border::THIN).bg(tokens::keycap_on_accent_fill()))
         .child(

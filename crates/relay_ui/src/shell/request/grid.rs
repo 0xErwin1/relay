@@ -283,7 +283,7 @@ fn editing_cell(edit: &CellEdit, cx: &mut Context<Shell>) -> Stateful<Div> {
             // Ctrl+Enter maps to the input's `secondary-enter` while the field has focus:
             // it sends instead of committing.
             if action.secondary {
-                this.send_active(cx);
+                this.send_active(window, cx);
             } else {
                 this.commit_cell_edit(window, cx);
             }

@@ -258,7 +258,9 @@ impl Render for Shell {
         div()
             .key_context(SHELL_CONTEXT)
             .track_focus(&self.focus)
-            .on_action(cx.listener(|this, _: &SendRequest, _, cx| this.send_active(cx)))
+            .on_action(cx.listener(|this, _: &SendRequest, window, cx| {
+                this.send_active(window, cx);
+            }))
             .on_action(cx.listener(|this, _: &CancelRequest, window, cx| {
                 this.cancel_active(window, cx);
             }))

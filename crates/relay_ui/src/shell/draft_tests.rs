@@ -358,3 +358,64 @@ fn sending_a_drafted_request_sends_the_draft(cx: &mut TestAppContext) {
     });
     assert_eq!(path.as_deref(), Some("/drafted"), "the draft was sent");
 }
+
+/// S9 of send-response with S3 of request-editing: saving a draft reloads the workspace, and
+/// that must not kill a send that is in flight.
+#[gpui::test]
+fn saving_a_draft_keeps_the_send_in_flight(cx: &mut TestAppContext) {
+    let port = serve(Server::Silent);
+    let dir = draft_workspace(port);
+    let (_state_dir, state_path) = state_file();
+    let (shell, cx) = render(cx, &dir, &state_path);
+    click(cx, &format!("tree-row-{PLAIN}"));
+    cx.simulate_keystrokes("ctrl-enter");
+    cx.run_until_parked();
+    assert_eq!(response(cx, &shell, PLAIN).as_deref(), Some("Sending"));
+
+    edit_url(cx, &format!("http://127.0.0.1:{port}/saved"));
+    cx.simulate_keystrokes("ctrl-s");
+    cx.run_until_parked();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    cx.run_until_parked();
+    assert_eq!(
+        response(cx, &shell, PLAIN).as_deref(),
+        Some("Sending"),
+        "the in-flight send survives the save"
+    );
+}
+
+/// S12 of request-editing with S1 of send-response: Ctrl+Enter in an open cell field commits
+/// the typed text before sending, and the field closes.
+#[gpui::test]
+fn ctrl_enter_in_the_cell_field_sends_the_typed_text(cx: &mut TestAppContext) {
+    let port = serve(Server::Silent);
+    let dir = draft_workspace(port);
+    write(
+        dir.path(),
+        "collections/api/plain.req.toml",
+        &format!(
+            "id = \"{PLAIN}\"\nname = \"Plain\"\nmethod = \"GET\"\nurl = \"http://127.0.0.1:{port}/ok\"\n\n\
+             [[headers]]\nkey = \"X-One\"\nvalue = \"1\"\n"
+        ),
+    );
+    let (_state_dir, state_path) = state_file();
+    let (shell, cx) = render(cx, &dir, &state_path);
+    click(cx, &format!("tree-row-{PLAIN}"));
+    click(cx, "request-tab-headers");
+    click(cx, "request-headers-value-1");
+    cx.simulate_keystrokes("ctrl-a");
+    cx.simulate_keystrokes("4 2");
+    cx.simulate_keystrokes("ctrl-enter");
+    cx.run_until_parked();
+    let (sent, drafted, open) = cx.update(|_, cx| {
+        let shell = shell.read(cx);
+        (
+            shell.sends.contains_key(PLAIN),
+            shell.drafts.contains_key(PLAIN),
+            shell.cell_edit.is_some(),
+        )
+    });
+    assert!(sent, "Ctrl+Enter sends");
+    assert!(drafted, "the typed cell text is part of what was sent");
+    assert!(!open, "the cell field closed when the send started");
+}

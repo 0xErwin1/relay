@@ -86,5 +86,5 @@ fn retry(id: &str, cx: &mut Context<Shell>) -> Stateful<Div> {
         )
         .child("Retry")
         .child(accent_keycap())
-        .on_click(cx.listener(move |this, _event, _window, cx| this.send(&id, cx)))
+        .on_click(cx.listener(move |this, _event, window, cx| this.send(&id, window, cx)))
 }
