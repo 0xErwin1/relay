@@ -6,12 +6,12 @@
 
 use bolt::Island;
 use bolt::tokens::border;
-use gpui::{Context, IntoElement, ParentElement, Styled};
+use gpui::{Context, IntoElement, ParentElement, Styled, Window};
 
 use super::documents::locate;
 use super::{Shell, action_strip, path_bar, region, request, response, tabs, text_region};
 
-pub(super) fn render(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
+pub(super) fn render(shell: &Shell, window: &Window, cx: &mut Context<Shell>) -> impl IntoElement {
     let colors = bolt::colors(cx);
     let active = shell
         .documents
@@ -45,7 +45,7 @@ pub(super) fn render(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement
                         let send = shell.sends.get(id);
                         let sending = send.is_some_and(|send| send.state.is_sending());
                         content
-                            .children(request::render(id, state, sending, shell, cx))
+                            .children(request::render(id, state, sending, shell, window, cx))
                             .child(response::render(id, send, cx))
                     }
                     None => content,

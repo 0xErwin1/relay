@@ -77,11 +77,14 @@ impl Shell {
         }
     }
 
-    /// Escape: closes the environment menu when it is open, else cancels the send in flight
-    /// of the active request. The binding takes Escape before the menu's own key handler.
+    /// Escape: closes the environment or auth type menu when one is open, else cancels the
+    /// send in flight of the active request. The binding takes Escape before the menu's own
+    /// key handler.
     pub(super) fn cancel_active(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.environment_menu_open {
             self.close_environment_menu(window, cx);
+        } else if self.auth_menu_open {
+            self.close_auth_menu(window, cx);
         } else if let Some(id) = self.documents.active().map(str::to_owned) {
             self.cancel(&id, cx);
         }

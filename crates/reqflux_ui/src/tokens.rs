@@ -89,6 +89,12 @@ pub(crate) const ENVIRONMENT_MENU_WIDTH: Pixels = px(360.0);
 /// The height of a row of the environment menu.
 pub(crate) const ENVIRONMENT_OPTION: Pixels = px(36.0);
 
+/// The width of the Auth pane type menu.
+pub(crate) const AUTH_MENU_WIDTH: Pixels = px(240.0);
+
+/// The height of a row of the Auth pane type menu.
+pub(crate) const AUTH_OPTION: Pixels = px(32.0);
+
 /// The height of the document path bar under the tab row.
 pub(crate) const PATH_BAR: Pixels = px(28.0);
 

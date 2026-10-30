@@ -1,8 +1,9 @@
 //! The open request under the document tabs: the request line, the sub-tab bar and the pane
-//! of the selected sub-tab: the Params and Headers grids, the Settings pane, or the read-only
-//! Body, Auth and Scripts panes.
+//! of the selected sub-tab: the Params and Headers grids, the Auth and Settings panes, or the
+//! read-only Body and Scripts panes.
 
 mod auth;
+mod auth_menu;
 mod body;
 mod code;
 mod grid;
@@ -26,7 +27,7 @@ pub(crate) use send::{elapsed_text, size_text};
 pub(crate) use sub_tabs::shown_rows;
 
 use bolt::tokens::space;
-use gpui::{Context, Div, ParentElement, Stateful, StatefulInteractiveElement, Styled};
+use gpui::{Context, Div, ParentElement, Stateful, StatefulInteractiveElement, Styled, Window};
 
 use super::{Shell, region};
 
@@ -37,16 +38,23 @@ pub(super) fn render(
     state: &RequestState,
     sending: bool,
     shell: &Shell,
+    window: &Window,
     cx: &mut Context<Shell>,
 ) -> [Stateful<Div>; 3] {
     [
         line::render(id, state, sending, shell, cx),
         sub_tabs::render(id, state, shell, cx),
-        pane(id, state, shell, cx),
+        pane(id, state, shell, window, cx),
     ]
 }
 
-fn pane(id: &str, state: &RequestState, shell: &Shell, cx: &mut Context<Shell>) -> Stateful<Div> {
+fn pane(
+    id: &str,
+    state: &RequestState,
+    shell: &Shell,
+    window: &Window,
+    cx: &mut Context<Shell>,
+) -> Stateful<Div> {
     let inspection = &state.inspection;
     // The panes show the draft's request when the request has one, so an edit is visible
     // immediately and survives a restart.
@@ -73,7 +81,7 @@ fn pane(id: &str, state: &RequestState, shell: &Shell, cx: &mut Context<Shell>) 
             cx,
         )],
         SubTab::Body => body::render(inspection, &request.body, shell, cx),
-        SubTab::Auth => auth::render(inspection, &request.auth, cx),
+        SubTab::Auth => auth::render(id, inspection, &request.auth, shell, window, cx),
         SubTab::Scripts => scripts::render(inspection, cx),
         SubTab::Settings => settings::render(id, &request.settings, shell, cx),
     };

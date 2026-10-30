@@ -10,6 +10,7 @@ use gpui::{AppContext as _, Context, Entity, Window};
 use gpui_component::input::InputState;
 
 use super::Shell;
+use super::auth_edit::AUTH_TABLE;
 use super::setting_edit::SETTINGS_TABLE;
 
 /// Which cell of a grid row the field edits.
@@ -129,6 +130,11 @@ impl Shell {
         let value = input.read(cx).value().to_string();
         if table == SETTINGS_TABLE {
             self.set_draft_timeout(&request_id, &value, cx);
+            self.close_cell_edit(window, cx);
+            return;
+        }
+        if table == AUTH_TABLE {
+            self.set_draft_auth_text(&request_id, secret, value, cx);
             self.close_cell_edit(window, cx);
             return;
         }
