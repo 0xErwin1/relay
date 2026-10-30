@@ -23,8 +23,10 @@
 //! task. [`Engine::send`] returns an [`Execution`] holding the task's
 //! [`JoinHandle`](tokio::task::JoinHandle), which is an executor-agnostic future: a GPUI
 //! front end awaits it on its own executor, so no GPUI code runs on Tokio and no HTTP code
-//! runs on GPUI's executor. Synchronous callers such as the CLI use [`Engine::wait`] or
-//! [`Engine::execute_blocking`], which block the calling thread and must not be called from
+//! runs on GPUI's executor. An async front end that also wants the script results calls
+//! [`Execution::finish`], which awaits the handle and runs the effective test script with
+//! what the execution already carries — no engine borrow needed. Synchronous callers such
+//! as the CLI use [`Engine::wait`] or [`Engine::execute_blocking`], which block the calling thread and must not be called from
 //! inside an async context. Dropping the engine shuts the runtime down, so it must not be
 //! dropped from inside an async context either.
 //!

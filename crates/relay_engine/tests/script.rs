@@ -10,6 +10,7 @@
 mod common;
 
 use std::path::Path;
+use std::time::Duration;
 
 use common::{id_text, temp_dir, write};
 use pretty_assertions::assert_eq;
@@ -95,6 +96,76 @@ fn execute(engine: &relay_engine::Engine, selector: &str) -> relay_engine::Execu
         Ok(executed) => executed,
         Err(error) => panic!("execute: {error}"),
     }
+}
+
+/// Executes `selector` and finishes the execution with [`Execution::finish`], as an async
+/// front end does.
+fn finish(rt: &Runtime, engine: &relay_engine::Engine, selector: &str) -> relay_engine::Executed {
+    let execution = match engine.execute(selector, &ExecuteOptions::default()) {
+        Ok(execution) => execution,
+        Err(error) => panic!("execute: {error}"),
+    };
+    match rt.block_on(execution.finish()) {
+        Ok(executed) => executed,
+        Err(error) => panic!("finish: {error}"),
+    }
+}
+
+/// Blanks the wall-clock time of a response, which two sends never share.
+fn without_elapsed(executed: &mut relay_engine::Executed) {
+    executed.response.elapsed = Duration::ZERO;
+}
+
+#[test]
+fn finish_returns_the_same_executed_as_execute_blocking() {
+    let rt = runtime();
+    let server = server(&rt, Mock::given(path("/finished")).respond_with(ok()));
+    let dir = temp_dir();
+    let root = dir.path();
+    manifest(root);
+    collection(root, "");
+    request(root, "r", false, &format!("{}/finished", server.uri()));
+    write(
+        root,
+        "collections/api/r.test.js",
+        "pm.test(\"status\", function () {\n  pm.expect(pm.response.code).to.eql(201);\n});\nconsole.log(\"from the test\");\n",
+    );
+    let engine = engine(root);
+    let mut expected = execute(&engine, "api/r");
+    let mut executed = finish(&rt, &engine, "api/r");
+    without_elapsed(&mut expected);
+    without_elapsed(&mut executed);
+    assert_eq!(executed, expected);
+    assert!(executed.scripts.tests.iter().all(|test| test.passed));
+}
+
+#[test]
+fn finish_keeps_a_failing_test_beside_a_successful_response() {
+    let rt = runtime();
+    let server = server(&rt, Mock::given(path("/failing")).respond_with(ok()));
+    let dir = temp_dir();
+    let root = dir.path();
+    manifest(root);
+    collection(root, "");
+    request(root, "r", false, &format!("{}/failing", server.uri()));
+    write(
+        root,
+        "collections/api/r.test.js",
+        "pm.test(\"wrong code\", function () {\n  pm.expect(201, \"bad code\").to.eql(404);\n});\n",
+    );
+    let engine = engine(root);
+    let mut expected = execute(&engine, "api/r");
+    let mut executed = finish(&rt, &engine, "api/r");
+    without_elapsed(&mut expected);
+    without_elapsed(&mut executed);
+    assert_eq!(executed, expected);
+    assert_eq!(executed.response.status, 201);
+    let test = &executed.scripts.tests[0];
+    assert!(!test.passed);
+    assert_eq!(
+        test.message.as_deref(),
+        Some("bad code: expected 201 to deeply equal 404")
+    );
 }
 
 #[test]

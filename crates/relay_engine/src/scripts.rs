@@ -134,6 +134,23 @@ fn kind_of(scope: VariableScope) -> ScopeKind {
     }
 }
 
+/// Runs `script` with `context`, reporting a failure as an error console entry in the
+/// outcome it collected so far: a script error never fails the request.
+pub(crate) fn run_bounded(script: &str, context: &ScriptContext) -> ScriptOutcome {
+    match relay_script::run(script, context) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            let message = error.to_string();
+            let mut outcome = error.outcome;
+            outcome.console.push(ConsoleEntry {
+                level: ConsoleLevel::Error,
+                message,
+            });
+            outcome
+        }
+    }
+}
+
 /// Runs the effective script of `stage` and returns everything it produced.
 ///
 /// A script error — a syntax error, a throw, a limit — never fails the request: the outcome
@@ -158,18 +175,7 @@ pub(crate) fn run_stage(
         variables: merged(scopes),
         response: response.map(response_view),
     };
-    match relay_script::run(script, &context) {
-        Ok(outcome) => outcome,
-        Err(error) => {
-            let message = error.to_string();
-            let mut outcome = error.outcome;
-            outcome.console.push(ConsoleEntry {
-                level: ConsoleLevel::Error,
-                message,
-            });
-            outcome
-        }
-    }
+    run_bounded(script, &context)
 }
 
 /// Extends `outcome` with `other`, keeping the stage order: pre-request entries first.
