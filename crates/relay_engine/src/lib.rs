@@ -30,12 +30,14 @@
 
 mod engine;
 mod error;
+mod import;
 mod prepare;
 mod select;
 pub mod state;
 
 pub use engine::{Engine, Executed, Execution};
-pub use error::{ExecuteError, OpenError, SaveError};
+pub use error::{ExecuteError, ImportError, OpenError, SaveError};
+pub use import::{ImportSummary, postman};
 pub use prepare::{
     DEFAULT_TIMEOUT_MS, ExecuteOptions, Inspection, Prepared, Span, inspect, prepare, prepare_draft,
 };

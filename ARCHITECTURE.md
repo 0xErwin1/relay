@@ -408,6 +408,10 @@ allows it and without one otherwise.
   back on export, so a round trip loses nothing.
 - Import maps Postman items to the on-disk layout: folders to directories, request names to
   slugged file names (with a numeric suffix on collision), scripts to sidecar files.
+- The engine writes the import: `relay_engine::import::postman` maps the documents and writes the
+  collection, its folders and requests with their scripts and the environments through
+  `relay_store`, creating the workspace manifest when the directory is empty and never
+  overwriting a file that is already there.
 - A fixture corpus of real exported collections drives round-trip tests: import, export and
   compare the JSON structurally.
 

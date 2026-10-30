@@ -47,6 +47,28 @@ pub enum ExecuteError {
     Task(String),
 }
 
+/// Why a Postman import could not be written (S9).
+#[derive(Debug, thiserror::Error)]
+pub enum ImportError {
+    /// The document does not map to the Relay model (S8).
+    #[error(transparent)]
+    Postman(#[from] relay_postman::PostmanError),
+    /// The store failed to write `path`.
+    #[error("{}: {message}", path.display())]
+    Store {
+        /// The file being written.
+        path: PathBuf,
+        /// What went wrong.
+        message: String,
+    },
+    /// The file exists; an import never overwrites (S9).
+    #[error("{} already exists; an import never overwrites a file", path.display())]
+    Exists {
+        /// The existing file.
+        path: PathBuf,
+    },
+}
+
 /// Why a request document could not be saved back to its file.
 #[derive(Debug, thiserror::Error)]
 pub enum SaveError {
