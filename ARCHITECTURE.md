@@ -315,6 +315,31 @@ Picking the value a request already has, with no draft, creates no draft. A menu
 Escape or a click outside. A stored secret cannot be cleared to empty from the window yet.
 Undo, Redo and Split stay disabled.
 
+Tree operations (`reqflux_store::tree_ops`, exposed as `Engine::create_collection`,
+`create_folder`, `create_request`, `rename`, `duplicate`, `delete`, `move_item` and `reorder`)
+change the tree on disk by id and reload the workspace after each success:
+
+- **Create** writes `New request` (`GET`, no URL), `New folder` or `New collection`, numbered
+  `2`, `3`, ... when the name is taken, with a new id, at the end of the parent.
+- **Rename** changes the name and the slug, so the file or directory follows the name: a
+  request's `.pre.js`, `.test.js` and `.examples/` move with it, the parent's `order` entry is
+  renamed in place and the id is kept. A taken, reserved or empty name fails.
+- **Duplicate** copies a request or a folder with everything under it, with new ids, as
+  `<name> copy`, right after the original.
+- **Delete** removes a request with its sidecars, or a folder or collection with everything
+  under it, and the parent's `order` entry.
+- **Move** and **reorder** put an item at an index in another parent or in its own; a folder
+  never moves into itself or a descendant, and a slug clash in the target fails.
+
+Every operation validates and hash-checks everything it touches before its first write, so a
+refused operation changes nothing. Before a folder or collection is deleted or duplicated,
+every entity file and sidecar script under it is compared with what the load read: a file
+added or changed since makes the operation a conflict instead of a silent loss. An operation
+is several atomic steps; a failure partway can leave files moved with a stale `order`, which
+still loads (unlisted children append). Slugs are ASCII: other letters become `-`. Rewriting a
+parent's `order` lists every child in display order, so the first rewrite of a parent may
+list children that were unlisted.
+
 Two rules keep a workspace's paths unambiguous. Saving a request whose slug is already a
 folder in the same parent, or the other way round, fails with `SlugCollision` instead of
 writing an ambiguous tree; a workspace that already has one still loads, with a `SharedSlug`
@@ -557,6 +582,18 @@ colors) and a request and collection count; a document island; and a status bar 
 the last send (`<METHOD> <path> · <status> · <time>`, or `sending` or `failed`) and
 load warnings. In the tree the arrow keys move the selection, Enter or the chevron toggles a
 folder, and a click or Enter on a request opens it in a document tab, or focuses its tab.
+The sidebar header's `+` (`sidebar-new-collection`) creates a collection. A right click on a
+row, or its `…` button (`tree-row-menu-<id>`), opens a menu (`tree-menu-new-request`,
+`tree-menu-new-folder` on collections and folders, `tree-menu-rename`, `tree-menu-duplicate`
+off collections, `tree-menu-delete`). Rename is a field over the row name
+(`tree-rename-input`; Enter commits, Escape cancels), and a new item opens straight into it.
+Delete asks first (`tree-delete-prompt`, naming the item and how many requests it holds;
+`tree-delete-confirm`, `tree-delete-cancel`), then closes the tabs and drops the drafts of
+every deleted request. Alt+Up and Alt+Down move the selected request or folder among its
+siblings; dragging a request or folder row drops it before another row, or inside a
+collection or folder when dropped on its name (`tree-name-<id>`). A refused operation shows
+its reason in `sidebar-error`; while a request is being sent, the tree is not changed and the
+error asks to wait. Open tabs and drafts follow a rename or move, since ids are stable.
 The environment button of the title bar opens a menu with `No environment` and the workspace
 environments by name; choosing one makes it the window's active environment, and Escape or a
 click outside closes the menu without a change. Icons are Lucide, from `gpui-kit-assets`,
