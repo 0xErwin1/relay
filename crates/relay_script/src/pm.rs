@@ -35,6 +35,21 @@ pub(super) fn install(
 ) -> CtxResult<()> {
     let globals = ctx.globals();
     globals.set(
+        "__relayModule",
+        Func::from({
+            let state = Arc::clone(state);
+            move |ctx: Ctx<'_>, name: String| -> CtxResult<Option<String>> {
+                let source = crate::modules::source(&name).map(str::to_owned);
+                if let Some(source) = &source
+                    && let Some(kind) = lock(&state).charge(source.len())
+                {
+                    return Err(abort(&ctx, kind));
+                }
+                Ok(source)
+            }
+        }),
+    )?;
+    globals.set(
         "__relayReach",
         Func::from({
             let state = Arc::clone(state);

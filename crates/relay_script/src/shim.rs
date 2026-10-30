@@ -280,4 +280,21 @@ pub(super) const PRELUDE: &str = r#"
     error(...args) { __relayConsole("error", args.map(stringify).join(" ")); },
   };
 })();
+// `require` serves the libraries Postman's sandbox ships. A module is compiled the first time it
+// is asked for and cached for the rest of the run, like Node does.
+const __modules = Object.create(null);
+function require(name) {
+  const key = String(name);
+  if (__modules[key]) return __modules[key].exports;
+  const source = __relayModule(key);
+  if (source === null || source === undefined) {
+    throw new Error("Cannot find module '" + key + "'");
+  }
+  const module = { exports: {} };
+  __modules[key] = module;
+  const factory = new Function("module", "exports", "require", source);
+  factory(module, module.exports, require);
+  return module.exports;
+}
+globalThis.require = require;
 "#;

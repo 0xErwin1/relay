@@ -214,16 +214,19 @@ fn init_data_cannot_inject_code() {
 fn no_host_globals_are_reachable() {
     let outcome = run(
         r#"
-        const names = ["process","require","std","os","fetch","XMLHttpRequest","Deno","Buffer",
+        // `require` is part of the documented surface and only serves the bundled modules.
+        const names = ["process","std","os","fetch","XMLHttpRequest","Deno","Buffer",
                        "load","print","readFile","open","env","module","exports"];
         const seen = names.filter((n) => typeof globalThis[n] !== "undefined");
-        const viaFunction = Function("return typeof process + '/' + typeof require")();
-        console.log(seen.join(",") + "|" + viaFunction + "|" + typeof __relayInit);
+        const viaFunction = Function("return typeof process")();
+        let unknown = "served";
+        try { require("os"); } catch (error) { unknown = "refused"; }
+        console.log(seen.join(",") + "|" + viaFunction + "|" + typeof __relayInit + "|" + unknown);
         "#,
         &context(ScriptStage::Test),
     )
     .unwrap();
-    assert_eq!(outcome.console[0].message, "|undefined/undefined|undefined");
+    assert_eq!(outcome.console[0].message, "|undefined|undefined|refused");
 }
 
 #[test]

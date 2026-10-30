@@ -5,6 +5,7 @@
 //! never performs HTTP and never touches the engine; variable writes come back as data for
 //! the caller to apply.
 
+mod modules;
 mod pm;
 mod sandbox;
 mod shim;
