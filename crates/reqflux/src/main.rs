@@ -1,13 +1,14 @@
 //! The ReqFlux binary: the GUI when started without a subcommand, on the workspace given as
 //! `reqflux [<DIR>]`, `reqflux run` to send one request from the command line, and
-//! `reqflux mcp` to serve the agent tools, and `reqflux import` to bring in a Postman
-//! collection.
+//! `reqflux mcp` to serve the agent tools, `reqflux import` to bring in a Postman
+//! collection, and `reqflux secret` to manage secret values in the OS keyring.
 
 mod cli;
 mod gui;
 mod import;
 mod mcp;
 mod run;
+mod secret;
 mod signals;
 
 use std::process::ExitCode;
@@ -23,5 +24,6 @@ fn main() -> ExitCode {
         Some(Command::Run(args)) => run::run(args),
         Some(Command::Mcp(args)) => mcp::mcp(args),
         Some(Command::Import(args)) => import::import(args),
+        Some(Command::Secret(args)) => secret::secret(args),
     }
 }

@@ -62,6 +62,9 @@ fn send(args: RunArgs) -> Result<(), Failure> {
         vars,
     };
     let execution = engine.execute(&args.request, &options)?;
+    if let Some(problem) = &execution.secret_problem {
+        eprintln!("warning: {problem}");
+    }
     for name in &execution.unresolved {
         eprintln!("warning: unresolved variable {{{{{name}}}}}");
     }

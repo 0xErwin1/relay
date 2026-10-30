@@ -434,8 +434,8 @@ reqflux run <request> [--workspace <dir>] [--env <slug>] [--var <key>=<value>]..
   repeats.
 - stdout is the response body, byte for byte. `--include` writes the status line
   `HTTP/<version> <code> <reason>` and the headers first, then a blank line.
-- stderr has one `warning: <message>` line per workspace load warning, one
-  `warning: unresolved variable {{<name>}}` line per unresolved variable, then the summary
+- stderr has one `warning: <message>` line per workspace load warning, the keyring warning
+  below when it applies, one `warning: unresolved variable {{<name>}}` line per unresolved variable, then the summary
   `<METHOD> <url> -> <code> <reason> in <ms> ms, <size>`, with the size in `B`, `KB` or `MB`
   (1024 based). Errors print `error: <message>`.
 
@@ -445,10 +445,40 @@ reqflux run <request> [--workspace <dir>] [--env <slug>] [--var <key>=<value>]..
 | 1 | The request could not be executed: transport error, unsupported auth, environment not allowed for the collection, invalid GraphQL variables. |
 | 2 | Usage error: bad arguments, unknown request or environment, workspace that fails to load. |
 
-Secret variables have no value in workspace files, and the keyring does not exist yet, so a
-secret resolves only when passed with `--var`. A `--var` value is visible in the process list
-and the shell history; prefer reading it from the environment, such as
-`--var token="$API_TOKEN"`.
+Secret variables have no value in workspace files; a valueless secret resolves from the OS
+keyring, and `--var` still wins over it. When the keyring cannot be read, stderr has one
+`warning: secret variables were not read from the keyring: <why>` line after the load
+warnings, those secrets stay unresolved and the request is still sent. A `--var` value is
+visible in the process list and the shell history; prefer `reqflux secret set`, or reading it
+from the environment, such as `--var token="$API_TOKEN"`.
+
+`reqflux secret` manages the keyring values through `reqflux_engine::SecretStore`:
+
+```text
+reqflux secret set <scope> <key> [--workspace <dir>]
+reqflux secret unset <scope> <key> [--workspace <dir>]
+reqflux secret list [<dir>]
+```
+
+- `<scope>` is `global`, a collection slug, or `env:<slug>` for an environment; `<key>` must
+  be a secret variable declared there. The directory defaults to the current one.
+- `set` reads the value from stdin, never from an argument: from a terminal it prompts
+  `Value for <key>: ` on stderr and reads without echo, otherwise it reads all of stdin and
+  strips one trailing newline. An empty value is a usage error.
+- `unset` deletes the value; a value that is not set is success.
+- `list` prints `<scope>\t<key>\t<set|not set>` per secret variable on stdout, globals first,
+  then collections and environments by slug. When the keyring cannot be read every line says
+  `unknown`, a `warning:` line on stderr says why, and the exit code is still 0.
+- No output ever contains a value. Errors print `error: <message>`.
+
+| Exit code | Meaning |
+|-----------|---------|
+| 0 | Done. |
+| 1 | `set` or `unset`: the keyring failed or is not available. |
+| 2 | Usage error: bad arguments, unknown scope, a key that is not a secret variable in that scope, an empty value, workspace that fails to load. |
+
+The binary tests point `DBUS_SESSION_BUS_ADDRESS` at a socket that does not exist, so on
+Linux they never reach the real keyring; on macOS they would read the Keychain.
 
 The engine API behind it: `Engine::open(root)` loads the workspace; `Engine::prepare` selects
 the request, checks the environment and resolves variables, auth, body and settings into a

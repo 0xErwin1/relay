@@ -16,6 +16,8 @@ use tokio::runtime::Runtime;
 use wiremock::matchers::{header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+const NO_BUS: &str = "unix:path=/nonexistent/reqflux-test-bus";
+
 fn id_text(n: u32) -> String {
     format!("01J{n:023}")
 }
@@ -105,6 +107,9 @@ fn reqflux(args: &[&str]) -> Output {
     match Command::new(env!("CARGO_BIN_EXE_reqflux"))
         .args(args)
         .env_remove("RUST_LOG")
+        // A bus that does not exist: the Linux keyring is unavailable, so no test reads the
+        // real one (keyring-secrets S8). On macOS the Keychain is still read.
+        .env("DBUS_SESSION_BUS_ADDRESS", NO_BUS)
         .output()
     {
         Ok(output) => output,
@@ -275,23 +280,73 @@ fn warnings_come_before_the_summary() {
     let stderr = text(&output.stderr);
     let lines: Vec<&str> = stderr.lines().collect();
     assert_eq!(
-        lines[..3],
+        lines[..1],
+        [format!(
+            "warning: {}: secret variable t has a value in the workspace file; it was ignored",
+            dir.path().join("reqflux.toml").display()
+        )
+        .as_str()]
+    );
+    assert_keyring_warning(lines[1]);
+    assert_eq!(
+        lines[2..4],
         [
-            format!(
-                "warning: {}: secret variable t has a value in the workspace file; it was ignored",
-                dir.path().join("reqflux.toml").display()
-            )
-            .as_str(),
             "warning: unresolved variable {{a}}",
             "warning: unresolved variable {{b}}",
         ]
     );
-    assert_eq!(lines.len(), 4);
+    assert_eq!(lines.len(), 5);
+    assert!(!stderr.contains("leaked"), "{stderr}");
     assert_summary(
-        &format!("{}\n", lines[3]),
+        &format!("{}\n", lines[4]),
         &format!("GET {}/w?q=%7B%7Ba%7D%7D -> 200 OK in ", server.uri()),
         " ms, 0 B\n",
     );
+    assert_eq!(output.status.code(), Some(0));
+}
+
+/// The `warning:` line a run prints when the keyring of the test bus cannot be read.
+fn assert_keyring_warning(line: &str) {
+    assert!(
+        line.starts_with(
+            "warning: secret variables were not read from the keyring: the OS keyring is not available"
+        ),
+        "{line}"
+    );
+}
+
+/// Without a keyring the run still sends, `--var` still supplies the secret, and the only
+/// change to the output is the keyring warning.
+#[test]
+fn a_secret_from_var_still_sends_without_a_keyring() {
+    let rt = runtime();
+    let server = server(
+        &rt,
+        vec![
+            Mock::given(path("/k"))
+                .and(header("authorization", "Bearer abc"))
+                .respond_with(ResponseTemplate::new(200).set_body_string("ok")),
+        ],
+    );
+    let request = format!(
+        "{}\n[[headers]]\nkey = \"Authorization\"\nvalue = \"Bearer {{{{t}}}}\"\n",
+        get(&format!("{}/k", server.uri()))
+    );
+    let dir = workspace(
+        "\n[[globals]]\nkey = \"t\"\nsecret = true\n",
+        &[("k", request)],
+    );
+    let output = run(&dir, &["api/k", "--var", "t=abc"]);
+    let stderr = text(&output.stderr);
+    let lines: Vec<&str> = stderr.lines().collect();
+    assert_eq!(lines.len(), 2, "{stderr}");
+    assert_keyring_warning(lines[0]);
+    assert_summary(
+        &format!("{}\n", lines[1]),
+        &format!("GET {}/k -> 200 OK in ", server.uri()),
+        " ms, 2 B\n",
+    );
+    assert_eq!(text(&output.stdout), "ok");
     assert_eq!(output.status.code(), Some(0));
 }
 
@@ -470,6 +525,7 @@ fn run_help_describes_arguments_and_exit_codes() {
         "--var <KEY=VALUE>",
         "-i, --include",
         "Exit codes:",
+        "OS keyring",
         "  0  ",
         "  1  ",
         "  2  ",

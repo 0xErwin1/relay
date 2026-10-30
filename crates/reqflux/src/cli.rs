@@ -36,6 +36,8 @@ pub(crate) enum Command {
     Mcp(McpArgs),
     /// Import a Postman collection and its environments into a workspace.
     Import(ImportArgs),
+    /// Set, unset and list secret variable values in the OS keyring.
+    Secret(SecretArgs),
 }
 
 /// The application id the window reports, and the default `--app-id`.
@@ -45,8 +47,9 @@ const RUN_AFTER_HELP: &str = "\
 Output:
   stdout  the response body, byte for byte; with --include, the status line and the
           headers first, then a blank line
-  stderr  one `warning:` line per workspace load warning and per unresolved variable,
-          then `<METHOD> <url> -> <code> <reason> in <ms> ms, <size>`
+  stderr  one `warning:` line per workspace load warning, one when secret variables
+          could not be read from the OS keyring (they stay unresolved), and one per
+          unresolved variable, then `<METHOD> <url> -> <code> <reason> in <ms> ms, <size>`
 
 Exit codes:
   0  a response was received, whatever its status
@@ -69,7 +72,7 @@ pub(crate) struct RunArgs {
     #[arg(long, value_name = "SLUG")]
     pub(crate) env: Option<String>,
     /// Sets a local variable, which overrides globals, collection and environment
-    /// variables. Repeatable. Use it to supply secret values.
+    /// variables. Repeatable. Overrides a secret value from the OS keyring.
     #[arg(long = "var", value_name = "KEY=VALUE")]
     pub(crate) vars: Vec<String>,
     /// Write the status line and the response headers before the body.
@@ -105,6 +108,127 @@ pub(crate) struct ImportArgs {
     /// A Postman environment JSON file. Repeatable.
     #[arg(long = "environment", value_name = "FILE")]
     pub(crate) environments: Vec<PathBuf>,
+}
+
+const SECRET_AFTER_HELP: &str = concat!(
+    "\
+Secret values live in the OS keyring (Secret Service, Keychain or Credential Manager),
+keyed by workspace, scope and variable ids, never in a workspace file. `set` reads the
+value from stdin, never from an argument; values never appear in any output.
+
+",
+    "\
+Scopes:
+  global      a workspace global
+  <slug>      a variable of the collection with this slug
+  env:<slug>  a variable of the environment with this slug
+
+",
+    "\
+Exit codes:
+  0  done
+  1  the OS keyring failed or is not available (set, unset)
+  2  usage error: bad arguments, unknown scope, a key that is not a secret variable in
+     that scope, an empty value, workspace that fails to load"
+);
+
+/// Arguments of `reqflux secret`.
+#[derive(Debug, Args)]
+#[command(after_help = SECRET_AFTER_HELP)]
+pub(crate) struct SecretArgs {
+    /// What to do.
+    #[command(subcommand)]
+    pub(crate) command: SecretCommand,
+}
+
+/// The `reqflux secret` subcommands.
+#[derive(Debug, Subcommand)]
+pub(crate) enum SecretCommand {
+    /// Store the value of a secret variable, read from stdin.
+    #[command(after_help = SECRET_SET_AFTER_HELP)]
+    Set(SecretKeyArgs),
+    /// Delete the value of a secret variable. Deleting a value that is not set succeeds.
+    #[command(after_help = SECRET_UNSET_AFTER_HELP)]
+    Unset(SecretKeyArgs),
+    /// List every secret variable with its scope and `set`, `not set` or `unknown`.
+    #[command(after_help = SECRET_LIST_AFTER_HELP)]
+    List(SecretListArgs),
+}
+
+const SECRET_SET_AFTER_HELP: &str = concat!(
+    "\
+The value is read from stdin, never from an argument. When stdin is a terminal, set
+prompts `Value for <KEY>: ` on stderr and reads without echo; otherwise it reads all of
+stdin and strips one trailing newline. An empty value is a usage error. The value never
+appears in any output.
+
+",
+    "\
+Scopes:
+  global      a workspace global
+  <slug>      a variable of the collection with this slug
+  env:<slug>  a variable of the environment with this slug
+
+",
+    "\
+Exit codes:
+  0  the value was stored
+  1  the OS keyring failed or is not available
+  2  usage error: bad arguments, unknown scope, a key that is not a secret variable in
+     that scope, an empty value, workspace that fails to load"
+);
+
+const SECRET_UNSET_AFTER_HELP: &str = concat!(
+    "\
+Nothing is read from stdin; the value is never shown and never needed.
+
+",
+    "\
+Scopes:
+  global      a workspace global
+  <slug>      a variable of the collection with this slug
+  env:<slug>  a variable of the environment with this slug
+
+",
+    "\
+Exit codes:
+  0  the value was deleted, or was not set
+  1  the OS keyring failed or is not available
+  2  usage error: bad arguments, unknown scope, a key that is not a secret variable in
+     that scope, workspace that fails to load"
+);
+
+const SECRET_LIST_AFTER_HELP: &str = "\
+Output:
+  stdout  one `<scope>\\t<key>\\t<set|not set|unknown>` line per secret variable: globals,
+          then collections and environments (env:<slug>) by slug; values never appear
+  stderr  a `warning:` line saying why when the OS keyring cannot be read, and the
+          lines are then `unknown`
+
+Exit codes:
+  0  the list was printed, even when the keyring is not available
+  2  usage error: bad arguments, workspace that fails to load";
+
+/// The scope, key and workspace of `reqflux secret set` and `unset`.
+#[derive(Debug, Args)]
+pub(crate) struct SecretKeyArgs {
+    /// `global`, a collection slug, or `env:<slug>` for an environment.
+    #[arg(value_name = "SCOPE")]
+    pub(crate) scope: String,
+    /// The key of a secret variable declared in that scope.
+    #[arg(value_name = "KEY")]
+    pub(crate) key: String,
+    /// The workspace directory. Defaults to the current directory.
+    #[arg(long, value_name = "DIR")]
+    pub(crate) workspace: Option<PathBuf>,
+}
+
+/// The workspace of `reqflux secret list`.
+#[derive(Debug, Args)]
+pub(crate) struct SecretListArgs {
+    /// The workspace directory. Defaults to the current directory.
+    #[arg(value_name = "DIR")]
+    pub(crate) workspace: Option<PathBuf>,
 }
 
 const MCP_AFTER_HELP: &str = "\
