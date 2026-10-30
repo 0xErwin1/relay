@@ -8,9 +8,11 @@ use std::path::{Path, PathBuf};
 use reqflux_core::model::{FolderNode, Id, Item, RequestNode};
 use tempfile::TempDir;
 
+use super::naming::SlugFor;
 use crate::error::StoreError;
 use crate::layout::{
-    FOLDER_FILE, Parent, examples_dir_in, folder_file, request_file, request_file_in, script_files,
+    COLLECTION_FILE, EXAMPLES_SUFFIX, FOLDER_FILE, PRE_SUFFIX, Parent, REQUEST_SUFFIX, TEST_SUFFIX,
+    examples_dir_in, folder_file, request_file, request_file_in, script_files,
     validate_request_slug, validate_slug,
 };
 use crate::load::Loaded;
@@ -38,6 +40,14 @@ impl Shape {
         match self {
             Self::Folder => folder_file(root, parent, slug),
             Self::Request => request_file(root, parent, slug),
+        }
+    }
+
+    /// What the slug names, for the free-slug check.
+    pub(super) fn slug_for(self) -> SlugFor {
+        match self {
+            Self::Folder => SlugFor::Container,
+            Self::Request => SlugFor::Request,
         }
     }
 }
@@ -102,17 +112,73 @@ pub(super) fn remove_request(dir: &Path, slug: &str) -> Result<(), StoreError> {
 }
 
 /// Removes a folder or collection directory. It is first renamed into a hidden staging
-/// directory beside it, so it leaves the tree in one rename; a failure while deleting the
-/// staged copy leaves a hidden directory the loader skips.
+/// directory beside it, so it leaves the tree in one rename. When removing the staged copy
+/// fails, what is left of it is renamed back to `dir` before the error is returned.
 pub(super) fn remove_tree(dir: &Path) -> Result<(), StoreError> {
     let parent = dir.parent().unwrap_or_else(|| Path::new("."));
     let staging = TempDir::new_in(parent).map_err(|source| io_error(parent, source))?;
-    rename(dir, &staging.path().join("deleted"))?;
-    let staged = staging.path().to_owned();
-    staging.close().map_err(|source| io_error(&staged, source))
+    let staged = staging.path().join("deleted");
+    rename(dir, &staged)?;
+    if let Err(source) = fs::remove_dir_all(&staged) {
+        let error = io_error(&staged, source);
+        if let Err(restore) = fs::rename(&staged, dir) {
+            let kept = staging.keep();
+            log::error!(
+                "could not restore {} from {}: {restore}",
+                dir.display(),
+                kept.display()
+            );
+        }
+        return Err(error);
+    }
+    let leftover = staging.path().to_owned();
+    staging
+        .close()
+        .map_err(|source| io_error(&leftover, source))
 }
 
-/// Fails with a conflict when an entity file under `dir` changed since `loaded` read it.
+/// Fails with a conflict when a sidecar script of the request `slug` in `dir` changed,
+/// appeared or vanished since `loaded` read it.
+pub(super) fn check_scripts(loaded: &Loaded, dir: &Path, slug: &str) -> Result<(), StoreError> {
+    let scripts = script_files(dir, slug);
+    check(&scripts.pre_request, loaded.hash(&scripts.pre_request))?;
+    check(&scripts.test, loaded.hash(&scripts.test))
+}
+
+/// Fails with a conflict when an entity file or sidecar script anywhere under `dir`
+/// differs from what `loaded` read, including one added since. Symlinks are not followed
+/// and examples directories are skipped.
+pub(super) fn check_tree(loaded: &Loaded, dir: &Path) -> Result<(), StoreError> {
+    for entry in fs::read_dir(dir).map_err(|source| io_error(dir, source))? {
+        let entry = entry.map_err(|source| io_error(dir, source))?;
+        let path = entry.path();
+        let kind = entry
+            .file_type()
+            .map_err(|source| io_error(&path, source))?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if kind.is_dir() {
+            if !name.ends_with(EXAMPLES_SUFFIX) {
+                check_tree(loaded, &path)?;
+            }
+        } else if kind.is_file() && is_tracked(&name) {
+            check(&path, loaded.hash(&path))?;
+        }
+    }
+    Ok(())
+}
+
+/// Whether the loader reads a file with this name: an entity file or a sidecar script.
+fn is_tracked(name: &str) -> bool {
+    name == FOLDER_FILE
+        || name == COLLECTION_FILE
+        || [REQUEST_SUFFIX, PRE_SUFFIX, TEST_SUFFIX]
+            .iter()
+            .any(|suffix| name.ends_with(suffix))
+}
+
+/// Fails with a conflict when an entity file or sidecar script of `items` under `dir`
+/// changed or vanished since `loaded` read it.
 pub(super) fn check_items(loaded: &Loaded, dir: &Path, items: &[Item]) -> Result<(), StoreError> {
     for item in items {
         match item {
@@ -120,11 +186,13 @@ pub(super) fn check_items(loaded: &Loaded, dir: &Path, items: &[Item]) -> Result
                 let inner = dir.join(&node.slug);
                 let file = inner.join(FOLDER_FILE);
                 check(&file, loaded.hash(&file))?;
+                check_scripts(loaded, &inner, "folder")?;
                 check_items(loaded, &inner, &node.items)?;
             }
             Item::Request(node) => {
                 let file = request_file_in(dir, &node.slug);
                 check(&file, loaded.hash(&file))?;
+                check_scripts(loaded, dir, &node.slug)?;
             }
         }
     }

@@ -15,6 +15,19 @@
 //! children append and unmatched entries are skipped. A duplicated folder is built in a
 //! hidden staging directory and a deleted one is renamed into one first, so either appears
 //! or disappears in a single rename.
+//!
+//! Before deleting or duplicating a folder or collection, every entity file and sidecar
+//! script under it is compared with what the load read, so a file added or changed since
+//! is never removed or copied stale. Known gaps:
+//!
+//! - A write landing between the checks and the staging rename is still lost.
+//! - When removing a staged folder fails, it is renamed back before the error returns, but
+//!   the files removed before the failure stay removed; if the rename back fails too, the
+//!   staging directory is kept and logged.
+//! - A move is not rolled back: a failure after the files moved leaves them in the target
+//!   with a stale `order` in one or both parents.
+//! - Slugs are ASCII only: non-ASCII letters become `-`, so a name without ASCII
+//!   alphanumerics slugs to `item`.
 
 mod files;
 mod locate;
@@ -149,7 +162,7 @@ pub fn rename(root: &Path, loaded: &Loaded, id: Id, name: &str) -> Result<Placed
             let expected = loaded.hash(&old);
             check(&old, expected)?;
             if slug != node.slug {
-                ensure_free(&collections_dir(root), &slug)?;
+                ensure_free(&collections_dir(root), &slug, SlugFor::Container)?;
                 files::rename(
                     &collection_dir(root, &node.slug),
                     &collection_dir(root, &slug),
@@ -213,7 +226,7 @@ fn rename_child<T: Serialize>(
     if moved {
         parent.check(root, loaded)?;
         let dir = parent.dir(root);
-        ensure_free(&dir, slug)?;
+        ensure_free(&dir, slug, shape.slug_for())?;
         files::relocate(shape, &dir, old, &dir, slug)?;
     }
     let path = shape.file(root, &parent.inner, slug);

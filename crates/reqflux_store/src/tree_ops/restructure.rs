@@ -63,12 +63,22 @@ impl<'a> Child<'a> {
 /// # Errors
 ///
 /// [`StoreError::CollectionOperation`] for a collection, [`StoreError::NotFound`], a
-/// conflict when the parent file changed since `loaded` read it, or an IO error.
+/// conflict when the parent file or a source file or script changed since `loaded` read
+/// it, or an IO error.
 pub fn duplicate(root: &Path, loaded: &Loaded, id: Id) -> Result<Placed, StoreError> {
     let entity = find(&loaded.workspace, id)?;
     let child = Child::find(loaded, id, "duplicated")?;
-    child.parent.check(root, loaded)?;
+    child.check(root, loaded)?;
     let dir = child.parent.dir(root);
+    match &entity {
+        Entity::Folder { node, .. } => {
+            let source = dir.join(child.slug);
+            files::check_scripts(loaded, &source, "folder")?;
+            files::check_items(loaded, &source, &node.items)?;
+            files::check_tree(loaded, &source)?;
+        }
+        _ => files::check_scripts(loaded, &dir, child.slug)?,
+    }
     let (new_id, slug) = match entity {
         Entity::Folder { node, .. } => {
             let base = format!("{} copy", node.folder.name);
@@ -111,15 +121,19 @@ pub fn duplicate(root: &Path, loaded: &Loaded, id: Id) -> Result<Placed, StoreEr
 ///
 /// # Errors
 ///
-/// [`StoreError::NotFound`], a conflict when the entity file, a file under it or the
-/// parent file changed since `loaded` read it, or an IO error.
+/// [`StoreError::NotFound`], a conflict when the entity file, a sidecar script, a file
+/// under it or the parent file changed since `loaded` read it (or an entity file or script
+/// under it appeared since), or an IO error. When removing a staged folder fails, the
+/// folder is renamed back before the error is returned.
 pub fn delete(root: &Path, loaded: &Loaded, id: Id) -> Result<(), StoreError> {
     if let Entity::Collection(node) = find(&loaded.workspace, id)? {
         validate_slug(&node.slug)?;
         let file = collection_file(root, &node.slug);
         check(&file, loaded.hash(&file))?;
         let dir = collection_dir(root, &node.slug);
+        files::check_scripts(loaded, &dir, "collection")?;
         files::check_items(loaded, &dir, &node.items)?;
+        files::check_tree(loaded, &dir)?;
         return files::remove_tree(&dir);
     }
     let child = Child::find(loaded, id, "deleted")?;
@@ -128,10 +142,15 @@ pub fn delete(root: &Path, loaded: &Loaded, id: Id) -> Result<(), StoreError> {
     match find(&loaded.workspace, id)? {
         Entity::Folder { node, .. } => {
             let folder = dir.join(child.slug);
+            files::check_scripts(loaded, &folder, "folder")?;
             files::check_items(loaded, &folder, &node.items)?;
+            files::check_tree(loaded, &folder)?;
             files::remove_tree(&folder)?;
         }
-        _ => files::remove_request(&dir, child.slug)?,
+        _ => {
+            files::check_scripts(loaded, &dir, child.slug)?;
+            files::remove_request(&dir, child.slug)?;
+        }
     }
     child
         .parent
@@ -177,7 +196,7 @@ pub fn move_item(
     child.check(root, loaded)?;
     target.check(root, loaded)?;
     let to = target.dir(root);
-    ensure_free(&to, child.slug)?;
+    ensure_free(&to, child.slug, child.shape.slug_for())?;
     files::relocate(
         child.shape,
         &child.parent.dir(root),

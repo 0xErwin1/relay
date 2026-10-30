@@ -718,3 +718,197 @@ fn save_request_still_round_trips_byte_for_byte() {
 
     assert_eq!(snapshot(root), before);
 }
+
+// --- Verifier regressions (T1b) -------------------------------------------------
+
+/// Every directory under `root` whose name starts with `.`, relative.
+fn hidden_dirs(root: &Path) -> Vec<String> {
+    fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(error) => panic!("read dir {}: {error}", dir.display()),
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if entry.file_name().to_string_lossy().starts_with('.')
+                    && let Ok(relative) = path.strip_prefix(root)
+                {
+                    out.push(relative.to_string_lossy().into_owned());
+                }
+                walk(root, &path, out);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(root, root, &mut out);
+    out
+}
+
+fn conflict(root: &Path, relative: &str) -> String {
+    format!(
+        "{} changed on disk since it was loaded",
+        path(root, relative).display()
+    )
+}
+
+#[test]
+fn deleting_a_folder_that_gained_a_request_since_load_is_a_conflict() {
+    let (dir, loaded) = setup();
+    let root = dir.path();
+    write(
+        root,
+        "collections/api/invoices/added.req.toml",
+        &request_toml(20, "Added"),
+    );
+    let before = snapshot(root);
+
+    let folder = err(reqflux_store::delete(root, &loaded, id(2)));
+    let collection = err(reqflux_store::delete(root, &loaded, id(1)));
+
+    let expected = conflict(root, "collections/api/invoices/added.req.toml");
+    assert_eq!(folder, expected);
+    assert_eq!(collection, expected);
+    assert_eq!(snapshot(root), before);
+}
+
+#[test]
+fn deleting_or_moving_with_a_changed_file_changes_nothing() {
+    let (dir, loaded) = setup();
+    let root = dir.path();
+    write(
+        root,
+        "collections/api/invoices/archive/old.req.toml",
+        &request_toml(6, "Theirs"),
+    );
+    write(
+        root,
+        "collections/api/invoices/archive/folder.toml",
+        &folder_toml(5, "Theirs", ""),
+    );
+    let before = snapshot(root);
+
+    let deleted = err(reqflux_store::delete(root, &loaded, id(2)));
+    let moved = err(reqflux_store::move_item(root, &loaded, id(6), id(10), 0));
+
+    assert!(
+        deleted.ends_with("changed on disk since it was loaded"),
+        "{deleted}"
+    );
+    assert_eq!(
+        moved,
+        conflict(root, "collections/api/invoices/archive/old.req.toml")
+    );
+    assert_eq!(snapshot(root), before);
+}
+
+#[test]
+fn delete_and_duplicate_leave_no_hidden_directory() {
+    let (dir, loaded) = setup();
+    let root = dir.path();
+
+    ok(reqflux_store::duplicate(root, &loaded, id(2)));
+    ok(reqflux_store::delete(root, &reload(root), id(2)));
+    ok(reqflux_store::delete(root, &reload(root), id(10)));
+
+    assert_eq!(hidden_dirs(root), Vec::<String>::new());
+}
+
+#[test]
+fn deleting_with_a_changed_or_added_sidecar_script_is_a_conflict() {
+    let cases = [
+        ("collections/api/invoices/list.pre.js", 3),
+        ("collections/api/invoices/list.test.js", 2),
+        ("collections/api/invoices/folder.pre.js", 2),
+        ("collections/api/invoices/archive/old.test.js", 2),
+        ("collections/api/collection.pre.js", 1),
+    ];
+    for (relative, target) in cases {
+        let (dir, loaded) = setup();
+        let root = dir.path();
+        write(root, relative, "// theirs\n");
+        let before = snapshot(root);
+
+        let result = err(reqflux_store::delete(root, &loaded, id(target)));
+
+        assert_eq!(result, conflict(root, relative));
+        assert_eq!(snapshot(root), before);
+    }
+}
+
+#[test]
+fn duplicating_a_source_changed_on_disk_is_a_conflict() {
+    let cases = [
+        ("collections/api/invoices/list.req.toml", 3),
+        ("collections/api/invoices/list.pre.js", 3),
+        ("collections/api/invoices/archive/old.req.toml", 2),
+        ("collections/api/invoices/folder.pre.js", 2),
+    ];
+    for (relative, target) in cases {
+        let (dir, loaded) = setup();
+        let root = dir.path();
+        write(root, relative, "# theirs\n");
+        let before = snapshot(root);
+
+        let result = err(reqflux_store::duplicate(root, &loaded, id(target)));
+
+        assert_eq!(result, conflict(root, relative));
+        assert_eq!(snapshot(root), before);
+        assert_eq!(hidden_dirs(root), Vec::<String>::new());
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_delete_that_fails_after_staging_restores_the_folder() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let (dir, loaded) = setup();
+    let root = dir.path();
+    let locked = path(root, "collections/api/invoices/archive");
+    let set_mode = |path: &Path, mode: u32| {
+        if let Err(error) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)) {
+            panic!("chmod {}: {error}", path.display());
+        }
+    };
+    set_mode(&locked, 0o555);
+
+    let result = reqflux_store::delete(root, &loaded, id(2));
+    let restored = path(root, "collections/api/invoices").is_dir();
+    let old_kept = path(root, "collections/api/invoices/archive/old.req.toml").is_file();
+    let hidden = hidden_dirs(root);
+    if locked.is_dir() {
+        set_mode(&locked, 0o755);
+    }
+    for staged in &hidden {
+        let archive = path(root, staged).join("deleted/archive");
+        if archive.is_dir() {
+            set_mode(&archive, 0o755);
+        }
+    }
+
+    assert!(result.is_err(), "{result:?}");
+    assert!(restored);
+    assert!(old_kept);
+    assert_eq!(hidden, Vec::<String>::new());
+    assert_eq!(
+        read(root, "collections/api/collection.toml"),
+        collection_toml(1, "API", "order = [\"invoices\", \"health\"]\n")
+    );
+}
+
+#[test]
+fn renaming_a_folder_to_folder_beside_a_folder_script_succeeds() {
+    let (dir, loaded) = setup();
+    let root = dir.path();
+
+    let placed_folder = ok(reqflux_store::rename(root, &loaded, id(5), "Folder"));
+
+    assert_eq!(
+        placed_folder,
+        placed(root, id(5), "collections/api/invoices/folder/folder.toml")
+    );
+    let loaded = reload(root);
+    let invoices = folder(&collection(&loaded, "api").items, "invoices");
+    assert_eq!(folder(&invoices.items, "folder").folder.name, "Folder");
+}

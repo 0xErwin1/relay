@@ -69,7 +69,7 @@ pub(super) fn numbered(
             format!("{base} {n}")
         };
         if let Ok((name, slug)) = named(&candidate, kind)
-            && holder(dir, &slug)?.is_none()
+            && holder(dir, &slug, kind)?.is_none()
         {
             return Ok((name, slug));
         }
@@ -78,8 +78,8 @@ pub(super) fn numbered(
 }
 
 /// Fails with [`StoreError::SlugTaken`] when an entry in `dir` holds `slug`.
-pub(super) fn ensure_free(dir: &Path, slug: &str) -> Result<(), StoreError> {
-    match holder(dir, slug)? {
+pub(super) fn ensure_free(dir: &Path, slug: &str, kind: SlugFor) -> Result<(), StoreError> {
+    match holder(dir, slug, kind)? {
         Some(path) => Err(StoreError::SlugTaken {
             path,
             slug: slug.to_owned(),
@@ -88,17 +88,19 @@ pub(super) fn ensure_free(dir: &Path, slug: &str) -> Result<(), StoreError> {
     }
 }
 
-/// The first existing entry of `dir` that holds `slug`: a directory, a request file or a
-/// request sidecar. A broken symlink counts.
-fn holder(dir: &Path, slug: &str) -> Result<Option<PathBuf>, StoreError> {
-    let scripts = script_files(dir, slug);
-    let candidates = [
-        dir.join(slug),
-        request_file_in(dir, slug),
-        scripts.pre_request,
-        scripts.test,
-        examples_dir_in(dir, slug),
-    ];
+/// The first existing entry of `dir` that holds `slug`: a directory or a request file, and
+/// for a request also its sidecars. A container's slug only clashes with the first two,
+/// so a folder named `folder` may sit beside `folder.pre.js`. A broken symlink counts.
+fn holder(dir: &Path, slug: &str, kind: SlugFor) -> Result<Option<PathBuf>, StoreError> {
+    let mut candidates = vec![dir.join(slug), request_file_in(dir, slug)];
+    if kind == SlugFor::Request {
+        let scripts = script_files(dir, slug);
+        candidates.extend([
+            scripts.pre_request,
+            scripts.test,
+            examples_dir_in(dir, slug),
+        ]);
+    }
     for path in candidates {
         match fs::symlink_metadata(&path) {
             Ok(_) => return Ok(Some(path)),
