@@ -25,8 +25,8 @@ use crate::scripts as engine_scripts;
 pub struct Engine {
     runtime: Runtime,
     client: HttpClient,
-    root: PathBuf,
-    loaded: Loaded,
+    pub(crate) root: PathBuf,
+    pub(crate) loaded: Loaded,
 }
 
 /// A request in flight.

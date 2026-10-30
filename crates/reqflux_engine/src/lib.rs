@@ -44,9 +44,10 @@ mod prepare;
 mod scripts;
 mod select;
 pub mod state;
+mod tree;
 
 pub use engine::{Engine, Executed, Execution};
-pub use error::{ExecuteError, ImportError, OpenError, SaveError};
+pub use error::{ExecuteError, ImportError, OpenError, SaveError, TreeError};
 pub use import::{ImportSummary, postman};
 pub use prepare::{
     DEFAULT_TIMEOUT_MS, ExecuteOptions, Inspection, Prepared, Span, inspect, prepare, prepare_draft,

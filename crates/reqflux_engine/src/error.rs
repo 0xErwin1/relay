@@ -89,6 +89,19 @@ pub enum SaveError {
     Store(#[from] StoreError),
 }
 
+/// Why a tree operation (create, rename, duplicate, delete, move, reorder) failed.
+#[derive(Debug, thiserror::Error)]
+pub enum TreeError {
+    /// The store refused the operation; nothing on disk changed and the engine keeps the
+    /// workspace it had.
+    #[error(transparent)]
+    Store(#[from] StoreError),
+    /// The operation was written but the workspace no longer loads; the engine keeps the
+    /// workspace it had.
+    #[error("the workspace does not reload after the change: {0}")]
+    Reload(#[source] OpenError),
+}
+
 impl ExecuteError {
     /// Whether the error comes from what the caller asked for (an unknown request or
     /// environment) rather than from executing it.
