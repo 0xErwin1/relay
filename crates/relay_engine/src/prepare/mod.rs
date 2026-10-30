@@ -14,6 +14,7 @@ use relay_core::model::{
 };
 use relay_core::template::{DynamicSource, Scope, ScopeEntry, ScopeKind, Scopes};
 use relay_http::{PreparedRequest, RequestOptions};
+use relay_script::VariableWrite;
 
 use crate::error::ExecuteError;
 use crate::select::{self, Target};
@@ -72,6 +73,7 @@ pub fn prepare(
         root,
         options,
         dynamic,
+        &[],
     )
 }
 
@@ -95,7 +97,32 @@ pub fn prepare_draft(
     dynamic: &mut impl DynamicSource,
 ) -> Result<Prepared, ExecuteError> {
     let target = select::find(workspace, selector)?;
-    prepare_request(workspace, &target, draft, root, options, dynamic)
+    prepare_request(workspace, &target, draft, root, options, dynamic, &[])
+}
+
+/// Prepares the request `target` selects with `request` as its document, applying the
+/// variable writes a pre-request script made to this run's scopes (`S7`). The writes are
+/// never persisted; they exist for this preparation only.
+///
+/// The errors of [`prepare`] for the same `workspace`, `target`, `options` and `request`.
+pub(crate) fn prepare_target(
+    workspace: &Workspace,
+    target: &Target<'_>,
+    request: &Request,
+    root: &Path,
+    options: &ExecuteOptions,
+    dynamic: &mut impl DynamicSource,
+    script_writes: &[VariableWrite],
+) -> Result<Prepared, ExecuteError> {
+    prepare_request(
+        workspace,
+        target,
+        request,
+        root,
+        options,
+        dynamic,
+        script_writes,
+    )
 }
 
 /// The one resolution path; `request` is the document to prepare, stored or draft, and
@@ -107,12 +134,12 @@ fn prepare_request(
     root: &Path,
     options: &ExecuteOptions,
     dynamic: &mut impl DynamicSource,
+    script_writes: &[VariableWrite],
 ) -> Result<Prepared, ExecuteError> {
     let environment = select_environment(workspace, target.collection, options)?;
-    let mut resolver = Resolver::new(
-        scopes(workspace, target.collection, environment, options),
-        dynamic,
-    );
+    let mut scope_map = scopes(workspace, target.collection, environment, options);
+    crate::scripts::apply_writes(&mut scope_map, script_writes);
+    let mut resolver = Resolver::new(scope_map, dynamic);
 
     let base = resolver.text(&request.url);
     let mut query = resolver.pairs(&request.params);
@@ -134,7 +161,7 @@ fn prepare_request(
 }
 
 /// The environment `options` selects, checked against the collection allowlist (S5).
-fn select_environment<'a>(
+pub(crate) fn select_environment<'a>(
     workspace: &'a Workspace,
     collection: &CollectionNode,
     options: &ExecuteOptions,
@@ -160,7 +187,7 @@ fn select_environment<'a>(
 }
 
 /// Globals < collection < environment < local `--var`s (S4).
-pub(super) fn scopes(
+pub(crate) fn scopes(
     workspace: &Workspace,
     collection: &CollectionNode,
     environment: Option<&EnvironmentNode>,

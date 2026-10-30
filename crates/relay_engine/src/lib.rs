@@ -10,7 +10,12 @@
 //! the effective auth, builds the body and fills in default settings. [`prepare`] is the same
 //! step as a pure function, with no IO and no network. [`prepare_draft`] does the same for
 //! a draft request document in the place of the stored one, keeping its parents.
-//! [`Engine::send`] sends a prepared request; [`Engine::execute`] does both.
+//! [`Engine::send`] sends a prepared request; [`Engine::execute`] does both, after running
+//! the request's effective pre-request script (see the `Scripting` section of
+//! `ARCHITECTURE.md`): the most specific script on the request, its folders or the
+//! collection, whose variable writes apply to that execution's scopes only.
+//! [`Engine::wait`] runs the effective test script once the response arrives and returns
+//! its results beside the response in [`Executed::scripts`].
 //!
 //! # Threading model
 //!
@@ -32,6 +37,7 @@ mod engine;
 mod error;
 mod import;
 mod prepare;
+mod scripts;
 mod select;
 pub mod state;
 
@@ -43,5 +49,8 @@ pub use prepare::{
 };
 /// The transport types front ends read, re-exported so they depend on the engine only.
 pub use relay_http::{HttpError, PreparedBody, PreparedRequest, Response};
+pub use relay_script::{
+    ConsoleEntry, ConsoleLevel, ScriptOutcome, TestResult, VariableScope, VariableWrite,
+};
 /// The token type of [`Execution::cancel`], re-exported so front ends can hold it.
 pub use tokio_util::sync::CancellationToken;

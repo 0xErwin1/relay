@@ -401,6 +401,20 @@ allows it and without one otherwise.
 - Every run has a memory limit and an interrupt-based time limit, so a `while (true)` loop in a
   shared collection cannot hang the app.
 
+What runs today (S7): before preparing a request, the engine runs the effective pre-request
+script — the request's, else the innermost folder's that has one, else the collection's — with
+`pm.request` as the stored document and the merged variables of the execution's scopes, and
+applies its variable writes to those scopes for this run only, never to disk. After the
+response it runs the effective test script the same way, with `pm.response`. Test results and
+console entries travel beside the response (`Executed::scripts`); a failing test or a script
+error — reported as an error console entry — never fails the request.
+
+`relay run` prints the script results to stderr before its summary line, pre-request entries
+first: one line per recorded test (`test pass <name>` or `test fail <name>: <message>`) and
+one line per console entry (`console <level>: <message>`, level one of `log`, `info`, `warn`,
+`error`). The exit code is unchanged by a failing test. Still later slices: `pm.sendRequest`,
+`require()` of the bundled libraries, and the results panel and console in the app.
+
 ## Postman compatibility
 
 - Collection v2.1 and environment JSON, import and export.

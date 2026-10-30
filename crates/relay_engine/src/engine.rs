@@ -5,13 +5,18 @@ use std::path::{Path, PathBuf};
 use relay_core::model::{Request, Workspace};
 use relay_core::template::SystemDynamicSource;
 use relay_http::{HttpClient, HttpError, PreparedRequest, Response};
+use relay_script::{RequestView, ScriptOutcome, ScriptStage, VariableWrite};
 use relay_store::{ContentHash, Loaded, StoreError, Warning};
 use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::{ExecuteError, OpenError, SaveError};
-use crate::prepare::{ExecuteOptions, Inspection, Prepared, inspect, prepare, prepare_draft};
+use crate::prepare::{
+    ExecuteOptions, Inspection, Prepared, inspect, prepare, prepare_draft, prepare_target, scopes,
+    select_environment,
+};
+use crate::scripts as engine_scripts;
 
 /// A loaded workspace that executes its requests. See the crate docs for the threading
 /// model.
@@ -36,6 +41,25 @@ pub struct Execution {
     pub cancel: CancellationToken,
     /// The task sending the request. Await it from any executor.
     pub handle: JoinHandle<Result<Response, HttpError>>,
+    /// What the effective pre-request script produced before the request was prepared.
+    /// Empty when the caller used [`Engine::send`] directly, which skips scripts.
+    pub scripts: ScriptOutcome,
+    /// What [`Engine::wait`] needs to run the effective test script once the response
+    /// arrives; `None` when the caller used [`Engine::send`] directly.
+    scripted: Option<Box<Scripted>>,
+}
+
+/// What the engine needs to run the effective test script after the response.
+#[derive(Debug)]
+struct Scripted {
+    /// The selector the request was executed under, re-resolved at test time.
+    selector: String,
+    /// The environment slug of the execution, if any.
+    environment: Option<String>,
+    /// The local variables of the execution.
+    vars: Vec<(String, String)>,
+    /// The `pm.request` view the pre-request stage used, the document that was sent.
+    request: RequestView,
 }
 
 /// A finished request execution.
@@ -49,6 +73,11 @@ pub struct Executed {
     pub unresolved: Vec<String>,
     /// The response.
     pub response: Response,
+    /// What the effective pre-request and test scripts produced: test results, console
+    /// entries and variable writes, pre-request entries first. A failing test or a script
+    /// error never fails the request (S7); script errors are reported as error console
+    /// entries here.
+    pub scripts: ScriptOutcome,
 }
 
 impl Engine {
@@ -209,10 +238,14 @@ impl Engine {
             unresolved,
             cancel,
             handle,
+            scripts: ScriptOutcome::default(),
+            scripted: None,
         }
     }
 
-    /// Prepares and sends the request `selector`.
+    /// Prepares and sends the request `selector`, running its effective pre-request script
+    /// first (S7). The script runs on the calling thread, bounded by the script time limit;
+    /// its variable writes apply to this execution's scopes only, never to disk.
     ///
     /// # Errors
     ///
@@ -222,11 +255,15 @@ impl Engine {
         selector: &str,
         options: &ExecuteOptions,
     ) -> Result<Execution, ExecuteError> {
-        Ok(self.send(self.prepare(selector, options)?))
+        let target = crate::select::find(self.workspace(), selector)?;
+        let (prepared, scripts, view) =
+            self.prepare_scripted(&target, &target.request.request, options)?;
+        Ok(self.scripted_execution(prepared, scripts, view, selector, options))
     }
 
     /// Prepares and sends `draft` in the place of the request `selector` selects, so a front
-    /// end sends what the user edited. See [`prepare_draft`].
+    /// end sends what the user edited, running the effective pre-request script first (S7);
+    /// the script sees the draft. See [`Engine::execute`].
     ///
     /// # Errors
     ///
@@ -237,24 +274,121 @@ impl Engine {
         draft: &Request,
         options: &ExecuteOptions,
     ) -> Result<Execution, ExecuteError> {
-        Ok(self.send(self.prepare_draft(selector, draft, options)?))
+        let target = crate::select::find(self.workspace(), selector)?;
+        let (prepared, scripts, view) = self.prepare_scripted(&target, draft, options)?;
+        Ok(self.scripted_execution(prepared, scripts, view, selector, options))
     }
 
-    /// Blocks the calling thread until `execution` finishes. Must not be called from inside
-    /// an async context.
+    /// Attaches the script state [`Engine::wait`] needs to run the effective test script.
+    fn scripted_execution(
+        &self,
+        prepared: Prepared,
+        scripts: ScriptOutcome,
+        view: RequestView,
+        selector: &str,
+        options: &ExecuteOptions,
+    ) -> Execution {
+        let mut execution = self.send(prepared);
+        execution.scripts = scripts;
+        execution.scripted = Some(Box::new(Scripted {
+            selector: selector.to_owned(),
+            environment: options.environment.clone(),
+            vars: options.vars.clone(),
+            request: view,
+        }));
+        execution
+    }
+
+    /// Runs the effective pre-request script of `target` over the scopes the execution
+    /// would resolve with, then prepares `request` with the script's writes applied. The
+    /// script's outcome comes back even when the script failed.
+    fn prepare_scripted(
+        &self,
+        target: &crate::select::Target<'_>,
+        request: &Request,
+        options: &ExecuteOptions,
+    ) -> Result<(Prepared, ScriptOutcome, RequestView), ExecuteError> {
+        let environment = select_environment(self.workspace(), target.collection, options)?;
+        let scope_view = scopes(self.workspace(), target.collection, environment, options);
+        let view = engine_scripts::request_view(request);
+        let outcome =
+            engine_scripts::run_stage(ScriptStage::PreRequest, target, &view, &scope_view, None);
+        let prepared = prepare_target(
+            self.workspace(),
+            target,
+            request,
+            &self.root,
+            options,
+            &mut SystemDynamicSource,
+            &outcome.writes,
+        )?;
+        Ok((prepared, outcome, view))
+    }
+
+    /// Blocks the calling thread until `execution` finishes, then runs the effective test
+    /// script with the response in `pm.response` (S7) and returns everything beside the
+    /// response. The test script reads the scopes the pre-request script left behind; a
+    /// failing test or a script error never fails the request. Must not be called from
+    /// inside an async context.
     ///
     /// # Errors
     ///
     /// The transport error, or [`ExecuteError::Task`] when the task panicked or was aborted.
-    pub fn wait(&self, execution: Execution) -> Result<Response, ExecuteError> {
-        self.runtime
-            .block_on(execution.handle)
-            .map_err(|error| ExecuteError::Task(error.to_string()))?
-            .map_err(ExecuteError::from)
+    pub fn wait(&self, execution: Execution) -> Result<Executed, ExecuteError> {
+        let Execution {
+            method,
+            url,
+            unresolved,
+            handle,
+            mut scripts,
+            scripted,
+            ..
+        } = execution;
+        let response = self
+            .runtime
+            .block_on(handle)
+            .map_err(|error| ExecuteError::Task(error.to_string()))??;
+        if let Some(scripted) = scripted {
+            let pre_writes = scripts.writes.clone();
+            let outcome = self.run_test_script(*scripted, &response, &pre_writes)?;
+            engine_scripts::merge(&mut scripts, outcome);
+        }
+        Ok(Executed {
+            method,
+            url,
+            unresolved,
+            response,
+            scripts,
+        })
     }
 
-    /// Prepares and sends the request `selector`, blocking until the response arrives. Must
-    /// not be called from inside an async context.
+    /// Runs the effective test script of the request `scripted.selector` names, with the
+    /// response in `pm.response` and the pre-request writes applied to the scopes.
+    fn run_test_script(
+        &self,
+        scripted: Scripted,
+        response: &Response,
+        pre_writes: &[VariableWrite],
+    ) -> Result<ScriptOutcome, ExecuteError> {
+        let options = ExecuteOptions {
+            environment: scripted.environment,
+            vars: scripted.vars,
+        };
+        let target = crate::select::find(self.workspace(), &scripted.selector)?;
+        let environment = select_environment(self.workspace(), target.collection, &options)?;
+        let mut scope_view = scopes(self.workspace(), target.collection, environment, &options);
+        engine_scripts::apply_writes(&mut scope_view, pre_writes);
+        Ok(engine_scripts::run_stage(
+            ScriptStage::Test,
+            &target,
+            &scripted.request,
+            &scope_view,
+            Some(response),
+        ))
+    }
+
+    /// Prepares and sends the request `selector`, blocking until the response and the
+    /// effective test script have run. Must not be called from inside an async context.
     ///
     /// # Errors
     ///
@@ -265,17 +399,6 @@ impl Engine {
         options: &ExecuteOptions,
     ) -> Result<Executed, ExecuteError> {
         let execution = self.execute(selector, options)?;
-        let (method, url, unresolved) = (
-            execution.method.clone(),
-            execution.url.clone(),
-            execution.unresolved.clone(),
-        );
-        let response = self.wait(execution)?;
-        Ok(Executed {
-            method,
-            url,
-            unresolved,
-            response,
-        })
+        self.wait(execution)
     }
 }

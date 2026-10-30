@@ -1,10 +1,11 @@
-//! `relay run`: send one request and print the response (S11).
+//! `relay run`: send one request and print the response (S11) and the script results
+//! (S9).
 
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use relay_engine::{Engine, ExecuteError, ExecuteOptions, Response};
+use relay_engine::{Engine, ExecuteError, ExecuteOptions, Response, ScriptOutcome};
 
 use crate::cli::RunArgs;
 
@@ -65,17 +66,35 @@ fn send(args: RunArgs) -> Result<(), Failure> {
         eprintln!("warning: unresolved variable {{{{{name}}}}}");
     }
     let (method, url) = (execution.method.clone(), execution.url.clone());
-    let response = engine.wait(execution)?;
+    let executed = engine.wait(execution)?;
+    let response = &executed.response;
 
-    write_response(&response, args.include)
+    write_scripts(&executed.scripts);
+    write_response(response, args.include)
         .map_err(|error| Failure::Execution(format!("could not write the response: {error}")))?;
     eprintln!(
         "{method} {url} -> {} in {} ms, {}",
-        status(&response),
+        status(response),
         response.elapsed.as_millis(),
         size(response.size())
     );
     Ok(())
+}
+
+/// Prints the script results in their documented shape, pre-request entries first: one
+/// `test` line per recorded test and one `console` line per console entry. A failing test
+/// does not change the exit code.
+fn write_scripts(scripts: &ScriptOutcome) {
+    for test in &scripts.tests {
+        match (&test.passed, &test.message) {
+            (true, _) => eprintln!("test pass {}", test.name),
+            (false, Some(message)) => eprintln!("test fail {}: {message}", test.name),
+            (false, None) => eprintln!("test fail {}", test.name),
+        }
+    }
+    for entry in &scripts.console {
+        eprintln!("console {}: {}", entry.level.as_str(), entry.message);
+    }
 }
 
 /// Splits `<key>=<value>` at the first `=`.

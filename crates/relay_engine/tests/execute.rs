@@ -257,11 +257,11 @@ fn execute_draft_sends_the_draft_not_the_stored_request() {
         Err(error) => panic!("execute draft: {error}"),
     };
     let (method, url) = (execution.method.clone(), execution.url.clone());
-    let response = match engine.wait(execution) {
-        Ok(response) => response,
+    let executed = match engine.wait(execution) {
+        Ok(executed) => executed,
         Err(error) => panic!("send: {error}"),
     };
-    assert_eq!(response.status, 201);
+    assert_eq!(executed.response.status, 201);
     assert_eq!(method, "POST");
     assert_eq!(url, format!("{}/draft", server.uri()));
 }
@@ -328,7 +328,7 @@ fn cancelling_an_execution_ends_it_with_request_cancelled() {
     };
     execution.cancel.cancel();
     match engine.wait(execution) {
-        Ok(response) => panic!("unexpected response {}", response.status),
+        Ok(executed) => panic!("unexpected response {}", executed.response.status),
         Err(error) => assert_eq!(error.to_string(), "request cancelled"),
     }
 }

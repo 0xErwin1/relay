@@ -296,6 +296,54 @@ fn warnings_come_before_the_summary() {
 }
 
 #[test]
+fn scripts_print_tests_and_console_to_stderr() {
+    let rt = runtime();
+    let server = server(
+        &rt,
+        vec![
+            Mock::given(path("/s"))
+                .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"ok":true}"#)),
+        ],
+    );
+    let dir = workspace("", &[("s", get("{{base}}/s"))]);
+    write(
+        dir.path(),
+        "collections/api/s.pre.js",
+        &format!(
+            "pm.variables.set(\"base\", \"{}\");\nconsole.log(\"pre ran\");\n",
+            server.uri()
+        ),
+    );
+    write(
+        dir.path(),
+        "collections/api/s.test.js",
+        "pm.test(\"status is 200\", function () {\n  pm.expect(pm.response.code).to.eql(200);\n});\npm.test(\"body ok\", function () {\n  pm.expect(pm.response.json().ok).to.eql(true);\n});\npm.test(\"always fails\", function () {\n  pm.expect(1, \"one is not two\").to.eql(2);\n});\nconsole.error(\"boom\");\n",
+    );
+    let output = run(&dir, &["api/s"]);
+    let stderr: Vec<String> = text(&output.stderr).lines().map(str::to_owned).collect();
+    let last = stderr.len() - 1;
+    if stderr[..last]
+        != [
+            "test pass status is 200".to_owned(),
+            "test pass body ok".to_owned(),
+            "test fail always fails: one is not two: expected 1 to deeply equal 2".to_owned(),
+            "console log: pre ran".to_owned(),
+            "console error: boom".to_owned(),
+        ]
+    {
+        panic!("relay stderr was:\n{}", text(&output.stderr));
+    }
+    assert_summary(
+        &format!("{}\n", stderr[last]),
+        &format!("GET {}/s -> 200 OK in ", server.uri()),
+        " ms, 11 B\n",
+    );
+    assert_eq!(text(&output.stdout), r#"{"ok":true}"#);
+    // A failing test does not change the exit code (S9).
+    assert_eq!(output.status.code(), Some(0));
+}
+
+#[test]
 fn unknown_environment_is_a_usage_error() {
     let dir = workspace("", &[("r", get("http://127.0.0.1:1/"))]);
     assert_failure(
