@@ -392,12 +392,15 @@ allows it and without one otherwise.
   `pm.execution.skipRequest`.
 - The legacy globals (`tests[...]`, `responseBody`, `postman.setEnvironmentVariable`) are
   supported, because many shared collections still use them.
-- `require()` serves the libraries the Postman sandbox ships (chai, lodash, moment,
-  crypto-js, uuid, ajv, cheerio, xml2js, tv4, csv-parse), bundled as JavaScript assets and
-  loaded on first use. All are MIT or similarly licensed; the bundle records each version and
-  license.
-- `pm.sendRequest` is asynchronous. The sandbox drives the QuickJS job queue and resolves the
-  host promise when `relay_engine` returns the response.
+- `require()` serves `lodash` 4.17.21, `moment` 2.30.1 and `chai` 4.5.0, vendored unchanged
+  under `crates/relay_script/assets/` with their versions, licences and source URLs in
+  `assets/LICENSES.md`, and compiled the first time a script asks for one. An unknown module
+  fails with its name. The rest of Postman's set (crypto-js, uuid, ajv, cheerio, xml2js, tv4,
+  csv-parse) is added when a collection needs it, so the binary carries only what is used.
+- `pm.sendRequest` blocks the script until the host answers, and the engine answers it on the
+  same `relay_http` client the request path uses, bounded by the request's own timeout. Because
+  a script can wait for the network, every script runs on a dedicated blocking thread with its
+  own current-thread runtime, so neither the GPU thread nor the engine's async runtime waits.
 - Every run is bounded three ways, so a script in a shared collection cannot hang the app or
   exhaust the machine: a 64 MiB QuickJS heap, a 5 s wall clock enforced by the interrupt
   handler, and an 8 MiB cap on what the host itself collects (console lines, test results and

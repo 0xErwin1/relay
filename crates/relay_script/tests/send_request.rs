@@ -81,7 +81,8 @@ fn a_host_failure_arrives_as_error_not_a_throw() {
     let outcome = run_ok(
         r#"
         pm.sendRequest("https://api.example.com/token", function (error, response) {
-          if (response !== undefined) throw new Error("no response expected");
+          // Postman hands null where nothing happened, and collections check for it.
+          if (response !== null) throw new Error("no response expected");
           console.log("error was: " + error);
         });
         "#,
@@ -235,4 +236,31 @@ fn a_sleeping_callback_does_not_block_concurrent_work() {
         outcome.is_ok(),
         "the script finished once the host answered"
     );
+}
+
+#[test]
+fn the_callback_gets_null_for_the_side_that_did_not_happen() {
+    let send =
+        relay_script::SendRequest(std::sync::Arc::new(|spec: relay_script::ScriptRequest| {
+            if spec.url.ends_with("/fail") {
+                return Err("boom".to_owned());
+            }
+            token_response()
+        }));
+    let outcome = run(
+        r#"pm.sendRequest("https://api.test/ok", (error, response) => {
+             console.log(String(error) + "|" + (error === null) + "|" + response.code);
+           });
+           pm.sendRequest("https://api.test/fail", (error, response) => {
+             console.log((response === null) + "|" + String(error));
+           });"#,
+        &context(ScriptStage::PreRequest, Some(send)),
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    let messages: Vec<_> = outcome
+        .console
+        .iter()
+        .map(|entry| entry.message.clone())
+        .collect();
+    assert_eq!(messages, ["null|true|200", "true|boom"]);
 }

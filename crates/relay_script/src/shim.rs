@@ -244,10 +244,12 @@ pub(super) const PRELUDE: &str = r#"
       // {"ok":false,"error":...}. A limit abort throws out of the host call and ends the
       // run — it is never the callback's error.
       const answer = JSON.parse(__relaySend(JSON.stringify(spec)));
+      // Postman hands the callback `null` for the side that did not happen, and collections
+      // rely on it (`pm.expect(err).to.be.null`), so neither slot is left undefined.
       if (answer.ok) {
-        callback(undefined, makeSendResponse(answer.response));
+        callback(null, makeSendResponse(answer.response));
       } else {
-        callback(String(answer.error), undefined);
+        callback(String(answer.error), null);
       }
     },
   };
