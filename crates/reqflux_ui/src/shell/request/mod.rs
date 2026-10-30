@@ -10,6 +10,7 @@ mod code;
 mod grid;
 mod grid_model;
 mod line;
+mod method_menu;
 mod model;
 mod option_menu;
 mod pane_model;
@@ -44,7 +45,7 @@ pub(super) fn render(
     cx: &mut Context<Shell>,
 ) -> [Stateful<Div>; 3] {
     [
-        line::render(id, state, sending, shell, cx),
+        line::render(id, state, sending, shell, window, cx),
         sub_tabs::render(id, state, shell, cx),
         pane(id, state, shell, window, cx),
     ]

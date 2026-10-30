@@ -1,4 +1,4 @@
-//! The request line: the read-only method chip, the URL with its references styled, and
+//! The request line: the method chip, which opens the method menu, the URL with its references styled, and
 //! the Send split button, which sends the request, or the Cancel button while it is in
 //! flight. Clicking the URL swaps it for an editable field; the send options do nothing yet.
 
@@ -7,12 +7,13 @@ use bolt::controls::Keycap;
 use bolt::tokens::{border, chrome, cut, family, icon, space};
 use bolt::{Icon, IconName};
 use gpui::{
-    App, Context, Div, Entity, FontWeight, ParentElement, Role, Stateful, Styled, div, prelude::*,
+    Context, Div, Entity, FontWeight, ParentElement, Role, Stateful, Styled, Window, div,
+    prelude::*,
 };
 use gpui_component::input::{Enter, Escape, Input, InputState};
 
 use super::model::RequestState;
-use super::spans;
+use super::{method_menu, spans};
 use crate::shell::{Shell, region};
 use crate::tokens::{self, method_color};
 
@@ -22,6 +23,7 @@ pub(super) fn render(
     state: &RequestState,
     sending: bool,
     shell: &Shell,
+    window: &Window,
     cx: &mut Context<Shell>,
 ) -> Stateful<Div> {
     let action = if sending {
@@ -37,7 +39,7 @@ pub(super) fn render(
         .gap(space::SM)
         .pl(space::MD)
         .pr(space::MD)
-        .child(method(state, cx))
+        .child(method(id, state, shell, window, cx))
         .child(url(id, state, shell, cx))
         .child(action)
 }
@@ -76,12 +78,32 @@ fn cancel(id: &str, cx: &mut Context<Shell>) -> Stateful<Div> {
         .on_click(cx.listener(move |this, _event, _window, cx| this.cancel(&id, cx)))
 }
 
-/// The method chip, element id `request-method`.
-fn method(state: &RequestState, cx: &App) -> Stateful<Div> {
+/// The method chip, element id `request-method`, showing the draft's verb, else the file's.
+/// A click opens the method menu under it; while the custom verb field of this request is
+/// open, the field takes the chip's place.
+fn method(
+    id: &str,
+    state: &RequestState,
+    shell: &Shell,
+    window: &Window,
+    cx: &mut Context<Shell>,
+) -> Stateful<Div> {
+    if let Some(edit) = shell
+        .cell_edit
+        .as_ref()
+        .filter(|_| shell.method_edit_of(id))
+    {
+        return editing_method(edit.input.clone(), cx);
+    }
     let colors = bolt::colors(cx);
-    let verb = state.inspection.request.request.method.to_string();
+    let current = shell
+        .displayed_request(id, &state.inspection.request.request)
+        .method
+        .clone();
+    let verb = current.to_string();
+    let request = id.to_owned();
     region("request-method")
-        .role(Role::Label)
+        .role(Role::Button)
         .aria_label(verb.clone())
         .relative()
         .flex_none()
@@ -110,6 +132,56 @@ fn method(state: &RequestState, cx: &App) -> Stateful<Div> {
             Icon::new(IconName::ChevronDown)
                 .size(icon::SM)
                 .color(colors.muted),
+        )
+        .cursor_pointer()
+        .on_click(cx.listener(|this, _event, window, cx| {
+            this.toggle_method_menu(window, cx);
+        }))
+        .when(shell.method_menu_open, |anchor| {
+            anchor.child(method_menu::render(&request, &current, shell, window, cx))
+        })
+}
+
+/// The custom verb field, element id `request-method-input`, over the input `input`: Enter
+/// commits it, Escape discards it and Ctrl+Enter sends.
+fn editing_method(input: Entity<InputState>, cx: &mut Context<Shell>) -> Stateful<Div> {
+    let colors = bolt::colors(cx);
+    region("request-method-input")
+        .role(Role::TextInput)
+        .relative()
+        .flex_none()
+        .w(tokens::METHOD_CHIP_WIDTH)
+        .h(chrome::CONTROL)
+        .flex()
+        .items_center()
+        .pl(space::MD)
+        .pr(space::MD)
+        .child(
+            Chamfer::new(cut::CONTROL)
+                .fill(colors.background)
+                .edge(colors.line, border::THIN),
+        )
+        .on_action(cx.listener(|this, action: &Enter, window, cx| {
+            // Ctrl+Enter maps to the input's `secondary-enter` while the field has focus:
+            // it sends instead of committing.
+            if action.secondary {
+                this.send_active(window, cx);
+            } else {
+                this.commit_cell_edit(window, cx);
+            }
+        }))
+        .on_action(cx.listener(|this, _: &Escape, window, cx| {
+            this.discard_cell_edit(window, cx);
+        }))
+        .child(
+            Input::new(&input)
+                .appearance(false)
+                .bordered(false)
+                .flex_1()
+                .min_w_0()
+                .text_size(tokens::REQUEST_LINE_TEXT)
+                .font_family(family::MONO)
+                .text_color(colors.strong),
         )
 }
 

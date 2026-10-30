@@ -11,6 +11,7 @@ mod documents;
 mod drafts;
 mod environment_menu;
 mod last_request;
+mod method_edit;
 mod path_bar;
 mod rail;
 mod request;
@@ -104,6 +105,10 @@ pub(crate) struct Shell {
     body_menu_open: bool,
     /// Focused while the body mode menu is open, so Escape reaches it.
     body_menu_focus: FocusHandle,
+    /// Whether the method menu of the active request is open.
+    method_menu_open: bool,
+    /// Focused while the method menu is open, so Escape reaches it.
+    method_menu_focus: FocusHandle,
     /// The shell's own focus, given back when the environment menu closes, so the window's
     /// keys (Ctrl+Enter, Escape) keep reaching the shell's key context.
     focus: FocusHandle,
@@ -160,6 +165,8 @@ impl Shell {
             auth_menu_focus: cx.focus_handle(),
             body_menu_open: false,
             body_menu_focus: cx.focus_handle(),
+            method_menu_open: false,
+            method_menu_focus: cx.focus_handle(),
             focus: cx.focus_handle(),
             _open_requests: open_requests,
         };
@@ -278,6 +285,7 @@ impl Shell {
         self.documents.activate(id);
         self.auth_menu_open = false;
         self.body_menu_open = false;
+        self.method_menu_open = false;
         self.drop_stale_url_edit(id);
         self.drop_stale_body_edit(id);
         self.commit_cell_edit(window, cx);
@@ -363,6 +371,8 @@ mod grid_edit_tests;
 mod interaction_tests;
 #[cfg(test)]
 mod last_request_tests;
+#[cfg(test)]
+mod method_edit_tests;
 #[cfg(test)]
 mod request_tests;
 #[cfg(test)]
