@@ -56,6 +56,9 @@ pub(super) fn scan(root: &Path, warnings: &mut Vec<Warning>) -> Result<Plan, Sto
     }
     let mut collections = Vec::new();
     for (name, path) in entries(&root.join(COLLECTIONS))? {
+        if symlinked_directory(&path, warnings)? {
+            continue;
+        }
         if !path.is_dir() {
             continue;
         }
@@ -84,6 +87,9 @@ fn container(
     }
     let mut children = Vec::new();
     for (name, path) in entries(dir)? {
+        if symlinked_directory(&path, warnings)? {
+            continue;
+        }
         if path.is_dir() {
             if name.ends_with(EXAMPLES_SUFFIX) {
                 continue;
@@ -126,6 +132,31 @@ fn warn_missing(warnings: &mut Vec<Warning>, path: PathBuf, file: &'static str) 
     };
     log::warn!("{warning}");
     warnings.push(warning);
+}
+
+/// True when `path` is a symlinked directory, which is skipped with a warning: a
+/// hand-edited workspace could point it outside the root. A symlinked file keeps its
+/// behaviour of being read like a regular file, and a broken symlink is not a directory.
+fn symlinked_directory(path: &Path, warnings: &mut Vec<Warning>) -> Result<bool, StoreError> {
+    if !is_symlink(path)? || !path.is_dir() {
+        return Ok(false);
+    }
+    let warning = Warning {
+        path: path.to_owned(),
+        kind: WarningKind::SymlinkedDirectory,
+    };
+    log::warn!("{warning}");
+    warnings.push(warning);
+    Ok(true)
+}
+
+/// Whether `path` itself is a symlink, as opposed to what it points to.
+fn is_symlink(path: &Path) -> Result<bool, StoreError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => Ok(metadata.file_type().is_symlink()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(source) => Err(io_error(path, source)),
+    }
 }
 
 /// The visible entries of `dir` sorted by name; an absent directory has none. Hidden

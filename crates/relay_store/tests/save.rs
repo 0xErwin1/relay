@@ -244,6 +244,54 @@ fn a_reserved_request_slug_is_rejected_without_writing() {
     assert_eq!(files(root), vec!["relay.toml"]);
 }
 
+// --- Durability --------------------------------------------------------------
+
+fn collection() -> relay_core::model::Collection {
+    relay_core::model::Collection {
+        id: id(1),
+        name: "API".into(),
+        environments: Vec::new(),
+        order: Vec::new(),
+        auth: relay_core::model::Auth::Inherit,
+        variables: Vec::new(),
+        extensions: toml::Table::new(),
+    }
+}
+
+#[test]
+fn a_save_succeeds_and_leaves_no_temporary_file_behind() {
+    let dir = minimal_workspace();
+    let root = dir.path();
+    let collection = collection();
+
+    let saved = relay_store::save_collection(root, "api", &collection, None);
+
+    assert!(saved.is_ok(), "{saved:?}");
+    // `files` lists every entry, hidden ones included, so a leftover `.tmp` file shows up.
+    assert_eq!(
+        files(root),
+        vec!["collections/api/collection.toml", "relay.toml"]
+    );
+    assert_eq!(load(root).workspace.collections[0].collection, collection);
+}
+
+#[test]
+fn a_save_into_a_fresh_directory_succeeds() {
+    // The parent-directory sync cannot be observed from a test, so this pins that the
+    // code path runs on a directory the save itself just created.
+    let dir = minimal_workspace();
+    let root = dir.path();
+    let collection = collection();
+
+    let saved = relay_store::save_collection(root, "fresh", &collection, None);
+
+    assert!(saved.is_ok(), "{saved:?}");
+    assert_eq!(
+        read(root, "collections/fresh/collection.toml"),
+        format!("id = \"{}\"\nname = \"API\"\n", id_text(1))
+    );
+}
+
 // --- Scripts -----------------------------------------------------------------
 
 fn scripts(pre: Option<&str>, test: Option<&str>) -> Scripts {

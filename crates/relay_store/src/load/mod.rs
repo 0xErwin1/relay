@@ -4,7 +4,8 @@
 //!
 //! 1. **Scan** the layout (S4) into a plan of entity files, skipping hidden entries, unknown
 //!    files and `*.examples` directories silently, and warning about a directory that lacks
-//!    its `collection.toml` or `folder.toml`.
+//!    its `collection.toml` or `folder.toml`, or that is a symlink (which is not followed,
+//!    so a hand-edited workspace cannot point loading outside the root).
 //! 2. **Parse** every entity file in sorted path order (component-wise), which is the load
 //!    order duplicate ids are resolved in (S8): the first file keeps an id, a later one gets a
 //!    fresh id in memory only. Secret values are dropped with a warning (S10).

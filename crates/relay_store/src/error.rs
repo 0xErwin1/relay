@@ -106,6 +106,9 @@ pub enum WarningKind {
         /// The reserved slug.
         slug: String,
     },
+    /// A directory is a symlink; it was not followed so a hand-edited workspace cannot
+    /// make loading read files outside the root.
+    SymlinkedDirectory,
 }
 
 impl fmt::Display for Warning {
@@ -128,6 +131,9 @@ impl fmt::Display for Warning {
                 f,
                 "{path}: request slug `{slug}` is reserved; rename the file to load it"
             ),
+            WarningKind::SymlinkedDirectory => {
+                write!(f, "{path}: directory is a symlink; it was ignored")
+            }
         }
     }
 }

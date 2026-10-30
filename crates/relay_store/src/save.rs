@@ -187,7 +187,23 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<ContentHash, StoreError> {
     set_permissions(path, &file)?;
     file.persist(path)
         .map_err(|error| io_error(path, error.error))?;
+    sync_parent(dir)?;
     Ok(ContentHash::of(bytes))
+}
+
+/// The file fsync makes the bytes durable but not the rename: the directory entry itself
+/// needs a fsync, so the parent directory is synced too. Only unix has a directory fsync;
+/// elsewhere there is none and the rename keeps the platform's default durability.
+#[cfg(unix)]
+fn sync_parent(dir: &Path) -> Result<(), StoreError> {
+    fs::File::open(dir)
+        .and_then(|dir| dir.sync_all())
+        .map_err(|source| io_error(dir, source))
+}
+
+#[cfg(not(unix))]
+fn sync_parent(_dir: &Path) -> Result<(), StoreError> {
+    Ok(())
 }
 
 /// The temporary file is private; give the target the permissions it had, or the usual
