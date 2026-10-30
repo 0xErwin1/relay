@@ -1,0 +1,9 @@
+{
+  "_postman_id": "env-42",
+  "name": "Staging",
+  "values": [
+    { "key": "host", "value": "staging.example.com", "enabled": true },
+    { "key": "password", "value": "s3cret", "type": "secret" },
+    { "key": "debug", "value": "true", "enabled": false }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "info": { "name": "GraphQL Collection" },
+  "item": [
+    {
+      "name": "Query",
+      "request": {
+        "method": "POST",
+        "url": { "raw": "https://api.example.com/graphql" },
+        "auth": {
+          "type": "oauth2",
+          "oauth2": [
+            {
+              "key": "accessTokenUrl",
+              "value": "https://auth.example.com/token"
+            }
+          ]
+        },
+        "body": {
+          "mode": "graphql",
+          "graphql": {
+            "query": "query { me { id } }",
+            "variables": { "limit": 5 }
+          }
+        }
+      }
+    }
+  ]
+}
