@@ -148,7 +148,7 @@
 
           meta = with lib; {
             description = "A local-first HTTP client";
-            homepage = "https://github.com/0xErwin1/relay";
+            homepage = "https://github.com/0xErwin1/reqflux";
             license = licenses.asl20;
             platforms = platforms.linux;
             mainProgram = "reqflux";
