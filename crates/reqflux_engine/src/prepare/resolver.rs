@@ -51,13 +51,13 @@ impl<'a, D: DynamicSource> Resolver<'a, D> {
             .collect()
     }
 
-    /// Adds to `secrets` the value each referenced name in `secret_names` resolved to,
-    /// the value of the scope that won, so a local or script override is the one masked.
+    /// Adds to `secrets` the value every name in `secret_names` resolves to, the value of
+    /// the scope that won, so a local or script override is the one masked. Every secret in
+    /// scope counts, not only the names this request references: a script can copy a secret
+    /// into another variable, and a value can repeat a secret literally.
     pub(super) fn add_secret_values(&self, secret_names: &[&str], secrets: &mut Secrets) {
-        for name in &self.referenced {
-            if secret_names.contains(&name.as_str())
-                && let Some(value) = self.scopes.lookup(name)
-            {
+        for name in secret_names {
+            if let Some(value) = self.scopes.lookup(name) {
                 secrets.add(value);
             }
         }

@@ -178,3 +178,19 @@ fn form_bodies_are_text_and_multipart_and_files_are_markers() {
     let sent = prepare(&single(doc)).sent();
     assert!(matches!(sent.body, SentBody::Omitted(_)), "{:?}", sent.body);
 }
+
+#[test]
+fn a_secret_value_reached_without_its_name_is_still_masked() {
+    // A pre-request script can copy a secret into another variable, or a value can repeat
+    // a secret literally: the request never names the secret, but its value is sent.
+    let mut doc = post("https://api.test/");
+    doc.headers = vec![KeyValue::new("X-Copy", "{{copy}}")];
+    let ws = workspace(
+        vec![secret("token", "s3cr3t"), Variable::new("copy", "s3cr3t")],
+        vec![collection("c", vec![request("r", doc)])],
+    );
+
+    let sent = prepare(&ws).sent();
+
+    assert_eq!(header(&sent, "X-Copy"), MASK);
+}
