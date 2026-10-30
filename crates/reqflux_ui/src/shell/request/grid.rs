@@ -3,7 +3,7 @@
 //! and the description. Disabled rows are muted, rows with an unresolved reference carry a
 //! warning wash, and a value that references a secret shows `••••••••` with a SECRET badge.
 //! Clicking a row's enable box toggles the row in the draft; clicking its key or value cell
-//! swaps the cell for a text field; the body grid stays read-only.
+//! swaps the cell for a text field.
 
 use bolt::chamfer::Chamfer;
 use bolt::tokens::{Colors, border, cut, family, space};
@@ -26,8 +26,8 @@ use crate::tokens;
 /// The grid of `rows`, a `table` of `kind` (`params` and `param`, `headers` and `header`, or
 /// `body`). A row whose entry in `files` is true holds a file path and shows a File icon.
 /// When `request_id` is `Some`, every row starts with an enable box that toggles the row in
-/// the request's draft, and its key and value cells open the editable cell field; the body
-/// grid passes `None` and stays read-only.
+/// the request's draft, and its key and value cells open the editable cell field; with
+/// `None` the grid is read-only.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render(
     inspection: &Inspection,
@@ -220,7 +220,7 @@ fn data_row(
 
 /// The key or value cell of the 1-based row `n` of `table`, element id
 /// `request-<table>-<field>-<n>`. When `request_id` is `Some`, clicking it opens the
-/// editable cell field over the cell; the body grid's cells have no id and no click.
+/// editable cell field over the cell.
 #[allow(clippy::too_many_arguments)]
 fn cell_part(
     width: Pixels,

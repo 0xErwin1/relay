@@ -3,6 +3,7 @@
 
 mod action_strip;
 mod auth_edit;
+mod body_edit;
 mod cell_edit;
 mod diamond;
 mod document;
@@ -34,6 +35,7 @@ use gpui::{
 };
 use reqflux_engine::state::AppState;
 
+use self::body_edit::BodyEdit;
 use self::cell_edit::CellEdit;
 use self::documents::Documents;
 use self::drafts::Drafts;
@@ -80,6 +82,8 @@ pub(crate) struct Shell {
     /// The cell field of the Params or Headers grid, the Settings timeout field or an Auth
     /// field, under edit, while it has focus.
     cell_edit: Option<CellEdit>,
+    /// The raw body editor of the request under edit.
+    body_edit: Option<BodyEdit>,
     /// The per-user app state the drafts persist in; `None` when it could not be opened,
     /// which keeps drafts in memory only.
     state: Option<AppState>,
@@ -95,6 +99,10 @@ pub(crate) struct Shell {
     auth_menu_open: bool,
     /// Focused while the auth type menu is open, so Escape reaches it.
     auth_menu_focus: FocusHandle,
+    /// Whether the Body pane mode menu of the active request is open.
+    body_menu_open: bool,
+    /// Focused while the body mode menu is open, so Escape reaches it.
+    body_menu_focus: FocusHandle,
     /// The shell's own focus, given back when the environment menu closes, so the window's
     /// keys (Ctrl+Enter, Escape) keep reaching the shell's key context.
     focus: FocusHandle,
@@ -141,6 +149,7 @@ impl Shell {
             save_errors: HashMap::new(),
             url_edit: None,
             cell_edit: None,
+            body_edit: None,
             state,
             workspace_id,
             active_environment: None,
@@ -148,6 +157,8 @@ impl Shell {
             environment_menu_focus: cx.focus_handle(),
             auth_menu_open: false,
             auth_menu_focus: cx.focus_handle(),
+            body_menu_open: false,
+            body_menu_focus: cx.focus_handle(),
             focus: cx.focus_handle(),
             _open_requests: open_requests,
         };
@@ -160,6 +171,7 @@ impl Shell {
         self.documents.open(id);
         self.drop_stale_url_edit(id);
         self.drop_stale_cell_edit(id);
+        self.drop_stale_body_edit(id);
         if !self.requests.contains_key(id)
             && let OpenedWorkspace::Loaded(engine) = &self.workspace
         {
@@ -264,7 +276,9 @@ impl Shell {
     fn activate_document(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.documents.activate(id);
         self.auth_menu_open = false;
+        self.body_menu_open = false;
         self.drop_stale_url_edit(id);
+        self.drop_stale_body_edit(id);
         self.commit_cell_edit(window, cx);
         cx.notify();
     }
@@ -278,6 +292,7 @@ impl Shell {
         self.save_errors.remove(id);
         self.drop_url_edit_of(id);
         self.drop_cell_edit_of(id);
+        self.drop_body_edit_of(id);
         cx.notify();
     }
 }
@@ -333,6 +348,8 @@ fn text_region(id: &'static str) -> Stateful<Div> {
 
 #[cfg(test)]
 mod auth_edit_tests;
+#[cfg(test)]
+mod body_edit_tests;
 #[cfg(test)]
 mod document_tests;
 #[cfg(test)]

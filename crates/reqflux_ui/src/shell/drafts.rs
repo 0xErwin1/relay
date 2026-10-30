@@ -11,6 +11,7 @@ use reqflux_engine::SaveError;
 use reqflux_engine::state::Draft;
 
 use super::Shell;
+use super::body_edit::body_cell;
 use super::cell_edit::CellField;
 use super::tree_model;
 use crate::workspace::OpenedWorkspace;
@@ -86,8 +87,8 @@ impl Shell {
         self.edit_draft(id, |request| request.url = url, cx);
     }
 
-    /// Toggles the `enabled` state of the 1-based row `n` of `table` (`params` or
-    /// `headers`) in the draft of the request `id`, creating the draft from the saved
+    /// Toggles the `enabled` state of the 1-based row `n` of `table` (`params`, `headers`
+    /// or `body`) in the draft of the request `id`, creating the draft from the saved
     /// request when there is none, and persists it. Rows of the inactive sub-tab are never
     /// touched, because only the active one renders.
     pub(super) fn toggle_grid_row(
@@ -100,12 +101,8 @@ impl Shell {
         self.edit_draft(
             id,
             |request| {
-                let rows = match table {
-                    "params" => &mut request.params,
-                    _ => &mut request.headers,
-                };
-                if let Some(row) = n.checked_sub(1).and_then(|index| rows.get_mut(index)) {
-                    row.enabled = !row.enabled;
+                if let Some((_, _, enabled)) = grid_cell(request, table, n) {
+                    *enabled = !*enabled;
                 }
             },
             cx,
@@ -133,15 +130,13 @@ impl Shell {
         }
         if !self.drafts.contains_key(id) {
             let current = self.requests.get(id).and_then(|state| {
-                let request = self.displayed_request(id, &state.inspection.request.request);
-                let rows = match table {
-                    "params" => &request.params,
-                    _ => &request.headers,
-                };
-                let row = n.checked_sub(1).and_then(|index| rows.get(index))?;
+                let mut request = self
+                    .displayed_request(id, &state.inspection.request.request)
+                    .clone();
+                let (key, value, _) = grid_cell(&mut request, table, n)?;
                 Some(match field {
-                    CellField::Key => row.key.clone(),
-                    CellField::Value => row.value.clone(),
+                    CellField::Key => key.clone(),
+                    CellField::Value => value.clone(),
                 })
             });
             if current.as_deref() == Some(value.as_str()) {
@@ -151,14 +146,10 @@ impl Shell {
         self.edit_draft(
             id,
             move |request| {
-                let rows = match table {
-                    "params" => &mut request.params,
-                    _ => &mut request.headers,
-                };
-                if let Some(row) = n.checked_sub(1).and_then(|index| rows.get_mut(index)) {
+                if let Some((key, text, _)) = grid_cell(request, table, n) {
                     match field {
-                        CellField::Key => row.key = value,
-                        CellField::Value => row.value = value,
+                        CellField::Key => *key = value,
+                        CellField::Value => *text = value,
                     }
                 }
             },
@@ -265,6 +256,7 @@ impl Shell {
     /// the tree, the request view and later sends see the saved file.
     pub(super) fn save(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.drop_url_edit_of(id);
+        self.drop_body_edit_of(id);
         // A cell field shows text the draft does not have yet: commit it, so saving never
         // silently drops what was typed.
         self.commit_cell_edit(window, cx);
@@ -326,6 +318,7 @@ impl Shell {
     pub(super) fn revert(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.drop_url_edit_of(id);
         self.drop_cell_edit_of(id);
+        self.drop_body_edit_of(id);
         if self.drafts.remove(id).is_some() {
             self.save_errors.remove(id);
             self.delete_stored_draft(id);
@@ -364,6 +357,23 @@ impl Shell {
         }
         self.inspect_open_requests(cx);
     }
+}
+
+/// The key, the value and the enabled flag of the 1-based row `n` of `table` of `request`:
+/// `params`, `headers`, or `body` for the urlencoded fields or the form-data parts, whose
+/// file part's value is its path.
+pub(super) fn grid_cell<'a>(
+    request: &'a mut Request,
+    table: &str,
+    n: usize,
+) -> Option<(&'a mut String, &'a mut String, &'a mut bool)> {
+    let rows = match table {
+        "body" => return body_cell(&mut request.body, n),
+        "params" => &mut request.params,
+        _ => &mut request.headers,
+    };
+    let row = rows.get_mut(n.checked_sub(1)?)?;
+    Some((&mut row.key, &mut row.value, &mut row.enabled))
 }
 
 /// The map of drafts the shell keeps, by request id.

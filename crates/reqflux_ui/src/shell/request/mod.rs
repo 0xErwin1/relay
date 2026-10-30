@@ -1,15 +1,17 @@
 //! The open request under the document tabs: the request line, the sub-tab bar and the pane
-//! of the selected sub-tab: the Params and Headers grids, the Auth and Settings panes, or the
-//! read-only Body and Scripts panes.
+//! of the selected sub-tab: the Params and Headers grids, the Body, Auth and Settings panes, or
+//! the read-only Scripts pane.
 
 mod auth;
 mod auth_menu;
 mod body;
+mod body_menu;
 mod code;
 mod grid;
 mod grid_model;
 mod line;
 mod model;
+mod option_menu;
 mod pane_model;
 mod scripts;
 mod send;
@@ -80,7 +82,7 @@ fn pane(
             shell,
             cx,
         )],
-        SubTab::Body => body::render(inspection, &request.body, shell, cx),
+        SubTab::Body => body::render(id, inspection, &request.body, shell, window, cx),
         SubTab::Auth => auth::render(id, inspection, &request.auth, shell, window, cx),
         SubTab::Scripts => scripts::render(inspection, cx),
         SubTab::Settings => settings::render(id, &request.settings, shell, cx),

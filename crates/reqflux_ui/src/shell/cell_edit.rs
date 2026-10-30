@@ -1,4 +1,4 @@
-//! The editable cell of the Params and Headers grids: clicking a row's key or value cell
+//! The editable cell of the Params, Headers and body grids: clicking a row's key or value cell
 //! swaps it for a focused text field seeded with the cell's text as the draft has it, else
 //! as the file does. Enter commits the text into that row of the draft; Escape drops what
 //! was typed, since nothing was written while typing; clicking another cell commits the
@@ -11,6 +11,7 @@ use gpui_component::input::InputState;
 
 use super::Shell;
 use super::auth_edit::AUTH_TABLE;
+use super::drafts::grid_cell;
 use super::setting_edit::SETTINGS_TABLE;
 
 /// Which cell of a grid row the field edits.
@@ -69,22 +70,20 @@ impl Shell {
         let Some(state) = self.requests.get(id) else {
             return;
         };
-        let request = self.displayed_request(id, &state.inspection.request.request);
-        let rows = match table {
-            "params" => &request.params,
-            _ => &request.headers,
-        };
-        let Some(row) = n.checked_sub(1).and_then(|index| rows.get(index)) else {
+        let mut request = self
+            .displayed_request(id, &state.inspection.request.request)
+            .clone();
+        let Some((key, value, _)) = grid_cell(&mut request, table, n) else {
             return;
         };
         let (text, secret) = match field {
-            CellField::Key => (row.key.clone(), false),
+            CellField::Key => (key.clone(), false),
             CellField::Value => {
-                let secret = state.inspection.references_secret(&row.value);
+                let secret = state.inspection.references_secret(value);
                 if secret {
                     (String::new(), true)
                 } else {
-                    (row.value.clone(), false)
+                    (value.clone(), false)
                 }
             }
         };
