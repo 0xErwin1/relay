@@ -4,12 +4,18 @@
 //! value of every secret variable the request referenced, and the resolved basic password,
 //! bearer token and API key value whether they came from a variable or were typed. The
 //! redacted copy replaces each of them by [`MASK`] wherever it appears in the URL, the
-//! headers and the body, as text. Text replacement masks a secret also where something
+//! header values and the body, as text, in the forms a request carries it: as written,
+//! percent-encoded, form-encoded and JSON-string-escaped. Header names are never masked.
+//! The values of `Authorization`, `Proxy-Authorization` and `Cookie` are always masked
+//! whole, keeping an auth scheme word, since a script can transform a secret (base64, for
+//! example) beyond what text matching finds. A [`Masker`] applies the same replacement to
+//! any other text, such as the error of a failed send. Text replacement masks a secret also where something
 //! else produced the same characters, so a very short secret value can mask more than it
 //! produced; that is the safe side and there is no length floor. Only an empty value is
 //! skipped, since it occurs everywhere and masks nothing.
 
 use std::fmt;
+use std::sync::Arc;
 
 use reqflux_http::{PreparedBody, PreparedRequest};
 
@@ -42,7 +48,7 @@ pub enum SentBody {
 }
 
 /// The values a send must never record in clear. Its `Debug` output shows only how many
-/// there are, so a logged [`Prepared`](crate::Prepared) never prints one.
+/// there are, so it never prints one.
 #[derive(Clone, Default, PartialEq, Eq)]
 pub(crate) struct Secrets(Vec<String>);
 
@@ -61,9 +67,16 @@ impl Secrets {
         }
     }
 
-    /// The values to replace, each as written and percent-encoded the way the query
-    /// string and a URL-encoded form carry it, longest first so a secret that contains
-    /// another is masked whole.
+    /// The [`Masker`] of these values.
+    pub(crate) fn masker(&self) -> Masker {
+        Masker {
+            patterns: self.patterns().into(),
+        }
+    }
+
+    /// The values to replace, each as written, percent-encoded the way the query string
+    /// and a URL-encoded form carry it, and escaped the way a JSON string carries it,
+    /// longest first so a secret that contains another is masked whole.
     fn patterns(&self) -> Vec<String> {
         let mut patterns: Vec<String> = Vec::new();
         for value in &self.0 {
@@ -71,6 +84,7 @@ impl Secrets {
                 value.clone(),
                 crate::prepare::percent_encode(value),
                 url::form_urlencoded::byte_serialize(value.as_bytes()).collect(),
+                json_escaped(value),
             ];
             for form in forms {
                 if !patterns.contains(&form) {
@@ -83,17 +97,73 @@ impl Secrets {
     }
 }
 
+/// Replaces the secret values of one send by [`MASK`] in any text, in every form
+/// [`SentRequest`] masks them. A front end masks the error of a failed send with it before
+/// recording or showing that error, since a transport error can echo the URL. Cheap to
+/// clone; its `Debug` output shows only how many patterns it has.
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct Masker {
+    patterns: Arc<[String]>,
+}
+
+impl fmt::Debug for Masker {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "Masker({} patterns)", self.patterns.len())
+    }
+}
+
+impl Masker {
+    /// `text` with every secret value replaced by [`MASK`].
+    #[must_use]
+    pub fn mask(&self, text: &str) -> String {
+        self.patterns.iter().fold(text.to_owned(), |text, pattern| {
+            text.replace(pattern.as_str(), MASK)
+        })
+    }
+}
+
+/// `value` as a JSON string carries it, without the quotes.
+fn json_escaped(value: &str) -> String {
+    let quoted = serde_json::Value::from(value).to_string();
+    quoted
+        .strip_prefix('"')
+        .and_then(|inner| inner.strip_suffix('"'))
+        .map_or(quoted.clone(), str::to_owned)
+}
+
+/// Headers whose whole value is a credential.
+const CREDENTIAL_HEADERS: [&str; 3] = ["authorization", "proxy-authorization", "cookie"];
+
+/// The recorded value of the header `name`: a credential header masked whole, keeping the
+/// auth scheme word of `Authorization` and `Proxy-Authorization`; any other masked by text.
+fn header_value(name: &str, value: &str, masker: &Masker) -> String {
+    if !CREDENTIAL_HEADERS
+        .iter()
+        .any(|credential| name.eq_ignore_ascii_case(credential))
+    {
+        return masker.mask(value);
+    }
+    let scheme = (!name.eq_ignore_ascii_case("cookie"))
+        .then(|| value.trim_start().split_once(' '))
+        .flatten()
+        .map(|(scheme, _)| scheme)
+        .filter(|scheme| !scheme.is_empty() && !masker.mask(scheme).contains(MASK));
+    match scheme {
+        Some(scheme) => format!("{scheme} {MASK}"),
+        None => MASK.to_owned(),
+    }
+}
+
 /// The redacted copy of `request`.
-pub(crate) fn redact(request: &PreparedRequest, secrets: &Secrets) -> SentRequest {
-    let patterns = secrets.patterns();
-    let mask = |text: &str| mask_text(text, &patterns);
+pub(crate) fn redact(request: &PreparedRequest, masker: &Masker) -> SentRequest {
+    let mask = |text: &str| masker.mask(text);
     SentRequest {
         method: request.method.clone(),
         url: mask(&request.url),
         headers: request
             .headers
             .iter()
-            .map(|(key, value)| (mask(key), mask(value)))
+            .map(|(key, value)| (key.clone(), header_value(key, value, masker)))
             .collect(),
         body: match &request.body {
             PreparedBody::None => SentBody::None,
@@ -112,11 +182,4 @@ pub(crate) fn redact(request: &PreparedRequest, secrets: &Secrets) -> SentReques
             PreparedBody::File(path) => SentBody::Omitted(format!("file {}", path.display())),
         },
     }
-}
-
-/// `text` with every pattern replaced by [`MASK`].
-fn mask_text(text: &str, patterns: &[String]) -> String {
-    patterns.iter().fold(text.to_owned(), |text, pattern| {
-        text.replace(pattern.as_str(), MASK)
-    })
 }

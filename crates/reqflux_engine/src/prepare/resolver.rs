@@ -1,7 +1,7 @@
 //! Variable resolution that collects unresolved names across a whole request.
 
 use reqflux_core::model::KeyValue;
-use reqflux_core::template::{DynamicSource, Scopes, Segment, resolve, segments};
+use reqflux_core::template::{DynamicSource, ScopeKind, Scopes, Segment, resolve, segments};
 
 use crate::sent::Secrets;
 
@@ -51,14 +51,17 @@ impl<'a, D: DynamicSource> Resolver<'a, D> {
             .collect()
     }
 
-    /// Adds to `secrets` the value every name in `secret_names` resolves to, the value of
-    /// the scope that won, so a local or script override is the one masked. Every secret in
-    /// scope counts, not only the names this request references: a script can copy a secret
-    /// into another variable, and a value can repeat a secret literally.
+    /// Adds to `secrets` every value a name in `secret_names` has in any scope, enabled or
+    /// not: the globals, the collection, the environment and the local and script
+    /// overrides, so the value that won and every value it shadowed are masked. Every secret
+    /// in scope counts, not only the names this request references: a script can copy a
+    /// secret into another variable, and a value can repeat a secret literally.
     pub(super) fn add_secret_values(&self, secret_names: &[&str], secrets: &mut Secrets) {
-        for name in secret_names {
-            if let Some(value) = self.scopes.lookup(name) {
-                secrets.add(value);
+        for kind in ScopeKind::ALL {
+            for entry in &self.scopes.scope(kind).entries {
+                if secret_names.contains(&entry.key.as_str()) {
+                    secrets.add(entry.value.as_str());
+                }
             }
         }
     }

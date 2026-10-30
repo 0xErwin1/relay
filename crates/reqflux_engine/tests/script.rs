@@ -676,3 +676,75 @@ fn pre_request_writes_do_not_persist() {
     assert_eq!(stored[0].key, "who");
     assert_eq!(stored[0].value.as_deref(), Some("original"));
 }
+
+#[test]
+fn a_secret_set_by_a_pre_request_script_is_masked_in_the_sent_headers() {
+    let rt = runtime();
+    let server = server(&rt, Mock::given(method("GET")).respond_with(ok()));
+    let dir = temp_dir();
+    let root = dir.path();
+    manifest(root);
+    collection(root, "\n[[variables]]\nkey = \"token\"\nsecret = true\n");
+    request_with(
+        root,
+        "r",
+        false,
+        &format!("{}/r", server.uri()),
+        "\n[[headers]]\nkey = \"X-Token\"\nvalue = \"{{token}}\"\n",
+    );
+    write(
+        root,
+        "collections/api/r.pre.js",
+        "pm.collectionVariables.set('token', 'fetched-tok');\n",
+    );
+
+    let executed = execute(&engine(root), "api/r");
+
+    assert_eq!(executed.response.status, 201);
+    assert!(
+        executed
+            .sent
+            .headers
+            .iter()
+            .all(|(key, value)| !key.contains("fetched-tok") && !value.contains("fetched-tok")),
+        "{:?}",
+        executed.sent.headers
+    );
+}
+
+#[test]
+fn an_authorization_header_transformed_by_a_script_is_masked() {
+    // QuickJS has no `btoa` and scripts do not read secret values; a credential assembled
+    // by the script stands in for any transform that text matching cannot follow.
+    let rt = runtime();
+    let server = server(&rt, Mock::given(method("GET")).respond_with(ok()));
+    let dir = temp_dir();
+    let root = dir.path();
+    manifest(root);
+    collection(
+        root,
+        "\n[[variables]]\nkey = \"token\"\nvalue = \"user:pass\"\nsecret = true\n",
+    );
+    request_with(
+        root,
+        "r",
+        false,
+        &format!("{}/r", server.uri()),
+        "\n[[headers]]\nkey = \"Authorization\"\nvalue = \"{{auth}}\"\n",
+    );
+    write(
+        root,
+        "collections/api/r.pre.js",
+        "pm.variables.set('auth', 'Basic ' + ['dXNlcj', 'pwYXNz'].join(''));\n",
+    );
+
+    let executed = execute(&engine(root), "api/r");
+
+    assert_eq!(
+        executed.sent.headers,
+        vec![(
+            "Authorization".to_owned(),
+            format!("Basic {}", reqflux_engine::MASK)
+        )]
+    );
+}

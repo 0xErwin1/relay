@@ -18,7 +18,7 @@ use crate::prepare::{
     select_environment,
 };
 use crate::scripts as engine_scripts;
-use crate::sent::SentRequest;
+use crate::sent::{Masker, SentRequest};
 
 /// A loaded workspace that executes its requests. See the crate docs for the threading
 /// model.
@@ -54,6 +54,8 @@ pub struct Execution {
     /// What [`Execution::complete`] needs to run the effective test script once the
     /// response arrives; `None` when the caller used [`Engine::send`] directly.
     scripted: Option<Box<Scripted>>,
+    /// Masks this send's secrets in other text; see [`Execution::masker`].
+    masker: Masker,
 }
 
 /// What [`Execution::complete`] needs to run the effective test script after the response,
@@ -91,6 +93,15 @@ impl Scripted {
 }
 
 impl Execution {
+    /// What masks this send's secrets in any text, the way [`Execution::sent`] masks them.
+    /// Take it before finishing the execution: a transport error can echo the URL, query
+    /// secrets included, so a front end masks the error with it before recording or
+    /// showing it in history.
+    #[must_use]
+    pub fn masker(&self) -> Masker {
+        self.masker.clone()
+    }
+
     /// Awaits the response and runs the effective test script with it in `pm.response`
     /// (S7), so an async front end that owns the execution needs no engine borrow. This is
     /// what a front end calls instead of awaiting `handle` directly, which returns a
@@ -325,6 +336,7 @@ impl Engine {
     #[must_use]
     pub fn send(&self, prepared: Prepared) -> Execution {
         let sent = prepared.sent();
+        let masker = prepared.masker();
         let Prepared {
             request,
             unresolved,
@@ -347,6 +359,7 @@ impl Engine {
             handle,
             scripts: ScriptOutcome::default(),
             scripted: None,
+            masker,
         }
     }
 

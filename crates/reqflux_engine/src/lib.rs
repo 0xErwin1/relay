@@ -58,6 +58,6 @@ pub use reqflux_http::{HttpError, PreparedBody, PreparedRequest, Response};
 pub use reqflux_script::{
     ConsoleEntry, ConsoleLevel, ScriptOutcome, TestResult, VariableScope, VariableWrite,
 };
-pub use sent::{MASK, SentBody, SentRequest};
+pub use sent::{MASK, Masker, SentBody, SentRequest};
 /// The token type of [`Execution::cancel`], re-exported so front ends can hold it.
 pub use tokio_util::sync::CancellationToken;

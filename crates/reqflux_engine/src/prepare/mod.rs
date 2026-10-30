@@ -18,7 +18,7 @@ use reqflux_script::VariableWrite;
 
 use crate::error::ExecuteError;
 use crate::select::{self, Target};
-use crate::sent::{self, Secrets, SentRequest};
+use crate::sent::{self, Masker, Secrets, SentRequest};
 use resolver::Resolver;
 
 pub use inspect::{Inspection, Span, inspect};
@@ -54,7 +54,14 @@ impl Prepared {
     /// appear in the URL, the headers and the body.
     #[must_use]
     pub fn sent(&self) -> SentRequest {
-        sent::redact(&self.request, &self.secrets)
+        sent::redact(&self.request, &self.masker())
+    }
+
+    /// What masks this request's secrets in any other text, such as the error of a failed
+    /// send, the same way [`Prepared::sent`] masks them.
+    #[must_use]
+    pub fn masker(&self) -> Masker {
+        self.secrets.masker()
     }
 }
 
@@ -156,7 +163,7 @@ fn prepare_request(
     script_writes: &[VariableWrite],
 ) -> Result<Prepared, ExecuteError> {
     let environment = select_environment(workspace, target.collection, options)?;
-    let secret_names = secret_names(workspace, target.collection, environment);
+    let names = secret_names(workspace, target.collection, environment);
     let mut scope_map = scopes(workspace, target.collection, environment, options);
     crate::scripts::apply_writes(&mut scope_map, script_writes);
     let mut resolver = Resolver::new(scope_map, dynamic);
@@ -168,7 +175,7 @@ fn prepare_request(
     let mut secrets = Secrets::default();
     auth::apply(auth, &mut resolver, &mut headers, &mut query, &mut secrets)?;
     let body = body::prepare(&request.body, root, &headers, &mut resolver)?;
-    resolver.add_secret_values(&secret_names, &mut secrets);
+    resolver.add_secret_values(&names, &mut secrets);
 
     Ok(Prepared {
         request: PreparedRequest {

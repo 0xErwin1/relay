@@ -174,7 +174,8 @@ impl AppState {
         if let HistoryOutcome::Response(response) = &mut record.outcome
             && response.body.len() > limits.max_body_bytes
         {
-            response.body.truncate(limits.max_body_bytes);
+            let cut = text_boundary(&response.body, limits.max_body_bytes);
+            response.body.truncate(cut);
             response.truncated = true;
         }
         let corrupt = |reason: String| StateError::Corrupt {
@@ -404,6 +405,21 @@ impl RawEntry {
                 outcome,
             },
         })
+    }
+}
+
+/// Where to cut `body` to at most `limit` bytes: at `limit`, backed off to the last
+/// character boundary when the bytes up to there are UTF-8 text cut inside a character.
+/// A body that is not UTF-8 is cut at `limit`.
+fn text_boundary(body: &[u8], limit: usize) -> usize {
+    let Some(prefix) = body.get(..limit) else {
+        return body.len();
+    };
+    match std::str::from_utf8(prefix) {
+        Ok(_) => limit,
+        // An incomplete character at the end has no `error_len`; anything else is binary.
+        Err(error) if error.error_len().is_none() => error.valid_up_to(),
+        Err(_) => limit,
     }
 }
 

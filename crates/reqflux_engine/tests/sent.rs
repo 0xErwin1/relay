@@ -194,3 +194,168 @@ fn a_secret_value_reached_without_its_name_is_still_masked() {
 
     assert_eq!(header(&sent, "X-Copy"), MASK);
 }
+
+#[test]
+fn a_secret_with_json_specials_in_a_graphql_query_is_masked() {
+    for (value, escaped) in [("pa\"ss", "pa\\\"ss"), ("pa\\ss", "pa\\\\ss")] {
+        let mut doc = post("https://api.test/graphql");
+        doc.body = Body::Graphql {
+            query: "query { login(password: \"{{pw}}\") }".to_owned(),
+            variables: String::new(),
+        };
+        let ws = workspace(
+            vec![secret("pw", value)],
+            vec![collection("c", vec![request("r", doc)])],
+        );
+
+        let SentBody::Text(body) = prepare(&ws).sent().body else {
+            panic!("expected a text body");
+        };
+
+        assert!(body.contains(MASK), "{body}");
+        assert!(!body.contains(escaped), "{value}: {body}");
+        assert!(!body.contains(value), "{value}: {body}");
+    }
+}
+
+#[test]
+fn an_api_key_in_the_query_is_masked_encoded() {
+    let mut doc = post("https://api.test/");
+    doc.auth = Auth::ApiKey {
+        key: "api_key".to_owned(),
+        value: "a b+c/d€".to_owned(),
+        location: reqflux_core::model::ApiKeyLocation::Query,
+    };
+
+    let sent = prepare(&single(doc)).sent();
+
+    assert_eq!(sent.url, format!("https://api.test/?api_key={MASK}"));
+}
+
+#[test]
+fn a_one_character_secret_does_not_change_header_names() {
+    let mut doc = post("https://api.test/");
+    doc.headers = vec![
+        KeyValue::new("Content-Type", "text/plain"),
+        KeyValue::new("X-Key", "{{token}}"),
+    ];
+    let ws = workspace(
+        vec![secret("token", "e")],
+        vec![collection("c", vec![request("r", doc)])],
+    );
+
+    let sent = prepare(&ws).sent();
+    let names: Vec<&str> = sent.headers.iter().map(|(key, _)| key.as_str()).collect();
+
+    assert_eq!(names, ["Content-Type", "X-Key"]);
+    assert_eq!(header(&sent, "X-Key"), MASK);
+}
+
+#[test]
+fn authorization_proxy_authorization_and_cookie_values_are_always_masked() {
+    let mut doc = post("https://api.test/");
+    doc.headers = vec![
+        KeyValue::new("Authorization", "Token typed-in-clear"),
+        KeyValue::new("proxy-authorization", "Basic dTpw"),
+        KeyValue::new("Cookie", "session=abc; theme=dark"),
+        KeyValue::new("Authorization", "opaque"),
+        KeyValue::new("X-Other", "visible"),
+    ];
+
+    let sent = prepare(&single(doc)).sent();
+
+    assert_eq!(
+        sent.headers,
+        vec![
+            ("Authorization".to_owned(), format!("Token {MASK}")),
+            ("proxy-authorization".to_owned(), format!("Basic {MASK}")),
+            ("Cookie".to_owned(), MASK.to_owned()),
+            ("Authorization".to_owned(), MASK.to_owned()),
+            ("X-Other".to_owned(), "visible".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn every_scope_value_of_a_secret_is_masked_not_only_the_winner() {
+    let mut doc = post("https://api.test/");
+    doc.body = raw("{{token}} global-tok collection-tok");
+    let mut coll = collection("c", vec![request("r", doc)]);
+    coll.collection.variables = vec![secret("token", "collection-tok")];
+    let ws = workspace(vec![secret("token", "global-tok")], vec![coll]);
+
+    let sent = prepare_with(&ws, "c/r", &options(None, &[("token", "local-tok")])).sent();
+
+    assert_eq!(sent.body, SentBody::Text(format!("{MASK} {MASK} {MASK}")));
+}
+
+#[test]
+fn the_masker_masks_text_and_its_debug_hides_the_secrets() {
+    let mut doc = post("https://api.test/");
+    doc.params = vec![KeyValue::new("t", "{{token}}")];
+    let ws = workspace(
+        vec![secret("token", "a b&c")],
+        vec![collection("c", vec![request("r", doc)])],
+    );
+    let masker = prepare(&ws).masker();
+
+    assert_eq!(
+        masker.mask("bad url https://api.test/?t=a%20b%26c and a b&c"),
+        format!("bad url https://api.test/?t={MASK} and {MASK}")
+    );
+    let debug = format!("{masker:?}");
+    assert!(
+        !debug.contains("a b&c") && !debug.contains("a%20b"),
+        "{debug}"
+    );
+}
+
+#[test]
+fn a_failed_send_error_never_echoes_a_query_secret() {
+    let dir = common::temp_dir();
+    let root = dir.path();
+    common::write(
+        root,
+        "reqflux.toml",
+        &format!(
+            "id = \"{}\"\nname = \"W\"\nformat = 1\n",
+            common::id_text(900)
+        ),
+    );
+    common::write(
+        root,
+        "collections/api/collection.toml",
+        &format!("id = \"{}\"\nname = \"Api\"\n", common::id_text(1)),
+    );
+    common::write(
+        root,
+        "collections/api/r.req.toml",
+        &format!(
+            "id = \"{}\"\nname = \"r\"\nmethod = \"GET\"\nurl = \"{{{{baseUrl}}}}/v1\"\n\n\
+             [auth]\ntype = \"apikey\"\nkey = \"api_key\"\nvalue = \"k-SECRET-123\"\nlocation = \"query\"\n",
+            common::id_text(2)
+        ),
+    );
+    let engine = match reqflux_engine::Engine::open(root) {
+        Ok(engine) => engine,
+        Err(error) => panic!("open: {error}"),
+    };
+    let execution = match engine.execute("api/r", &reqflux_engine::ExecuteOptions::default()) {
+        Ok(execution) => execution,
+        Err(error) => panic!("execute: {error}"),
+    };
+    let masker = execution.masker();
+
+    let error = match engine.wait(execution) {
+        Ok(executed) => panic!("expected a failure, got {}", executed.response.status),
+        Err(error) => error.to_string(),
+    };
+    let masked = masker.mask(&error);
+
+    assert!(
+        error.contains("k-SECRET-123"),
+        "the raw error echoes it: {error}"
+    );
+    assert!(masked.contains(MASK), "{masked}");
+    assert!(!masked.contains("k-SECRET-123"), "{masked}");
+}

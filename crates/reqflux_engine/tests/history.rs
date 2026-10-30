@@ -292,3 +292,77 @@ fn a_body_over_the_cap_is_stored_cut_with_the_flag() {
     assert_eq!(stored.body.len(), HISTORY_MAX_BODY_BYTES);
     assert!(!stored.truncated);
 }
+
+#[test]
+fn a_failed_migration_leaves_v1_and_its_drafts() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = state_path(&dir);
+    write_v1(&path);
+    {
+        // A table named `history` without the v2 columns makes the v2 index fail.
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch("CREATE TABLE history (other TEXT);")
+            .unwrap();
+    }
+
+    match AppState::open(&path) {
+        Err(StateError::Migrate { .. }) => {}
+        other => panic!("expected Migrate, got {other:?}"),
+    }
+
+    assert_eq!(user_version(&path), 1);
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    let payload: String = conn
+        .query_row(
+            "SELECT payload FROM drafts WHERE workspace_id = 'ws' AND entity_id = 'req'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(payload, "a = 1");
+}
+
+#[test]
+fn the_default_limit_keeps_exactly_500() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = open(&state_path(&dir));
+    for n in 1..=502 {
+        state.record_history("ws", record(n)).unwrap();
+    }
+
+    let listed = state.history("ws", 1_000).unwrap();
+
+    assert_eq!(listed.len(), 500);
+    assert_eq!(listed.first().unwrap().record.request_path, "api/r502");
+    assert_eq!(listed.last().unwrap().record.request_path, "api/r3");
+}
+
+#[test]
+fn a_utf8_body_is_cut_on_a_character_boundary() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = open(&state_path(&dir));
+    let mut euros = record(1);
+    // `€` is three bytes, so the byte limit falls inside a character.
+    let body = "€".repeat(HISTORY_MAX_BODY_BYTES / 3 + 1).into_bytes();
+    assert_ne!(HISTORY_MAX_BODY_BYTES % 3, 0);
+    if let HistoryOutcome::Response(response) = &mut euros.outcome {
+        response.body = body;
+    }
+    let mut binary = record(2);
+    if let HistoryOutcome::Response(response) = &mut binary.outcome {
+        response.body = vec![0xff; HISTORY_MAX_BODY_BYTES + 1];
+    }
+
+    let euros_id = state.record_history("ws", euros).unwrap();
+    let binary_id = state.record_history("ws", binary).unwrap();
+
+    let stored = |id| match state.history_entry(id).unwrap().unwrap().record.outcome {
+        HistoryOutcome::Response(response) => response,
+        HistoryOutcome::Failed { .. } => panic!("expected a response"),
+    };
+    let text = stored(euros_id);
+    assert!(text.truncated);
+    assert!(std::str::from_utf8(&text.body).is_ok());
+    assert_eq!(text.body.len(), HISTORY_MAX_BODY_BYTES / 3 * 3);
+    assert_eq!(stored(binary_id).body.len(), HISTORY_MAX_BODY_BYTES);
+}
