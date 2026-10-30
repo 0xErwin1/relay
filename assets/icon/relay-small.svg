@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Small-size variant of the Relay mark: the same paper plane filled instead of
+     outlined, so it stays legible at 16 and 32 px. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#2B45B8"/>
+  <g transform="translate(56 56) scale(16.6667)" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="m22 2-7 20-4-9-9-4Z"/>
+    <path d="M22 2 11 13"/>
+  </g>
+</svg>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Relay mark: a paper plane on the brand cobalt (bolt accent, 0x2B45B8).
+     The plane geometry is the Lucide "send" icon on a 24x24 grid, scaled to a
+     512x512 canvas. PNG sizes in this directory are rasterized from this file;
+     see ARCHITECTURE.md, "Packaging and releases". -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#2B45B8"/>
+  <g transform="translate(56 56) scale(16.6667)" fill="none" stroke="#FFFFFF" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round">
+    <path d="m22 2-7 20-4-9-9-4Z"/>
+    <path d="M22 2 11 13"/>
+  </g>
+</svg>

@@ -1,0 +1,203 @@
+name: Nightly
+
+# Rolling nightly build of the Linux `relay` package, modelled on DBFlux's
+# nightly workflow but single-platform: one prerelease per day (tag
+# nightly-YYYYMMDD) holding the newest build from main. A later push to main
+# on the same day replaces that day's release, and older nightlies are pruned,
+# so only one rolling nightly remains.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  compute-version:
+    name: Compute nightly version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.nightly.outputs.version }}
+      tag: ${{ steps.nightly.outputs.tag }}
+      short_sha: ${{ steps.nightly.outputs.short_sha }}
+      date: ${{ steps.nightly.outputs.date }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Compute version string
+        id: nightly
+        run: |
+          # The nightly version is the workspace version with its pre-release
+          # suffix stripped (0.1.0-dev.0 -> 0.1.0) plus the UTC date and the
+          # short commit as semver build metadata; the `+` metadata does not
+          # affect semver ordering. The tag keeps only the date, so pushes to
+          # main on the same day replace that day's release with the newest
+          # build.
+          MATCHES=$(grep -c '^version = "' Cargo.toml)
+          if [ "$MATCHES" -ne 1 ]; then
+            echo "::error::Expected exactly 1 workspace version line in Cargo.toml, found $MATCHES."
+            exit 1
+          fi
+          BASE=$(grep '^version = "' Cargo.toml | sed 's/.*= *"\(.*\)"/\1/' | sed 's/-[^+]*//')
+          DATE=$(date -u '+%Y%m%d')
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          NIGHTLY_VERSION="${BASE}-nightly+${DATE}.${SHORT_SHA}"
+          echo "version=${NIGHTLY_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=nightly-${DATE}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u '+%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+          echo "Nightly version: ${NIGHTLY_VERSION} (tag nightly-${DATE})"
+
+  build:
+    name: Build Linux
+    needs: compute-version
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.99.1
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold pkg-config libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libvulkan-dev libx11-xcb-dev libxcb1-dev libfreetype-dev \
+            libfontconfig-dev libssl-dev libzstd-dev libasound2-dev
+
+      - name: Set up Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Only the nightly (running on main) writes; a cache saved on a tag
+          # ref can never be read back (same rationale as DBFlux's build).
+          save-if: github.ref == 'refs/heads/main'
+
+      - name: Stamp workspace version
+        env:
+          VERSION: ${{ needs.compute-version.outputs.version }}
+        run: |
+          # Same single-line guard as compute-version. VERSION is read from
+          # env, not interpolated into the script, so crafted input cannot
+          # inject shell. No --locked on the build below: the stamp mutates
+          # Cargo.toml, so cargo must refresh the workspace entry in
+          # Cargo.lock; dependency-lock integrity is enforced by CI (--locked)
+          # on the same commit, where only the local workspace version differs.
+          MATCHES=$(grep -c '^version = "' Cargo.toml)
+          if [ "$MATCHES" -ne 1 ]; then
+            echo "::error::Expected exactly 1 workspace version line in Cargo.toml, found $MATCHES."
+            exit 1
+          fi
+          sed -i "s|^version = \".*\"|version = \"${VERSION}\"|" Cargo.toml
+          grep -qF "version = \"${VERSION}\"" Cargo.toml \
+            || { echo "::error::Version stamp did not apply."; exit 1; }
+
+      - name: Build Relay
+        run: cargo build --release -p relay
+
+      - name: Assemble the package
+        run: |
+          mkdir -p pkg/bin pkg/share/applications
+          mkdir -p pkg/share/icons/hicolor/scalable/apps
+          mkdir -p pkg/share/icons/hicolor/256x256/apps
+          cp target/release/relay pkg/bin/relay
+          cp assets/icon/relay.desktop pkg/share/applications/relay.desktop
+          cp assets/icon/relay.svg pkg/share/icons/hicolor/scalable/apps/relay.svg
+          cp assets/icon/relay-256.png pkg/share/icons/hicolor/256x256/apps/relay.png
+          cp LICENSE-APACHE pkg/LICENSE-APACHE
+
+      - name: Create tar archive
+        run: |
+          cd pkg
+          tar -czf ../relay-linux-amd64.tar.gz .
+
+      - name: Generate checksum
+        run: sha256sum relay-linux-amd64.tar.gz > relay-linux-amd64.tar.gz.sha256
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64
+          path: |
+            relay-linux-amd64.tar.gz
+            relay-linux-amd64.tar.gz.sha256
+          retention-days: 90
+
+  release:
+    name: Publish rolling nightly release
+    needs: [compute-version, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-amd64
+          path: artifacts
+
+      - name: Compose nightly release body
+        env:
+          SHORT_SHA: ${{ needs.compute-version.outputs.short_sha }}
+          DATE: ${{ needs.compute-version.outputs.date }}
+        run: |
+          cat > release_body.md <<EOF
+          > **Nightly build** — built automatically from \`main\` HEAD on every push.
+          > Not recommended for production use. The release for a given day is
+          > replaced by the newest build and older nightlies are deleted.
+          >
+          > Commit: \`${SHORT_SHA}\` — ${DATE}
+
+          EOF
+
+      - name: Replace today's release and prune older nightlies
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.compute-version.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          # Today's nightly is replaced: delete the existing release for the
+          # tag (and the tag itself) so the new one can take its place.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" --yes --cleanup-tag
+          fi
+
+          # Keep a single rolling nightly, like DBFlux: delete every other
+          # nightly-* prerelease so the releases page never fills with
+          # superseded builds.
+          OLD_TAGS=$(gh release list --json tagName --jq '.[].tagName' | grep '^nightly-' || true)
+          while IFS= read -r OLD_TAG; do
+            [ -n "$OLD_TAG" ] || continue
+            [ "$OLD_TAG" = "$TAG" ] && continue
+            gh release delete "$OLD_TAG" --yes --cleanup-tag
+          done <<<"$OLD_TAGS"
+
+      - name: Publish nightly release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.compute-version.outputs.tag }}
+          name: Relay Nightly ${{ needs.compute-version.outputs.tag }}
+          body_path: release_body.md
+          prerelease: true
+          files: |
+            artifacts/relay-linux-amd64.tar.gz
+            artifacts/relay-linux-amd64.tar.gz.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

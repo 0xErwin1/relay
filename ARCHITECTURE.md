@@ -650,6 +650,33 @@ The protocol crate gives the types; the transport, the size caps (1 MiB per requ
 per response) and the 10 s I/O timeout are Relay's. A request carries the descriptor's token
 and a fresh request id, and a response must match both the id and the protocol version.
 
+## Packaging and releases
+
+The flake builds a Linux package (`packages.relay`, aliased by `packages.default`) with
+`rustPlatform.buildRustPackage`: the `relay` binary wrapped with the GPUI runtime
+library path, the desktop entry (`assets/icon/relay.desktop`) and the icon set
+installed under the standard XDG paths (`share/applications`, `share/icons/hicolor`).
+`nix develop` is unchanged apart from ImageMagick, which is listed so the icon PNGs can
+be regenerated offline.
+
+The icon is a hand-written SVG (`assets/icon/relay.svg`, a paper plane on the brand
+cobalt `#2B45B8`; `relay-small.svg` is a filled variant for 16 and 32 px). The PNGs are
+committed and regenerated with ImageMagick's librsvg delegate, which works from the dev
+shell offline:
+
+```sh
+magick -background none assets/icon/relay.svg -depth 8 -resize 256x256 assets/icon/relay-256.png
+```
+
+Every push to `main` (and manual dispatch) runs `.github/workflows/nightly.yml`, which
+builds `relay` on `ubuntu-latest` and publishes a prerelease tagged `nightly-YYYYMMDD`
+with `relay-linux-amd64.tar.gz` attached. The nightly version is the workspace version
+with its pre-release suffix stripped (`0.1.0-dev.0` → `0.1.0`) plus the UTC date and
+short commit as semver build metadata, e.g. `0.1.0-nightly+20260213.928b3d5`. The date
+also forms the tag, so pushes to `main` on the same day replace that day's release, and
+older `nightly-*` releases are deleted, leaving one rolling nightly — the same
+behaviour as DBFlux's nightly.
+
 ## Lessons from DBFlux
 
 | Keep | Evidence in DBFlux |
