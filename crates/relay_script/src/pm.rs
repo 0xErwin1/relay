@@ -5,8 +5,8 @@
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use rquickjs::Ctx;
 use rquickjs::function::Func;
+use rquickjs::{Ctx, String as JsString};
 
 use crate::sandbox::State;
 use crate::{ConsoleLevel, ScriptContext, VariableScope};
@@ -14,8 +14,31 @@ use crate::{ConsoleLevel, ScriptContext, VariableScope};
 type CtxResult<T> = rquickjs::Result<T>;
 type SharedState = Arc<Mutex<State>>;
 
+/// Stops the run from inside a host call: the interrupt handler cannot bound a script whose
+/// wall time sits in host work, so each call checks the deadline and the collected size.
+fn abort(ctx: &Ctx<'_>, kind: crate::ScriptErrorKind) -> rquickjs::Error {
+    let text = match kind {
+        crate::ScriptErrorKind::Timeout => "script stopped by its time limit",
+        crate::ScriptErrorKind::MemoryLimit => "script stopped by its memory limit",
+        _ => "script stopped",
+    };
+    match JsString::from_str(ctx.clone(), text) {
+        Ok(value) => ctx.throw(value.into_value()),
+        Err(error) => error,
+    }
+}
+
 pub(super) fn install(ctx: &Ctx<'_>, state: &SharedState) -> CtxResult<()> {
     let globals = ctx.globals();
+    globals.set(
+        "__relayReach",
+        Func::from({
+            let state = Arc::clone(state);
+            move || {
+                lock(&state).mark_reached();
+            }
+        }),
+    )?;
     globals.set(
         "__relayVarGet",
         Func::from({
@@ -29,7 +52,11 @@ pub(super) fn install(ctx: &Ctx<'_>, state: &SharedState) -> CtxResult<()> {
         "__relayVarSet",
         Func::from({
             let state = Arc::clone(state);
-            move |scope: String, key: String, value: String| -> CtxResult<()> {
+            move |ctx: Ctx<'_>, scope: String, key: String, value: String| -> CtxResult<()> {
+                let charged = key.len().saturating_add(value.len());
+                if let Some(kind) = lock(&state).charge(charged) {
+                    return Err(abort(&ctx, kind));
+                }
                 lock(&state).var_set(parse_scope(&scope), key, value);
                 Ok(())
             }
@@ -39,7 +66,10 @@ pub(super) fn install(ctx: &Ctx<'_>, state: &SharedState) -> CtxResult<()> {
         "__relayVarUnset",
         Func::from({
             let state = Arc::clone(state);
-            move |scope: String, key: String| -> CtxResult<()> {
+            move |ctx: Ctx<'_>, scope: String, key: String| -> CtxResult<()> {
+                if let Some(kind) = lock(&state).charge(key.len()) {
+                    return Err(abort(&ctx, kind));
+                }
                 lock(&state).var_unset(parse_scope(&scope), key);
                 Ok(())
             }
@@ -49,7 +79,17 @@ pub(super) fn install(ctx: &Ctx<'_>, state: &SharedState) -> CtxResult<()> {
         "__relayTest",
         Func::from({
             let state = Arc::clone(state);
-            move |name: String, passed: bool, message: Option<String>| -> CtxResult<()> {
+            move |ctx: Ctx<'_>,
+                  name: String,
+                  passed: bool,
+                  message: Option<String>|
+                  -> CtxResult<()> {
+                let charged = name
+                    .len()
+                    .saturating_add(message.as_deref().map_or(0, str::len));
+                if let Some(kind) = lock(&state).charge(charged) {
+                    return Err(abort(&ctx, kind));
+                }
                 lock(&state).record_test(name, passed, message);
                 Ok(())
             }
@@ -59,7 +99,10 @@ pub(super) fn install(ctx: &Ctx<'_>, state: &SharedState) -> CtxResult<()> {
         "__relayConsole",
         Func::from({
             let state = Arc::clone(state);
-            move |level: String, message: String| -> CtxResult<()> {
+            move |ctx: Ctx<'_>, level: String, message: String| -> CtxResult<()> {
+                if let Some(kind) = lock(&state).charge(message.len()) {
+                    return Err(abort(&ctx, kind));
+                }
                 lock(&state).record_console(parse_level(&level), message);
                 Ok(())
             }

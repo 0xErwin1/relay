@@ -16,14 +16,24 @@ use crate::{
 
 /// QuickJS heap cap for one script run.
 const MEMORY_LIMIT_BYTES: usize = 64 * 1024 * 1024;
-/// Wall-clock cap enforced by the QuickJS interrupt handler.
+/// Wall-clock cap enforced by the QuickJS interrupt handler and by every host call.
 const TIME_LIMIT: Duration = Duration::from_secs(5);
+/// Cap on what the host itself collects for a script: the interrupt handler cannot bound a
+/// run whose wall time sits in host calls, so the collected state is capped too.
+const HOST_STATE_LIMIT_BYTES: usize = 8 * 1024 * 1024;
 
 /// The [`State`] shared between the host functions and the sandbox driver.
 type SharedState = Arc<Mutex<State>>;
 
 /// Everything the host collects during one script run.
 pub(super) struct State {
+    deadline: Instant,
+    /// Bytes the host has copied out of the script so far.
+    bytes: usize,
+    /// Set when the host stopped the run, so the failure kind needs no message sniffing.
+    aborted: Option<ScriptErrorKind>,
+    /// Whether the user script started executing, which tells a parse failure from a throw.
+    reached: bool,
     variables: BTreeMap<String, String>,
     /// Writes and unsets applied during the run, checked before `variables` on a read.
     overlay: HashMap<(VariableScope, String), Option<String>>,
@@ -33,14 +43,48 @@ pub(super) struct State {
 }
 
 impl State {
-    pub(super) fn new(context: &ScriptContext) -> Self {
+    pub(super) fn new(context: &ScriptContext, deadline: Instant) -> Self {
         Self {
+            deadline,
+            bytes: 0,
+            aborted: None,
+            reached: false,
             variables: context.variables.clone(),
             overlay: HashMap::new(),
             writes: Vec::new(),
             tests: Vec::new(),
             console: Vec::new(),
         }
+    }
+
+    /// The kind that stopped the run, when the host stopped it.
+    pub(super) fn aborted(&self) -> Option<ScriptErrorKind> {
+        self.aborted
+    }
+
+    /// Whether the user script began executing.
+    pub(super) fn reached(&self) -> bool {
+        self.reached
+    }
+
+    pub(super) fn mark_reached(&mut self) {
+        self.reached = true;
+    }
+
+    /// Refuses more host work once the deadline passed or the collected state is too big,
+    /// remembering why so the driver reports the right kind.
+    pub(super) fn charge(&mut self, bytes: usize) -> Option<ScriptErrorKind> {
+        if Instant::now() >= self.deadline {
+            self.aborted.get_or_insert(ScriptErrorKind::Timeout);
+        }
+        if self.bytes.saturating_add(bytes) > HOST_STATE_LIMIT_BYTES {
+            self.aborted.get_or_insert(ScriptErrorKind::MemoryLimit);
+        }
+        self.aborted
+    }
+
+    fn spent(&mut self, bytes: usize) {
+        self.bytes = self.bytes.saturating_add(bytes);
     }
 
     pub(super) fn var_get(&self, scope: VariableScope, key: &str) -> Option<String> {
@@ -52,6 +96,7 @@ impl State {
     }
 
     pub(super) fn var_set(&mut self, scope: VariableScope, key: String, value: String) {
+        self.spent(key.len().saturating_add(value.len()));
         self.writes.push(VariableWrite {
             scope,
             key: key.clone(),
@@ -61,6 +106,7 @@ impl State {
     }
 
     pub(super) fn var_unset(&mut self, scope: VariableScope, key: String) {
+        self.spent(key.len());
         self.writes.push(VariableWrite {
             scope,
             key: key.clone(),
@@ -70,6 +116,10 @@ impl State {
     }
 
     pub(super) fn record_test(&mut self, name: String, passed: bool, message: Option<String>) {
+        self.spent(
+            name.len()
+                .saturating_add(message.as_deref().map_or(0, str::len)),
+        );
         self.tests.push(TestResult {
             name,
             passed,
@@ -78,6 +128,7 @@ impl State {
     }
 
     pub(super) fn record_console(&mut self, level: crate::ConsoleLevel, message: String) {
+        self.spent(message.len());
         self.console.push(ConsoleEntry { level, message });
     }
 
@@ -107,24 +158,28 @@ pub(super) fn run(script: &str, context: &ScriptContext) -> Result<ScriptOutcome
             format!("creating the context failed: {error}"),
         )
     })?;
-    js_context.with(|ctx| execute(&ctx, script, context))
+    js_context.with(|ctx| execute(&ctx, script, context, deadline))
 }
 
 fn execute(
     ctx: &Ctx<'_>,
     script: &str,
     context: &ScriptContext,
+    deadline: Instant,
 ) -> Result<ScriptOutcome, ScriptError> {
-    let state: SharedState = Arc::new(Mutex::new(State::new(context)));
+    let state: SharedState = Arc::new(Mutex::new(State::new(context, deadline)));
     pm::install(ctx, &state).map_err(|error| {
         internal(
             context.stage,
             format!("installing the pm shim failed: {error}"),
         )
     })?;
-    eval_source(ctx, &pm::init_source(context), context, &state)?;
-    eval_source(ctx, PRELUDE, context, &state)?;
-    eval_source(ctx, script, context, &state)?;
+    eval_source(ctx, &pm::init_source(context), context, &state, false)?;
+    eval_source(ctx, PRELUDE, context, &state, false)?;
+    // The marker runs before any user statement, so a script that never reached it did not
+    // parse; anything that fails after it threw at run time.
+    let marked = format!("__relayReach();\n{script}");
+    eval_source(ctx, &marked, context, &state, true)?;
     Ok(lock(&state).outcome())
 }
 
@@ -139,6 +194,7 @@ fn eval_source(
     source: &str,
     context: &ScriptContext,
     state: &SharedState,
+    user_script: bool,
 ) -> Result<(), ScriptError> {
     let mut options = EvalOptions::default();
     options.strict = false;
@@ -147,7 +203,12 @@ fn eval_source(
         .map_err(|error| {
             let exception = ctx.catch();
             let message = exception_message(&exception);
-            let kind = classify(&error, &message).unwrap_or(ScriptErrorKind::Thrown);
+            // QuickJS leaves undefined, or null, where an error object would be when the heap
+            // itself gave out. A script that throws a bare null is reported as a memory
+            // failure too; that is the cost of telling them apart without asking the runtime,
+            // which is unavailable while the eval is unwinding.
+            let bare = exception.is_undefined() || exception.is_null();
+            let kind = classify(&error, &message, state, user_script, bare);
             ScriptError {
                 kind,
                 stage: context.stage,
@@ -157,22 +218,41 @@ fn eval_source(
         })
 }
 
-/// Maps a QuickJS failure to a failure kind from the exception text and the host error.
-fn classify(error: &rquickjs::Error, message: &str) -> Option<ScriptErrorKind> {
-    let lower = message.to_ascii_lowercase();
-    if matches!(error, rquickjs::Error::Allocation) || lower.contains("out of memory") {
-        return Some(ScriptErrorKind::MemoryLimit);
+/// Maps a QuickJS failure to a failure kind.
+///
+/// The host's own reason wins, then QuickJS's two internal failures, which are matched
+/// exactly so a script that throws `new Error("interrupted")` is a plain throw. A user script
+/// that never reached its first statement did not parse, which is how a parse failure is told
+/// apart from a `SyntaxError` thrown at run time.
+fn classify(
+    error: &rquickjs::Error,
+    message: &str,
+    state: &SharedState,
+    user_script: bool,
+    bare_failure: bool,
+) -> ScriptErrorKind {
+    let (aborted, reached) = {
+        let state = lock(state);
+        (state.aborted(), state.reached())
+    };
+    if let Some(kind) = aborted {
+        return kind;
     }
-    if lower.contains("interrupted") {
-        return Some(ScriptErrorKind::Timeout);
+    if matches!(error, rquickjs::Error::Allocation) || message == "InternalError: out of memory" {
+        return ScriptErrorKind::MemoryLimit;
     }
-    if lower.contains("syntaxerror") {
-        return Some(ScriptErrorKind::Syntax);
+    if message == "InternalError: interrupted" {
+        return ScriptErrorKind::Timeout;
     }
-    if matches!(error, rquickjs::Error::Exception) {
-        return Some(ScriptErrorKind::Thrown);
+    if user_script && !reached {
+        return ScriptErrorKind::Syntax;
     }
-    None
+    // Growing the heap past the limit fails without leaving any exception value, which is how
+    // it is told apart from a script that throws something of its own.
+    if matches!(error, rquickjs::Error::Exception) && bare_failure {
+        return ScriptErrorKind::MemoryLimit;
+    }
+    ScriptErrorKind::Thrown
 }
 
 /// Reads the message of a caught exception: its text, its `message`, its `name`, or a fallback.
