@@ -4,6 +4,7 @@
 
 mod cli;
 mod gui;
+mod import;
 mod mcp;
 mod run;
 mod signals;
@@ -20,5 +21,6 @@ fn main() -> ExitCode {
         None => gui::open(cli.workspace),
         Some(Command::Run(args)) => run::run(args),
         Some(Command::Mcp(args)) => mcp::mcp(args),
+        Some(Command::Import(args)) => import::import(args),
     }
 }

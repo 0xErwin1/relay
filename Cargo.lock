@@ -6160,6 +6160,7 @@ dependencies = [
  "relay_engine",
  "relay_mcp",
  "relay_ui",
+ "serde_json",
  "signal-hook",
  "tempfile",
  "tokio",

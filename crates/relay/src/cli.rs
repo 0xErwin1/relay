@@ -34,6 +34,8 @@ pub(crate) enum Command {
     Run(RunArgs),
     /// Serve the MCP tools that drive the running app, over stdio.
     Mcp(McpArgs),
+    /// Import a Postman collection and its environments into a workspace.
+    Import(ImportArgs),
 }
 
 /// The application id the window reports, and the default `--app-id`.
@@ -73,6 +75,36 @@ pub(crate) struct RunArgs {
     /// Write the status line and the response headers before the body.
     #[arg(short, long)]
     pub(crate) include: bool,
+}
+
+const IMPORT_AFTER_HELP: &str = "\
+A collection v2.1 is written as a collection directory with a folder for each Postman
+folder and a file for each request; environments are written beside it.
+An import never overwrites: when a collection or request file already exists the whole
+import fails before anything is written.
+
+Output:
+  stdout  the workspace root, the collection, and how many folders, requests and
+          environments were written
+
+Exit codes:
+  0  the documents were imported
+  1  a document does not import, its JSON does not parse, or a target file exists
+  2  usage error: bad arguments or an unreadable path";
+
+/// Arguments of `relay import`.
+#[derive(Debug, Args)]
+#[command(after_help = IMPORT_AFTER_HELP)]
+pub(crate) struct ImportArgs {
+    /// The Postman collection v2.1 JSON file.
+    #[arg(value_name = "FILE")]
+    pub(crate) file: PathBuf,
+    /// The workspace directory to import into. Defaults to the current directory.
+    #[arg(long, value_name = "DIR")]
+    pub(crate) workspace: Option<PathBuf>,
+    /// A Postman environment JSON file. Repeatable.
+    #[arg(long = "environment", value_name = "FILE")]
+    pub(crate) environments: Vec<PathBuf>,
 }
 
 const MCP_AFTER_HELP: &str = "\
@@ -135,6 +167,43 @@ mod tests {
             panic!("expected relay run");
         };
         assert_eq!(args.request, "x");
+    }
+
+    #[test]
+    fn import_takes_a_file_a_workspace_and_environments() {
+        let cli = parse(&[
+            "relay",
+            "import",
+            "c.json",
+            "--workspace",
+            "w",
+            "--environment",
+            "dev.json",
+            "--environment",
+            "prod.json",
+        ]);
+        let Some(Command::Import(args)) = cli.command else {
+            panic!("expected relay import");
+        };
+        assert_eq!(args.file, PathBuf::from("c.json"));
+        assert_eq!(args.workspace, Some(PathBuf::from("w")));
+        assert_eq!(
+            args.environments,
+            [PathBuf::from("dev.json"), PathBuf::from("prod.json")]
+        );
+    }
+
+    #[test]
+    fn import_needs_a_file_and_documents_its_exit_codes() {
+        assert!(Cli::try_parse_from(["relay", "import"]).is_err());
+        let help = Cli::command()
+            .find_subcommand_mut("import")
+            .map_or_else(String::new, |command| {
+                command.render_long_help().to_string()
+            });
+        for expected in ["Exit codes", "never overwrites", "FILE"] {
+            assert!(help.contains(expected), "{expected} missing: {help}");
+        }
     }
 
     #[test]

@@ -414,6 +414,10 @@ allows it and without one otherwise.
   overwriting a file that is already there.
 - A fixture corpus of real exported collections drives round-trip tests: import, export and
   compare the JSON structurally.
+- `relay import <collection.json> [--workspace <dir>] [--environment <file>]...` imports into a
+  workspace directory: it creates the manifest when the directory has none, writes the
+  collection and its environments, prints what it wrote, and refuses to run when a target file
+  already exists, so an import never overwrites existing work.
 
 ## Export and import
 
