@@ -32,7 +32,7 @@ pub(crate) struct Cli {
 pub(crate) enum Command {
     /// Send one request of a workspace and write the response body to stdout.
     Run(RunArgs),
-    /// Serve the MCP tools that drive the running app, over stdio.
+    /// Serve the MCP tools that edit and run a workspace and drive the running app, over stdio.
     Mcp(McpArgs),
     /// Import a Postman collection and its environments into a workspace.
     Import(ImportArgs),
@@ -234,17 +234,32 @@ pub(crate) struct SecretListArgs {
 const MCP_AFTER_HELP: &str = "\
 The server speaks MCP on stdout, so stdout carries only protocol frames; logs go to stderr.
 
-Tools, all driving a running ReqFlux window through its gpui-mcp bridge:
+Engine tools, on the open workspace (the files, through the same engine as the window):
+  workspace_open, workspace_create, workspace_info
+  collection_create, folder_create, request_create
+  item_rename, item_duplicate, item_move, item_delete
+  request_get, request_update, request_execute
+  history_list, history_get
+  environment_list, environment_create, environment_rename, environment_delete
+  variables_get, variable_set, variable_delete
+
+Secret values never appear in tool output: secret variables show set or not set, and basic
+passwords, bearer tokens and API key values show as a mask.
+
+UI tools, driving a running ReqFlux window through its gpui-mcp bridge:
   ui_list_targets, ui_select_target, ui_ping
   ui_tree, ui_find, ui_element, ui_element_bounds, ui_wait_for_element
   ui_click, ui_type, ui_key, ui_focus, ui_scroll
 
-Policy, approvals and audit are not implemented yet: every tool runs.
+Policy, approvals and audit are not implemented yet: every tool runs. An agent connected to
+this server can change workspace files and send requests, with the stored credentials, to any
+URL it writes.
 
 Exit codes:
   0  the client closed the connection
   1  the server could not start or the bridge could not be served
-  2  usage error: bad arguments or an invalid application id";
+  2  usage error: bad arguments, an invalid application id, or a --workspace that does not
+     load";
 
 /// Arguments of `reqflux mcp`.
 #[derive(Debug, Args)]

@@ -602,23 +602,46 @@ git needs no export at all.
 
 ## MCP
 
-`reqflux mcp [--workspace <path>] [--app-id <id>]` runs an rmcp stdio server. Today it serves
-the `ui_*` tools of "UI automation"; the engine tools below are the plan.
+`reqflux mcp [--workspace <path>] [--app-id <id>]` runs an rmcp stdio server with two groups of
+tools: engine tools that read and change a workspace through `reqflux_engine`, and the `ui_*`
+tools of "UI automation". Each group has its own `#[tool_router]`; the server serves their sum.
 
-What exists: `reqflux_mcp` reads the bridge endpoint descriptors under the runtime directory
+Engine tools (`reqflux_mcp::engine_tools`) work on one open workspace per session: the one
+`--workspace` names (one that does not load exits 2), else the current directory when it holds
+a `reqflux.toml`, else none until `workspace_open` or `workspace_create`. Every read reloads the
+workspace first, so it sees what the window or `git` wrote. The tools: `workspace_open`,
+`workspace_create`, `workspace_info` (name, id, path, warnings and the flat tree);
+`collection_create`, `folder_create`, `request_create`, `item_rename`, `item_duplicate`,
+`item_move`, `item_delete` (the tree operations, by id); `request_get` and `request_update`
+(the request document as TOML, saved hash-checked against the file as the last read saw it);
+`request_execute` (status, headers, body text cut at 256 KiB, time, size, unresolved variables
+and test results; it records no history and keeps no script writes); `history_list` and
+`history_get` (the window's history of this workspace, read-only); `environment_list`,
+`environment_create`, `environment_rename`, `environment_delete`; `variables_get`,
+`variable_set` and `variable_delete` by scope `global`, `collection:<id>` or `environment:<id>`.
+The handlers run on the blocking pool; the engine, which owns a Tokio runtime, is dropped on
+its own thread, never inside the async server.
+
+Secrets never leave the engine. A secret variable shows `{"set": true|false}`, never a value.
+Basic passwords, bearer tokens, API key values and every field of an unsupported auth type show
+as `••••••••` in `request_get`, `workspace_info` and history documents; a `request_update` that
+sends the mask back for such a field keeps the stored value. An executed response's headers,
+body and error text go through the send's masker.
+
+For the `ui_*` tools: `reqflux_mcp` reads the bridge endpoint descriptors under the runtime directory
 and speaks the framed wire protocol to one window (`reqflux_mcp::bridge`), and serves thirteen
 `ui_*` tools over stdio (`reqflux_mcp::server`). A session talks to the only live target, asks
 for `ui_select_target` when several are running, and reports a target that died instead of
 switching. Stdout carries only protocol frames; logs go to stderr. Text the bridge withholds
 as redacted stays withheld, and a bridge failure is a tool error, never a panic.
 
-Not yet: policy, approvals and audit. Every tool runs unpoliced, which adds no exposure the
-bridge does not already have (see the trust model below), and the help text says so.
+Not yet: policy, approvals and audit. Every tool runs unpoliced and the help text says so. For
+the `ui_*` tools that adds no exposure the bridge does not already have (see the trust model
+below). The engine tools can change workspace files and send requests, with the stored
+credentials, to any URL the agent writes: the same as a shell with `reqflux run`, and what the
+host allowlist and approvals below are for.
 
-- **Tools**, grouped with one `#[tool_router]` per group: workspace (list, open, inspect),
-  collection and folder (list, get, create, update, move, delete), request (get, create,
-  update, move, delete, execute), environment (list, get, set variable), runner (run a
-  collection or folder), history (list, get), and import and export.
+- **More tools**: runner (run a collection or folder), import and export.
 - **Resources**: requests, collections and environments addressed by id, so an agent can read
   them without a tool call.
 - **Secrets never leave the engine.** Tools return `{{token}}`, not the token. Execution
