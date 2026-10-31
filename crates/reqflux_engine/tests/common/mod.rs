@@ -125,6 +125,7 @@ pub fn options(environment: Option<&str>, vars: &[(&str, &str)]) -> ExecuteOptio
             .iter()
             .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
             .collect(),
+        ..ExecuteOptions::default()
     }
 }
 

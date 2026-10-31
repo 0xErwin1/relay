@@ -8,6 +8,7 @@ use reqflux_core::template::{DynamicVariable, Scopes, Segment, SequentialDynamic
 use super::{
     ExecuteOptions, StoredSecrets, enabled, prepare_target, scopes, select_environment, url,
 };
+use crate::current::CurrentValues;
 use crate::error::ExecuteError;
 use crate::secrets::SecretStore;
 use crate::select;
@@ -112,16 +113,25 @@ pub fn inspect(
     selector: &str,
     environment: Option<&str>,
 ) -> Result<Inspection, ExecuteError> {
-    inspect_stored(workspace, root, selector, environment, None)
+    inspect_stored(
+        workspace,
+        root,
+        selector,
+        environment,
+        &CurrentValues::default(),
+        None,
+    )
 }
 
-/// [`inspect`], with the valueless secrets read from `store` when there is one, so a stored
-/// secret reports resolved (keyring-secrets S4). Its value stays out of the inspection.
+/// [`inspect`] with the `current` values of the workspace, and with the valueless secrets
+/// read from `store` when there is one, so a stored secret reports resolved (keyring-secrets
+/// S4). Its value stays out of the inspection.
 pub(crate) fn inspect_stored(
     workspace: &Workspace,
     root: &Path,
     selector: &str,
     environment: Option<&str>,
+    current: &CurrentValues,
     store: Option<&dyn SecretStore>,
 ) -> Result<Inspection, ExecuteError> {
     let target = select::find(workspace, selector)?;
@@ -133,6 +143,7 @@ pub(crate) fn inspect_stored(
         .collect();
     let options = ExecuteOptions {
         environment: environment.map(str::to_owned),
+        current: current.clone(),
         ..ExecuteOptions::default()
     };
     // The spans follow the environment whenever the collection allows it, also when

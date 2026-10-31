@@ -45,6 +45,7 @@
 //! [`state::AppState`] is the per-user SQLite app state (drafts and the send history), at
 //! `$XDG_STATE_HOME/reqflux/state.sqlite3`.
 
+mod current;
 mod engine;
 mod error;
 mod import;
@@ -57,8 +58,11 @@ pub mod state;
 mod tree;
 mod variables;
 
+pub use current::CurrentValues;
 pub use engine::{Engine, Executed, Execution};
-pub use error::{ExecuteError, ImportError, OpenError, SaveError, TreeError, VariableError};
+pub use error::{
+    ExecuteError, ImportError, OpenError, PersistError, SaveError, TreeError, VariableError,
+};
 pub use import::{ImportSummary, postman};
 pub use prepare::{
     DEFAULT_TIMEOUT_MS, ExecuteOptions, Inspection, Prepared, Span, inspect, prepare, prepare_draft,

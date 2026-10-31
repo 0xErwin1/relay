@@ -5,6 +5,7 @@ mod action_strip;
 mod auth_edit;
 mod body_edit;
 mod cell_edit;
+mod current;
 mod diamond;
 mod document;
 mod documents;
@@ -40,6 +41,7 @@ use gpui::{
     App, Context, Div, ElementId, Entity, FocusHandle, IntoElement, ParentElement, Render, Role,
     Stateful, Styled, Subscription, Window, div, prelude::*,
 };
+use reqflux_engine::CurrentValues;
 use reqflux_engine::state::AppState;
 
 use self::body_edit::BodyEdit;
@@ -98,6 +100,9 @@ pub(crate) struct Shell {
     state: Option<AppState>,
     /// The id of the loaded workspace, the key drafts are stored under.
     workspace_id: Option<String>,
+    /// The workspace's current values (variables-editor S4), read from the app state and
+    /// kept in step with it as sends persist script writes; empty without the app state.
+    current: CurrentValues,
     /// The slug of the window's active environment; `None` is No environment.
     active_environment: Option<String>,
     /// Whether the title bar environment menu is open; not kept across restarts.
@@ -176,6 +181,7 @@ impl Shell {
             body_edit: None,
             state,
             workspace_id,
+            current: CurrentValues::default(),
             active_environment: None,
             environment_menu_open: false,
             environment_menu_focus: cx.focus_handle(),
@@ -192,6 +198,7 @@ impl Shell {
             _tree_commands: tree_commands,
         };
         shell.load_drafts();
+        shell.load_current_values();
         shell.refresh_history(cx);
         shell
     }
@@ -206,7 +213,7 @@ impl Shell {
         if !self.requests.contains_key(id)
             && let OpenedWorkspace::Loaded(engine) = &self.workspace
         {
-            match engine.inspect(id, self.active_environment.as_deref()) {
+            match engine.inspect_current(id, self.active_environment.as_deref(), &self.current) {
                 Ok(inspection) => {
                     self.requests
                         .insert(id.to_owned(), RequestState::new(inspection));
@@ -229,8 +236,9 @@ impl Shell {
     pub(super) fn inspect_open_requests(&mut self, cx: &mut Context<Self>) {
         if let OpenedWorkspace::Loaded(engine) = &self.workspace {
             let environment = self.active_environment.as_deref();
-            self.requests
-                .retain(|id, state| match engine.inspect(id, environment) {
+            let current = &self.current;
+            self.requests.retain(|id, state| {
+                match engine.inspect_current(id, environment, current) {
                     Ok(inspection) => {
                         state.inspection = inspection;
                         true
@@ -239,7 +247,8 @@ impl Shell {
                         log::warn!("cannot inspect request {id}: {error}");
                         false
                     }
-                });
+                }
+            });
         }
         cx.notify();
     }
@@ -383,6 +392,8 @@ fn text_region(id: &'static str) -> Stateful<Div> {
 mod auth_edit_tests;
 #[cfg(test)]
 mod body_edit_tests;
+#[cfg(test)]
+mod current_value_tests;
 #[cfg(test)]
 mod document_tests;
 #[cfg(test)]

@@ -81,14 +81,14 @@ fn user_version(path: &Path) -> i64 {
 }
 
 #[test]
-fn a_v1_file_upgrades_to_v2_and_keeps_its_drafts() {
+fn a_v1_file_upgrades_to_the_latest_and_keeps_its_drafts() {
     let dir = tempfile::tempdir().unwrap();
     let path = state_path(&dir);
     write_v1(&path);
 
     let mut state = open(&path);
 
-    assert_eq!(user_version(&path), 2);
+    assert_eq!(user_version(&path), 3);
     let draft = state.draft("ws", "req").unwrap().unwrap();
     assert_eq!(draft.payload, "a = 1");
     assert_eq!(draft.base_hash.as_deref(), Some("hash-1"));
@@ -99,11 +99,11 @@ fn a_v1_file_upgrades_to_v2_and_keeps_its_drafts() {
 }
 
 #[test]
-fn a_fresh_file_is_created_at_v2() {
+fn a_fresh_file_is_created_at_v3() {
     let dir = tempfile::tempdir().unwrap();
     let path = state_path(&dir);
     open(&path);
-    assert_eq!(user_version(&path), 2);
+    assert_eq!(user_version(&path), 3);
 }
 
 #[test]
@@ -112,10 +112,10 @@ fn a_file_newer_than_the_build_is_refused() {
     let path = state_path(&dir);
     {
         let conn = rusqlite::Connection::open(&path).unwrap();
-        conn.execute_batch("PRAGMA user_version = 3;").unwrap();
+        conn.execute_batch("PRAGMA user_version = 4;").unwrap();
     }
     match AppState::open(&path) {
-        Err(StateError::UnsupportedVersion { version, .. }) => assert_eq!(version, 3),
+        Err(StateError::UnsupportedVersion { version, .. }) => assert_eq!(version, 4),
         other => panic!("expected UnsupportedVersion, got {other:?}"),
     }
 }

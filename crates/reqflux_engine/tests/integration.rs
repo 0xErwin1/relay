@@ -334,7 +334,7 @@ fn a_pre_request_send_request_token_reaches_the_request_through_the_environment(
     let engine = engine(root);
     let options = ExecuteOptions {
         environment: Some("staging".to_owned()),
-        vars: Vec::new(),
+        ..ExecuteOptions::default()
     };
     let executed = execute(&engine, "api/r", &options);
     assert_eq!(executed.response.status, 201, "{:?}", executed.scripts);
@@ -447,7 +447,7 @@ fn an_environment_change_between_runs_resolves_with_the_new_values() {
     environment(root, "staging", "host", "first");
     let options = ExecuteOptions {
         environment: Some("staging".to_owned()),
-        vars: Vec::new(),
+        ..ExecuteOptions::default()
     };
     let untouched = snapshot(root);
     let first = engine(root);

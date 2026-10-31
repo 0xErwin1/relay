@@ -60,6 +60,8 @@ fn send(args: RunArgs) -> Result<(), Failure> {
     let options = ExecuteOptions {
         environment: args.env,
         vars,
+        // `reqflux run` never reads or writes current values (variables-editor S5).
+        ..ExecuteOptions::default()
     };
     let execution = engine.execute(&args.request, &options)?;
     if let Some(problem) = &execution.secret_problem {

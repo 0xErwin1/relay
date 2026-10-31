@@ -71,6 +71,12 @@ Precedence follows Postman, lowest to highest:
 4. Iteration data (runner only)
 5. Local variables (set by scripts for one execution)
 
+Within each of the first three scopes a current value beats the shared value, and a current
+value for a key the scope does not declare resolves in that scope too. A secret variable
+resolves from the OS keyring only. `--var` values are local. Current values come from the
+per-user app state through `ExecuteOptions::current`; `reqflux run` passes none and never
+opens the app state.
+
 `{{name}}` is resolved after pre-request scripts run, in the URL, params, headers, body, auth
 fields and certificate paths. Dynamic variables (`{{$guid}}`, `{{$timestamp}}`,
 `{{$randomInt}}` and the rest of Postman's list) resolve at the same point. An unresolved
@@ -85,8 +91,12 @@ load → collection pre-request → folder pre-request → request pre-request
 ```
 
 Each step reads and writes one `ExecutionContext` (variables by scope, request draft,
-response, test results, console output). Scripts mutate the context, never the files; a
-script that sets an environment value updates the current value, as in Postman.
+response, test results, console output). Scripts mutate the context, never the files. After a
+send from the window completes, `Engine::persist_script_writes` keeps the writes of
+`pm.environment`, `pm.collectionVariables` and `pm.globals` as current values, as in Postman:
+a write to a secret variable goes to the keyring and never to the app state, an unset of a
+secret leaves the keyring alone, and `pm.variables` writes stay local to the execution.
+`reqflux run` does not persist writes.
 
 ## On-disk format
 
@@ -107,7 +117,7 @@ billing/                              workspace root
 │           ├── list-invoices.test.js
 │           └── list-invoices.examples/
 │               └── ok.toml
-└── .reqflux/                           local, git-ignored: current values, per-user state
+└── .reqflux/                           local, git-ignored, reserved; nothing is written here yet
 ```
 
 Rules that keep files mergeable:
@@ -122,8 +132,10 @@ Rules that keep files mergeable:
   of a script is a diff of code, not of an escaped string.
 - **Stable serialization.** Keys are written in a fixed order and tables are only emitted when
   non-empty, so an unchanged entity serializes to the same bytes.
-- **Shared versus current values.** An environment file holds the shared value. The current
-  value a person or script sets lives under `.reqflux/`. Secret keys have no value in the file.
+- **Shared versus current values.** A workspace file holds the shared value. The current
+  value a person or script sets lives in the per-user app state (see "Drafts and saving"),
+  never in the workspace. Secret keys have no value in the file: their value is in the OS
+  keyring, and it is both their shared and their current value.
 - **Format version.** `reqflux.toml` carries `format = 1`. A newer format refuses to load with a
   clear message rather than guessing.
 
@@ -252,7 +264,8 @@ Saving is explicit, as in Postman: an edit never touches the workspace file unti
   The app state is SQLite (`reqflux_engine::state`, `rusqlite`) at
   `$XDG_STATE_HOME/reqflux/state.sqlite3` (`$HOME/.local/state/reqflux/state.sqlite3` when the
   variable is unset), with an explicit, forward-only schema version (v2 adds the `history`
-  table; a v1 file upgrades in one transaction and keeps its drafts). A draft stores the
+  table, v3 the `current_values` table keyed by workspace id, scope and key; an older file
+  upgrades in one transaction and keeps what it holds). A draft stores the
   whole entity document as TOML, so later editable surfaces need no new storage.
 - **Sending** a request with a draft sends the draft. History records what was sent.
 

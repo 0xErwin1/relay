@@ -545,3 +545,67 @@ fn mcp_exits_cleanly_when_the_client_closes_before_the_handshake() {
     assert_eq!(output.status.code(), Some(0), "{output:?}");
     assert!(output.stdout.is_empty(), "{output:?}");
 }
+
+/// variables-editor S5: `reqflux run` never persists script writes as current values and
+/// never creates or reads the app state; a later run resolves the shared value again.
+#[test]
+fn run_does_not_persist_script_writes_or_touch_the_app_state() {
+    let rt = runtime();
+    let server = server(
+        &rt,
+        vec![
+            Mock::given(method("GET"))
+                .and(path("/login"))
+                .respond_with(ResponseTemplate::new(200).set_body_string("in")),
+            Mock::given(method("GET"))
+                .and(path("/use/shared"))
+                .respond_with(ResponseTemplate::new(200).set_body_string("shared")),
+        ],
+    );
+    let dir = workspace(
+        "\n[[globals]]\nkey = \"token\"\nvalue = \"shared\"\n",
+        &[
+            ("login", get(&format!("{}/login", server.uri()))),
+            ("use", get(&format!("{}/use/{{{{token}}}}", server.uri()))),
+        ],
+    );
+    write(
+        dir.path(),
+        "collections/api/login.pre.js",
+        "pm.globals.set('token', 'abc');\n",
+    );
+    let state = match TempDir::new() {
+        Ok(state) => state,
+        Err(error) => panic!("temp dir: {error}"),
+    };
+    let root = dir.path().to_string_lossy().into_owned();
+    let run_with_state = |request: &str| match Command::new(env!("CARGO_BIN_EXE_reqflux"))
+        .args(["run", "--workspace", root.as_str(), request])
+        .env_remove("RUST_LOG")
+        .env("DBUS_SESSION_BUS_ADDRESS", NO_BUS)
+        .env("XDG_STATE_HOME", state.path())
+        .env("HOME", state.path())
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => panic!("run reqflux: {error}"),
+    };
+
+    let login = run_with_state("api/login");
+    assert_eq!(text(&login.stdout), "in");
+    assert_eq!(login.status.code(), Some(0));
+    let used = run_with_state("api/use");
+    assert_eq!(text(&used.stdout), "shared");
+    assert_summary(
+        &text(&used.stderr),
+        &format!("GET {}/use/shared -> 200 OK in ", server.uri()),
+        " ms, 6 B\n",
+    );
+    assert_eq!(used.status.code(), Some(0));
+
+    let entries = match fs::read_dir(state.path()) {
+        Ok(entries) => entries.count(),
+        Err(error) => panic!("read state dir: {error}"),
+    };
+    assert_eq!(entries, 0, "reqflux run created app state");
+}

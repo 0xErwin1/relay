@@ -152,3 +152,24 @@ impl ExecuteError {
         matches!(self, Self::UnknownRequest(_) | Self::UnknownEnvironment(_))
     }
 }
+
+/// Why script writes could not be persisted as current values (variables-editor S5). The
+/// message names keys and keyring accounts, never a value.
+#[derive(Debug, thiserror::Error)]
+pub enum PersistError {
+    /// The request or the environment of the send no longer resolves.
+    #[error(transparent)]
+    Execute(#[from] ExecuteError),
+    /// The app state refused a current value.
+    #[error(transparent)]
+    State(#[from] crate::state::StateError),
+    /// The secret store refused the value of a secret variable.
+    #[error("could not store the secret {account}: {source}")]
+    Secret {
+        /// The keyring account of the secret.
+        account: String,
+        /// The store failure.
+        #[source]
+        source: SecretError,
+    },
+}

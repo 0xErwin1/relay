@@ -11,7 +11,7 @@ use reqflux_core::model::Id;
 pub const SECRET_SERVICE: &str = "reqflux";
 
 /// Where a secret variable is declared.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SecretScope {
     /// The workspace globals.
     Global,
@@ -19,6 +19,34 @@ pub enum SecretScope {
     Collection(Id),
     /// The variables of the environment with this id.
     Environment(Id),
+}
+
+impl SecretScope {
+    /// The scope part of a keyring account: `global`, `collection/<id>` or
+    /// `environment/<id>`. The app state keys current values by the same text.
+    #[must_use]
+    pub fn path(self) -> String {
+        match self {
+            Self::Global => "global".to_owned(),
+            Self::Collection(id) => format!("collection/{id}"),
+            Self::Environment(id) => format!("environment/{id}"),
+        }
+    }
+
+    /// Parses the text [`SecretScope::path`] writes; `None` for anything else.
+    #[must_use]
+    pub fn from_path(text: &str) -> Option<Self> {
+        if text == "global" {
+            return Some(Self::Global);
+        }
+        let (kind, id) = text.split_once('/')?;
+        let id = id.parse().ok()?;
+        match kind {
+            "collection" => Some(Self::Collection(id)),
+            "environment" => Some(Self::Environment(id)),
+            _ => None,
+        }
+    }
 }
 
 /// One secret variable: its workspace, its scope and its key. Ids, not slugs, so a rename or
@@ -39,13 +67,7 @@ impl SecretKey {
     /// `<workspace id>/environment/<environment id>/<key>`.
     #[must_use]
     pub fn account(&self) -> String {
-        let workspace = self.workspace_id;
-        let key = &self.key;
-        match self.scope {
-            SecretScope::Global => format!("{workspace}/global/{key}"),
-            SecretScope::Collection(id) => format!("{workspace}/collection/{id}/{key}"),
-            SecretScope::Environment(id) => format!("{workspace}/environment/{id}/{key}"),
-        }
+        format!("{}/{}/{}", self.workspace_id, self.scope.path(), self.key)
     }
 }
 

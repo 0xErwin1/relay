@@ -17,6 +17,7 @@ use reqflux_core::template::{DynamicSource, Scope, ScopeEntry, ScopeKind, Scopes
 use reqflux_http::{PreparedRequest, RequestOptions};
 use reqflux_script::VariableWrite;
 
+use crate::current::CurrentValues;
 use crate::error::ExecuteError;
 use crate::secrets::SecretScope;
 use crate::select::{self, Target};
@@ -37,6 +38,10 @@ pub struct ExecuteOptions {
     pub environment: Option<String>,
     /// Local variables, the highest-precedence scope, in order; a later key wins.
     pub vars: Vec<(String, String)>,
+    /// The per-user current values of the workspace (variables-editor S4): each overrides
+    /// the shared value of its variable within its scope, below local variables. Empty by
+    /// default, which is what `reqflux run` passes.
+    pub current: CurrentValues,
 }
 
 /// A request ready to send.
@@ -246,8 +251,11 @@ pub(crate) fn select_environment<'a>(
     Ok(Some(environment))
 }
 
-/// Globals < collection < environment < local `--var`s (S4). A secret with no value in the
-/// files takes its value from `stored`, in its own scope, so every override still wins.
+/// Globals < collection < environment < local `--var`s (S4). Within each scope a current
+/// value from `options` overrides the shared value (variables-editor S4), and a current value
+/// of a key the scope does not declare resolves too. A secret with no value in the files
+/// takes its value from `stored`, in its own scope, so every override still wins; a secret
+/// never takes a current value.
 pub(crate) fn scopes(
     workspace: &Workspace,
     collection: &CollectionNode,
@@ -256,17 +264,24 @@ pub(crate) fn scopes(
     stored: &StoredSecrets,
 ) -> Scopes {
     let mut scopes = Scopes::default();
-    *scopes.scope_mut(ScopeKind::Globals) =
-        scope(&workspace.manifest.globals, stored, SecretScope::Global);
+    let current = &options.current;
+    *scopes.scope_mut(ScopeKind::Globals) = scope(
+        &workspace.manifest.globals,
+        stored,
+        current,
+        SecretScope::Global,
+    );
     *scopes.scope_mut(ScopeKind::Collection) = scope(
         &collection.collection.variables,
         stored,
+        current,
         SecretScope::Collection(collection.collection.id),
     );
     if let Some(environment) = environment {
         *scopes.scope_mut(ScopeKind::Environment) = scope(
             &environment.environment.variables,
             stored,
+            current,
             SecretScope::Environment(environment.environment.id),
         );
     }
@@ -279,21 +294,43 @@ pub(crate) fn scopes(
 }
 
 /// A secret with no value takes its stored value, and is left out when none is stored so it
-/// does not resolve; any other variable with no value resolves to empty text.
-fn scope(variables: &[Variable], stored: &StoredSecrets, secret_scope: SecretScope) -> Scope {
-    variables
-        .iter()
-        .filter_map(|variable| match (&variable.value, variable.secret) {
-            (None, true) => stored
-                .value(secret_scope, &variable.key)
-                .map(|value| ScopeEntry::new(variable.key.clone(), value, variable.enabled)),
-            (value, _) => Some(ScopeEntry::new(
-                variable.key.clone(),
-                value.clone().unwrap_or_default(),
-                variable.enabled,
-            )),
-        })
-        .collect()
+/// does not resolve; any other variable takes its current value, else its shared value, else
+/// empty text. Current values of undeclared keys follow, enabled.
+fn scope(
+    variables: &[Variable],
+    stored: &StoredSecrets,
+    current: &CurrentValues,
+    secret_scope: SecretScope,
+) -> Scope {
+    let declared =
+        variables
+            .iter()
+            .filter_map(|variable| match (&variable.value, variable.secret) {
+                (None, true) => stored
+                    .value(secret_scope, &variable.key)
+                    .map(|value| ScopeEntry::new(variable.key.clone(), value, variable.enabled)),
+                (value, true) => Some(ScopeEntry::new(
+                    variable.key.clone(),
+                    value.clone().unwrap_or_default(),
+                    variable.enabled,
+                )),
+                (value, false) => {
+                    let value = current
+                        .get(secret_scope, &variable.key)
+                        .map(str::to_owned)
+                        .or_else(|| value.clone())
+                        .unwrap_or_default();
+                    Some(ScopeEntry::new(
+                        variable.key.clone(),
+                        value,
+                        variable.enabled,
+                    ))
+                }
+            });
+    let undeclared = current
+        .undeclared(secret_scope, variables)
+        .map(|(key, value)| ScopeEntry::new(key, value, true));
+    declared.chain(undeclared).collect()
 }
 
 /// The transport settings of one request: the request's own, with the workspace defaults

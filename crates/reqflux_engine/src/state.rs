@@ -1,5 +1,5 @@
-//! Per-user app state in SQLite (S1, S8): drafts, and the send history (history S1-S5,
-//! see [`history`](self#history)).
+//! Per-user app state in SQLite (S1, S8): drafts, the send history (history S1-S5,
+//! see [`history`](self#history)) and current values (variables-editor S4).
 //!
 //! The state file lives at `$XDG_STATE_HOME/reqflux/state.sqlite3`, or
 //! `$HOME/.local/state/reqflux/state.sqlite3` when the variable is unset, and never inside
@@ -21,7 +21,9 @@
 //! # Schema versions
 //!
 //! `PRAGMA user_version` holds the schema version and migrations only go forward: version 1
-//! is the drafts table; version 2 adds the `history` table and keeps every draft. A fresh
+//! is the drafts table; version 2 adds the `history` table and keeps every draft; version 3
+//! adds the `current_values` table (see [`AppState::current_values`]) and keeps the drafts
+//! and the history. A fresh
 //! file is created at the latest version, an older one is upgraded in one transaction, and
 //! a newer one is refused with [`StateError::UnsupportedVersion`].
 //!
@@ -36,6 +38,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
 
+mod current;
 mod history;
 
 pub use history::{
@@ -44,7 +47,7 @@ pub use history::{
 };
 
 /// The schema version this build writes. Raising it is a forward-only migration.
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 /// The drafts table of schema version 1.
 const SCHEMA_V1: &str = "
@@ -145,7 +148,8 @@ impl Draft {
     }
 }
 
-/// The per-user app state: a SQLite database holding the drafts and history tables.
+/// The per-user app state: a SQLite database holding the drafts, history and current values
+/// tables.
 #[derive(Debug)]
 pub struct AppState {
     path: PathBuf,
@@ -345,8 +349,9 @@ fn migrate(conn: &Connection, path: &Path) -> Result<(), StateError> {
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(migrate_error)?;
     let steps = match version {
-        0 => [SCHEMA_V1, history::SCHEMA_V2].as_slice(),
-        1 => [history::SCHEMA_V2].as_slice(),
+        0 => [SCHEMA_V1, history::SCHEMA_V2, current::SCHEMA_V3].as_slice(),
+        1 => [history::SCHEMA_V2, current::SCHEMA_V3].as_slice(),
+        2 => [current::SCHEMA_V3].as_slice(),
         version if version == SCHEMA_VERSION => return Ok(()),
         version => {
             return Err(StateError::UnsupportedVersion {

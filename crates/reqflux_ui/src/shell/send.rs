@@ -156,8 +156,12 @@ impl Shell {
         }
         let options = ExecuteOptions {
             environment: self.active_environment.clone(),
+            current: self.current.clone(),
             ..ExecuteOptions::default()
         };
+        // Kept for the completion, which persists the script writes against the
+        // environment this send used.
+        let persist = options.clone();
         // A request with a draft sends the draft, not the file on disk.
         let drafted = document.or_else(|| self.drafts.get(id).map(|draft| draft.request.clone()));
         let pending = self.pending_record(id, drafted.as_ref());
@@ -199,7 +203,7 @@ impl Shell {
                     let (method, path) =
                         (execution.method.clone(), path_of(&execution.url));
                     if let Err(error) = this.update(cx, |shell, cx| {
-                        let running = spawn(&key, execution, started, pending, cx);
+                        let running = spawn(&key, execution, started, pending, persist, cx);
                         match shell.sends.get_mut(&key) {
                             Some(send) => {
                                 // The status bar names what was actually sent, unless a
@@ -282,12 +286,14 @@ impl Shell {
 }
 
 /// Awaits `execution` on GPUI's executor and redraws every [`TICK`] until it ends, then
-/// records it in history with `pending` unless it was cancelled.
+/// records it in history with `pending` unless it was cancelled. A completed send persists
+/// its script writes as current values against `options` (variables-editor S5).
 fn spawn(
     id: &str,
     execution: Execution,
     started: Instant,
     pending: Option<Pending>,
+    options: ExecuteOptions,
     cx: &mut Context<Shell>,
 ) -> Running {
     let cancel = execution.cancel.clone();
@@ -301,7 +307,7 @@ fn spawn(
     let masker = execution.masker();
     let key = id.to_owned();
     let wait = cx.spawn(async move |this, cx| {
-        let (completed, recorded) = match execution.finish().await {
+        let (completed, recorded, writes) = match execution.finish().await {
             Ok(executed) => {
                 let Executed {
                     response,
@@ -310,6 +316,7 @@ fn spawn(
                     sent,
                     ..
                 } = executed;
+                let writes = scripts.writes.clone();
                 let recorded = (
                     sent,
                     HistoryOutcome::Response(RecordedResponse::from_response(&response)),
@@ -319,7 +326,7 @@ fn spawn(
                     .background_executor()
                     .spawn(async move { Received::new(response, unresolved, scripts) })
                     .await;
-                (Completed::Response(received), Some(recorded))
+                (Completed::Response(received), Some(recorded), writes)
             }
             Err(error) => {
                 let elapsed = started.elapsed();
@@ -337,10 +344,11 @@ fn spawn(
                     unresolved,
                     scripts,
                 };
-                (Completed::Failure(failure), recorded)
+                (Completed::Failure(failure), recorded, Vec::new())
             }
         };
         if let Err(error) = this.update(cx, |shell, cx| {
+            shell.persist_script_writes(&key, &options, &writes, cx);
             if let (Some(pending), Some((sent, outcome))) = (pending, recorded) {
                 shell.record_send(pending, sent, outcome, cx);
             }

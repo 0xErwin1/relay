@@ -13,6 +13,7 @@ use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use crate::current::CurrentValues;
 use crate::error::{ExecuteError, OpenError, SaveError};
 use crate::prepare::{
     ExecuteOptions, Inspection, Prepared, StoredSecrets, inspect_stored, prepare_target, scopes,
@@ -368,11 +369,28 @@ impl Engine {
         selector: &str,
         environment: Option<&str>,
     ) -> Result<Inspection, ExecuteError> {
+        self.inspect_current(selector, environment, &CurrentValues::default())
+    }
+
+    /// [`Engine::inspect`] with the `current` values of the workspace overriding the shared
+    /// values (variables-editor S4), as a send with them in
+    /// [`ExecuteOptions::current`] resolves.
+    ///
+    /// # Errors
+    ///
+    /// The errors of [`inspect`](crate::inspect).
+    pub fn inspect_current(
+        &self,
+        selector: &str,
+        environment: Option<&str>,
+        current: &CurrentValues,
+    ) -> Result<Inspection, ExecuteError> {
         inspect_stored(
             self.workspace(),
             &self.root,
             selector,
             environment,
+            current,
             Some(self.secrets.as_ref()),
         )
     }
