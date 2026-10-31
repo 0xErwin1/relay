@@ -1,9 +1,12 @@
 //! `reqflux mcp`: the MCP server that drives the running app (S1).
 
 use std::process::ExitCode;
+use std::sync::Arc;
 
+use reqflux_engine::KeyringSecretStore;
 use reqflux_mcp::AppId;
 use reqflux_mcp::bridge::default_endpoint_dir;
+use reqflux_mcp::engine_tools::EngineState;
 use reqflux_mcp::server::serve;
 
 use crate::cli::McpArgs;
@@ -38,12 +41,13 @@ pub(crate) fn mcp(args: McpArgs) -> ExitCode {
 fn run(args: McpArgs) -> Result<(), Failure> {
     let app_id = AppId::new(&args.app_id)
         .map_err(|error| Failure::Usage(format!("invalid application id: {error}")))?;
-    if let Some(workspace) = &args.workspace {
-        log::debug!(
-            "the ui_* tools do not read the workspace {}",
-            workspace.display()
-        );
-    }
+    let cwd = std::env::current_dir().map_err(|error| {
+        Failure::Execution(format!("could not read the current directory: {error}"))
+    })?;
+    let mut engine = EngineState::new(Arc::new(KeyringSecretStore), None);
+    engine
+        .open_startup(args.workspace.as_deref(), &cwd)
+        .map_err(|error| Failure::Usage(error.to_string()))?;
     let endpoint_dir =
         default_endpoint_dir().map_err(|error| Failure::Execution(error.to_string()))?;
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -52,7 +56,7 @@ fn run(args: McpArgs) -> Result<(), Failure> {
         .map_err(|error| {
             Failure::Execution(format!("could not start the async runtime: {error}"))
         })?;
-    match runtime.block_on(serve(endpoint_dir, app_id)) {
+    match runtime.block_on(serve(endpoint_dir, app_id, engine)) {
         Ok(()) => Ok(()),
         // The client closing its side before the handshake finishes is the documented clean
         // shutdown, not a failure (S1: "0 the client closed the connection").

@@ -250,7 +250,8 @@ Exit codes:
 #[derive(Debug, Args)]
 #[command(after_help = MCP_AFTER_HELP)]
 pub(crate) struct McpArgs {
-    /// The workspace directory. The ui_* tools do not read it yet.
+    /// The workspace the engine tools open at startup; the current directory when it
+    /// holds a reqflux.toml, else none until workspace_open.
     #[arg(long, value_name = "DIR")]
     pub(crate) workspace: Option<PathBuf>,
     /// The application id of the windows to drive.

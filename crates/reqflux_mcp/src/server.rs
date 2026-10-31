@@ -1,4 +1,5 @@
-//! The rmcp stdio server that exposes the `ui_*` tools (S6, S7, S8).
+//! The rmcp stdio server that exposes the `ui_*` tools (S6, S7, S8) and the engine tools
+//! (mcp-engine-tools S1-S5), each group with its own router.
 //!
 //! Every tool handler delegates to the plain functions in [`crate::tools`]
 //! under a lock on the shared [`ServerState`], and maps a [`ToolError`] to a
@@ -6,7 +7,7 @@
 //! error result with the bridge's message, never a panic.
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 
 use gpui_mcp_protocol::AppId;
 use rmcp::{
@@ -21,26 +22,31 @@ use rmcp::{
 use tokio::sync::Mutex;
 
 use crate::bridge::BridgeSession;
+use crate::engine_tools::EngineState;
 use crate::tools::{
     self, ClickArgs, FindArgs, IdArgs, KeyArgs, ScrollArgs, SelectTargetArgs, ServerState,
     TextArgs, ToolError, WaitArgs,
 };
 
-/// The ReqFlux MCP server: one bridge session and the `ui_*` tool router.
+/// The ReqFlux MCP server: one bridge session, one engine state and the router of both
+/// tool groups. The engine state is behind a std mutex because its tools run on the
+/// blocking pool.
 #[derive(Clone, Debug)]
 pub struct ReqFluxMcp {
     state: Arc<Mutex<ServerState>>,
+    pub(crate) engine: Arc<StdMutex<EngineState>>,
     tool_router: ToolRouter<Self>,
 }
 
 #[tool_router]
 impl ReqFluxMcp {
-    /// A server that drives the app through `session`.
+    /// A server that drives the app through `session` and works on `engine`'s workspace.
     #[must_use]
-    pub fn new(session: BridgeSession) -> Self {
+    pub fn new(session: BridgeSession, engine: EngineState) -> Self {
         Self {
             state: Arc::new(Mutex::new(ServerState::new(session))),
-            tool_router: Self::tool_router(),
+            engine: Arc::new(StdMutex::new(engine)),
+            tool_router: Self::tool_router() + Self::engine_tool_router(),
         }
     }
 
@@ -203,14 +209,18 @@ impl ServerHandler for ReqFluxMcp {
                  ui_list_targets first when more than one window may be running, then \
                  ui_select_target; a single live target is selected automatically. Read \
                  the tree with ui_tree or ui_find before any input. Coordinates are \
-                 logical pixels relative to the selected window."
+                 logical pixels relative to the selected window. The engine tools \
+                 (workspace_*, collection_create, folder_create, request_*, item_*, \
+                 history_*) work on files directly: call workspace_info first; when no \
+                 workspace is open, call workspace_open or workspace_create. Auth \
+                 secrets show masked; send the mask back to keep a stored value."
                     .to_owned(),
             )
     }
 }
 
 /// A tool result or an `isError` result carrying the failure's message (S8).
-fn into_result(result: Result<String, ToolError>) -> Result<CallToolResult, ErrorData> {
+pub(crate) fn into_result(result: Result<String, ToolError>) -> Result<CallToolResult, ErrorData> {
     match result {
         Ok(text) => Ok(CallToolResult::success(vec![ContentBlock::text(text)])),
         Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
@@ -219,15 +229,19 @@ fn into_result(result: Result<String, ToolError>) -> Result<CallToolResult, Erro
     }
 }
 
-/// Serve the `ui_*` tools on stdio until the client disconnects (S1's
+/// Serve the `ui_*` and engine tools on stdio until the client disconnects (S1's
 /// server half; the `reqflux mcp` subcommand is wired separately).
 ///
 /// # Errors
 ///
 /// Returns an error when the server cannot start or the transport fails.
-pub async fn serve(endpoint_dir: PathBuf, app_id: AppId) -> anyhow::Result<()> {
-    log::info!(target: "reqflux_mcp", "serving ui_* tools on stdio for app {app_id}");
-    let server = ReqFluxMcp::new(BridgeSession::new(endpoint_dir, app_id));
+pub async fn serve(
+    endpoint_dir: PathBuf,
+    app_id: AppId,
+    engine: EngineState,
+) -> anyhow::Result<()> {
+    log::info!(target: "reqflux_mcp", "serving ui_* and engine tools on stdio for app {app_id}");
+    let server = ReqFluxMcp::new(BridgeSession::new(endpoint_dir, app_id), engine);
     let running = server.serve(stdio()).await?;
     running.waiting().await?;
     Ok(())
@@ -253,12 +267,33 @@ mod tests {
         "ui_scroll",
     ];
 
+    const ENGINE_TOOL_NAMES: [&str; 15] = [
+        "workspace_open",
+        "workspace_create",
+        "workspace_info",
+        "collection_create",
+        "folder_create",
+        "request_create",
+        "item_rename",
+        "item_duplicate",
+        "item_move",
+        "item_delete",
+        "request_get",
+        "request_update",
+        "request_execute",
+        "history_list",
+        "history_get",
+    ];
+
     #[allow(clippy::unwrap_used, clippy::expect_used)]
     fn server() -> ReqFluxMcp {
-        ReqFluxMcp::new(BridgeSession::new(
-            std::env::temp_dir().join("reqflux-mcp-server-tests"),
-            AppId::new("reqflux").unwrap(),
-        ))
+        ReqFluxMcp::new(
+            BridgeSession::new(
+                std::env::temp_dir().join("reqflux-mcp-server-tests"),
+                AppId::new("reqflux").unwrap(),
+            ),
+            EngineState::new(Arc::new(reqflux_engine::MemorySecretStore::new()), None),
+        )
     }
 
     #[test]
@@ -267,6 +302,25 @@ mod tests {
         for name in TOOL_NAMES {
             assert!(server.tool_router.has_route(name), "{name} is registered");
         }
+    }
+
+    #[test]
+    fn the_tool_list_holds_the_ui_and_engine_tools_and_nothing_else() {
+        let server = server();
+        let mut listed: Vec<String> = server
+            .tool_router
+            .list_all()
+            .into_iter()
+            .map(|tool| tool.name.to_string())
+            .collect();
+        listed.sort();
+        let mut expected: Vec<String> = TOOL_NAMES
+            .iter()
+            .chain(ENGINE_TOOL_NAMES.iter())
+            .map(|name| (*name).to_owned())
+            .collect();
+        expected.sort();
+        assert_eq!(listed, expected);
     }
 
     #[test]

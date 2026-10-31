@@ -55,6 +55,12 @@ pub enum ToolError {
         /// The wait budget that elapsed.
         timeout_ms: u64,
     },
+    /// An engine tool needs a workspace and none is open.
+    #[error("no workspace is open; call workspace_open or workspace_create first")]
+    NoWorkspace,
+    /// The engine, the store or the app state refused or failed the operation.
+    #[error("{0}")]
+    Engine(String),
     /// The bridge answered with a result the tool cannot use.
     #[error("the bridge returned {0} where the tool expected another result")]
     UnexpectedResult(&'static str),
