@@ -40,11 +40,18 @@
 //! inside an async context. Dropping the engine shuts the runtime down, so it must not be
 //! dropped from inside an async context either.
 //!
+//! # Creating a workspace
+//!
+//! [`create_workspace`] writes a new workspace's `reqflux.toml` into a missing or empty
+//! directory.
+//!
 //! # App state
 //!
-//! [`state::AppState`] is the per-user SQLite app state (drafts and the send history), at
+//! [`state::AppState`] is the per-user SQLite app state (drafts, the send history, current
+//! values and the recent workspaces), at
 //! `$XDG_STATE_HOME/reqflux/state.sqlite3`.
 
+mod create;
 mod current;
 mod engine;
 mod error;
@@ -58,10 +65,12 @@ pub mod state;
 mod tree;
 mod variables;
 
+pub use create::create_workspace;
 pub use current::CurrentValues;
 pub use engine::{Engine, Executed, Execution};
 pub use error::{
-    ExecuteError, ImportError, OpenError, PersistError, SaveError, TreeError, VariableError,
+    CreateWorkspaceError, ExecuteError, ImportError, OpenError, PersistError, SaveError, TreeError,
+    VariableError,
 };
 pub use import::{ImportSummary, postman};
 pub use prepare::{

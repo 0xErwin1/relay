@@ -122,7 +122,7 @@ fn s4_a_v2_file_upgrades_to_v3_keeping_drafts_and_history() {
 
     let mut state = open_state(&path);
 
-    assert_eq!(user_version(&path), 3);
+    assert_eq!(user_version(&path), 4);
     assert_draft_kept(&state);
     let history = state.history("ws", 10).unwrap();
     assert_eq!(history.len(), 1);
@@ -147,7 +147,7 @@ fn s4_a_v1_file_upgrades_through_v2_to_v3() {
 
     let mut state = open_state(&path);
 
-    assert_eq!(user_version(&path), 3);
+    assert_eq!(user_version(&path), 4);
     assert_draft_kept(&state);
     assert!(state.history("ws", 10).unwrap().is_empty());
     state
@@ -160,9 +160,9 @@ fn s4_a_v1_file_upgrades_through_v2_to_v3() {
 fn s4_a_file_newer_than_v3_is_refused() {
     let dir = temp_dir();
     let path = state_path(&dir);
-    write_file(&path, "PRAGMA user_version = 4;");
+    write_file(&path, "PRAGMA user_version = 5;");
     match AppState::open(&path) {
-        Err(StateError::UnsupportedVersion { version, .. }) => assert_eq!(version, 4),
+        Err(StateError::UnsupportedVersion { version, .. }) => assert_eq!(version, 5),
         other => panic!("expected UnsupportedVersion, got {other:?}"),
     }
 }

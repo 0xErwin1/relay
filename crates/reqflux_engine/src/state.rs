@@ -1,5 +1,6 @@
 //! Per-user app state in SQLite (S1, S8): drafts, the send history (history S1-S5,
-//! see [`history`](self#history)) and current values (variables-editor S4).
+//! see [`history`](self#history)), current values (variables-editor S4) and the recent
+//! workspaces (recent-workspaces S1, see [`AppState::recent_workspaces`]).
 //!
 //! The state file lives at `$XDG_STATE_HOME/reqflux/state.sqlite3`, or
 //! `$HOME/.local/state/reqflux/state.sqlite3` when the variable is unset, and never inside
@@ -23,7 +24,8 @@
 //! `PRAGMA user_version` holds the schema version and migrations only go forward: version 1
 //! is the drafts table; version 2 adds the `history` table and keeps every draft; version 3
 //! adds the `current_values` table (see [`AppState::current_values`]) and keeps the drafts
-//! and the history. A fresh
+//! and the history; version 4 adds the `recent_workspaces` table and keeps everything
+//! before it. A fresh
 //! file is created at the latest version, an older one is upgraded in one transaction, and
 //! a newer one is refused with [`StateError::UnsupportedVersion`].
 //!
@@ -40,14 +42,16 @@ use rusqlite::Connection;
 
 mod current;
 mod history;
+mod recent;
 
 pub use history::{
     HISTORY_MAX_BODY_BYTES, HISTORY_MAX_ENTRIES, HistoryEntry, HistoryLimits, HistoryOutcome,
     HistoryRecord, RecordedResponse,
 };
+pub use recent::{RECENT_WORKSPACES_MAX, RecentWorkspace};
 
 /// The schema version this build writes. Raising it is a forward-only migration.
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 /// The drafts table of schema version 1.
 const SCHEMA_V1: &str = "
@@ -109,6 +113,14 @@ pub enum StateError {
         #[source]
         source: rusqlite::Error,
     },
+    /// A path to store is not valid UTF-8; it is refused rather than stored lossily.
+    #[error("the path {} is not valid UTF-8 and cannot be stored in the app state at {path}", rejected.display())]
+    NonUtf8Path {
+        /// The state file path.
+        path: PathBuf,
+        /// The path that was refused.
+        rejected: PathBuf,
+    },
     /// The filesystem refused the state file or its directory.
     #[error("could not prepare the app state location {path}: {source}")]
     Io {
@@ -148,8 +160,8 @@ impl Draft {
     }
 }
 
-/// The per-user app state: a SQLite database holding the drafts, history and current values
-/// tables.
+/// The per-user app state: a SQLite database holding the drafts, history, current values and
+/// recent workspaces tables.
 #[derive(Debug)]
 pub struct AppState {
     path: PathBuf,
@@ -349,9 +361,16 @@ fn migrate(conn: &Connection, path: &Path) -> Result<(), StateError> {
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(migrate_error)?;
     let steps = match version {
-        0 => [SCHEMA_V1, history::SCHEMA_V2, current::SCHEMA_V3].as_slice(),
-        1 => [history::SCHEMA_V2, current::SCHEMA_V3].as_slice(),
-        2 => [current::SCHEMA_V3].as_slice(),
+        0 => [
+            SCHEMA_V1,
+            history::SCHEMA_V2,
+            current::SCHEMA_V3,
+            recent::SCHEMA_V4,
+        ]
+        .as_slice(),
+        1 => [history::SCHEMA_V2, current::SCHEMA_V3, recent::SCHEMA_V4].as_slice(),
+        2 => [current::SCHEMA_V3, recent::SCHEMA_V4].as_slice(),
+        3 => [recent::SCHEMA_V4].as_slice(),
         version if version == SCHEMA_VERSION => return Ok(()),
         version => {
             return Err(StateError::UnsupportedVersion {

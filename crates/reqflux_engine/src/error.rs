@@ -18,6 +18,35 @@ pub enum OpenError {
     Runtime(std::io::Error),
 }
 
+/// Why a workspace could not be created.
+#[derive(Debug, thiserror::Error)]
+pub enum CreateWorkspaceError {
+    /// The name is empty or blank.
+    #[error("a workspace needs a name")]
+    EmptyName,
+    /// The target exists and is not a directory.
+    #[error("{} is not a directory", .0.display())]
+    NotADirectory(PathBuf),
+    /// The directory already holds a `reqflux.toml`.
+    #[error("{} is already a workspace", .0.display())]
+    AlreadyWorkspace(PathBuf),
+    /// The directory holds other files.
+    #[error("{} is not empty; a new workspace needs a missing or empty directory", .0.display())]
+    NotEmpty(PathBuf),
+    /// Inspecting or creating the directory failed.
+    #[error("could not prepare {}: {source}", path.display())]
+    Io {
+        /// The directory involved.
+        path: PathBuf,
+        /// The underlying filesystem failure.
+        #[source]
+        source: std::io::Error,
+    },
+    /// The store could not write `reqflux.toml`.
+    #[error(transparent)]
+    Save(#[from] StoreError),
+}
+
 /// Why a request could not be prepared or sent.
 #[derive(Debug, thiserror::Error)]
 pub enum ExecuteError {
