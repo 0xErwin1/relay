@@ -381,6 +381,19 @@ mod tests {
     }
 
     #[test]
+    fn html_text_of_a_small_page_keeps_its_body() {
+        let page = "<html><head><title>Preview Check</title><style>p{}</style></head>\
+            <body><h1>Hello</h1><p>Fish &amp; chips</p><script>x()</script></body></html>";
+        assert_eq!(
+            html_text(page),
+            HtmlText {
+                title: Some("Preview Check".to_owned()),
+                paragraphs: vec!["Hello".to_owned(), "Fish & chips".to_owned()],
+            }
+        );
+    }
+
+    #[test]
     fn html_text_survives_broken_markup() {
         assert_eq!(
             html_text("<p>open <b class='x>y'>bold"),

@@ -307,7 +307,7 @@ fn html(id: &str, page: &HtmlText, send: &RequestSend, cx: &mut Context<Shell>) 
         .title
         .clone()
         .unwrap_or_else(|| "Untitled page".to_owned());
-    let text = page.paragraphs.join("\n");
+    let text = text_label(&page.paragraphs);
     div()
         .flex_1()
         .min_h_0()
@@ -368,6 +368,24 @@ fn html(id: &str, page: &HtmlText, send: &RequestSend, cx: &mut Context<Shell>) 
         .into_any_element()
 }
 
+/// The paragraphs as one line for the automation label, cut on a char boundary to fit
+/// [`gpui_mcp::MAX_LABEL_BYTES`]: the bridge drops a node whose label holds a control
+/// character, such as a newline, or is longer.
+fn text_label(paragraphs: &[String]) -> String {
+    const ELLIPSIS: char = '…';
+    let text = paragraphs.join(" ");
+    if text.len() <= gpui_mcp::MAX_LABEL_BYTES {
+        return text;
+    }
+    let mut end = gpui_mcp::MAX_LABEL_BYTES - ELLIPSIS.len_utf8();
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    let mut label = text.get(..end).unwrap_or_default().trim_end().to_owned();
+    label.push(ELLIPSIS);
+    label
+}
+
 /// `Open in browser`, element id `response-preview-open`.
 fn open_button(id: &str, cx: &mut Context<Shell>) -> AnyElement {
     let colors = bolt::colors(cx);
@@ -413,6 +431,17 @@ fn message(text: &'static str, cx: &App) -> AnyElement {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_text_label_is_one_line_cut_to_the_label_limit() {
+        let short = text_label(&["Hello".to_owned(), "Fish & chips".to_owned()]);
+        assert_eq!(short, "Hello Fish & chips");
+
+        let long = text_label(&["é".repeat(gpui_mcp::MAX_LABEL_BYTES)]);
+        assert!(long.len() <= gpui_mcp::MAX_LABEL_BYTES);
+        assert!(long.ends_with('…'));
+        assert!(long.trim_end_matches('…').chars().all(|c| c == 'é'));
+    }
 
     #[test]
     fn the_cache_dir_prefers_an_absolute_xdg_cache_home() {

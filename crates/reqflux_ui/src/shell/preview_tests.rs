@@ -205,6 +205,76 @@ fn an_html_response_shows_its_title_and_text_and_opens_in_the_browser(cx: &mut T
     absent(cx, "response-preview-error");
 }
 
+/// The readable text is a node of the tree the UI automation bridge serves, inside the pane,
+/// with every paragraph in its label.
+#[gpui::test]
+fn the_html_text_reaches_the_automation_tree_inside_the_pane(cx: &mut TestAppContext) {
+    let page = "<html><head><title>Preview Check</title><style>p{}</style></head>\
+        <body><h1>Hello</h1><p>Fish &amp; chips</p><script>x()</script></body></html>";
+    let port = serve_reply(&[("content-type", "text/html")], page.as_bytes().to_vec());
+    let (shell, cx) = send(cx, port);
+    let automation = gpui_mcp::Automation::isolated();
+    cx.update(|window, _| automation.attach(window));
+    preview(cx, &shell);
+    cx.run_until_parked();
+
+    let tree = automation.snapshot();
+    let Some(pane) = tree.nodes.get("response-preview") else {
+        panic!("response-preview is not in the tree");
+    };
+    let Some(text) = tree.nodes.get("response-preview-text") else {
+        panic!(
+            "response-preview-text is not in the tree: {:?}",
+            tree.diagnostics
+        );
+    };
+    let (Some(bounds), Some(outer)) = (text.bounds, pane.bounds) else {
+        panic!("no bounds");
+    };
+    assert!(bounds.width > 0. && bounds.height > 0., "{bounds:?}");
+    assert!(
+        bounds.x >= outer.x
+            && bounds.y >= outer.y
+            && bounds.x + bounds.width <= outer.x + outer.width
+            && bounds.y + bounds.height <= outer.y + outer.height,
+        "{bounds:?} outside {outer:?}"
+    );
+    assert!(text.state.visible);
+    assert_eq!(text.label.as_deref(), Some("Hello Fish & chips"));
+    assert_eq!(
+        text.text.as_ref().map(|text| text.text.as_str()),
+        Some("Hello Fish & chips")
+    );
+}
+
+/// A page whose text is longer than a label may be keeps its node, the label cut short.
+#[gpui::test]
+fn a_long_html_text_keeps_its_automation_node(cx: &mut TestAppContext) {
+    let body = "<p>word word word word word word word</p>".repeat(400);
+    let page = format!("<html><body>{body}</body></html>");
+    let port = serve_reply(&[("content-type", "text/html")], page.into_bytes());
+    let (shell, cx) = send(cx, port);
+    let automation = gpui_mcp::Automation::isolated();
+    cx.update(|window, _| automation.attach(window));
+    preview(cx, &shell);
+    cx.run_until_parked();
+
+    let tree = automation.snapshot();
+    let label = tree
+        .nodes
+        .get("response-preview-text")
+        .and_then(|node| node.label.clone());
+    let Some(label) = label else {
+        panic!(
+            "response-preview-text is not in the tree: {:?}",
+            tree.diagnostics
+        );
+    };
+    assert!(label.len() <= gpui_mcp::MAX_LABEL_BYTES, "{}", label.len());
+    assert!(label.starts_with("word word"));
+    assert!(label.ends_with('…'));
+}
+
 #[gpui::test]
 fn a_preview_file_that_cannot_be_written_shows_the_error(cx: &mut TestAppContext) {
     let port = serve_reply(&[("content-type", "text/html")], PAGE.as_bytes().to_vec());
