@@ -17,8 +17,8 @@ use super::documents::locate;
 use super::history::Orphan;
 use super::sidebar_history::Panel;
 use super::{
-    Shell, action_strip, path_bar, region, request, response, tabs, text as text_role, text_region,
-    variables_document,
+    Shell, action_strip, empty_state, path_bar, region, request, response, tabs, text as text_role,
+    text_region, variables_document,
 };
 
 pub(super) fn render(shell: &Shell, window: &Window, cx: &mut Context<Shell>) -> impl IntoElement {
@@ -48,11 +48,10 @@ pub(super) fn render(shell: &Shell, window: &Window, cx: &mut Context<Shell>) ->
         .border_t(border::THIN)
         .border_color(colors.line);
     body = match (shell.workspace.document_message(), &active) {
-        (Some(message), _) => body.items_center().justify_center().child(
-            text_region("document-message")
-                .text_color(colors.muted)
-                .child(message),
-        ),
+        (Some(message), _) => body
+            .items_center()
+            .justify_center()
+            .child(empty_state::render(shell, message, cx)),
         (None, _) if shell.orphan.is_some() => match &shell.orphan {
             Some(orphan) => body.child(read_only(shell, orphan, cx)),
             None => body,

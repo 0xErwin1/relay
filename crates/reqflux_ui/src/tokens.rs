@@ -89,6 +89,16 @@ pub(crate) const ENVIRONMENT_MENU_WIDTH: Pixels = px(360.0);
 /// The height of a row of the environment menu.
 pub(crate) const ENVIRONMENT_OPTION: Pixels = px(36.0);
 
+/// The width of the title bar workspace menu.
+pub(crate) const WORKSPACE_MENU_WIDTH: Pixels = px(420.0);
+
+/// The height of a recent workspace row, name over path, in the workspace menu and the
+/// empty state.
+pub(crate) const WORKSPACE_RECENT_ROW: Pixels = px(48.0);
+
+/// The width of the recent list and actions of the empty state.
+pub(crate) const EMPTY_STATE_WIDTH: Pixels = px(420.0);
+
 /// The width of the Auth pane type menu.
 pub(crate) const AUTH_MENU_WIDTH: Pixels = px(240.0);
 

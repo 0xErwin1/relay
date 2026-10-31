@@ -78,6 +78,12 @@ impl Drop for Running {
 }
 
 impl RequestSend {
+    /// The cancellation token of the send in flight, once its execution started.
+    #[cfg(test)]
+    pub(crate) fn cancel_token(&self) -> Option<CancellationToken> {
+        self.running.as_ref().map(|running| running.cancel.clone())
+    }
+
     /// A send showing `completed`, reopened from history as `reopened`.
     pub(crate) fn reopened(completed: Completed, reopened: Reopened) -> Self {
         Self {
@@ -96,12 +102,14 @@ impl Shell {
         }
     }
 
-    /// Escape: closes the environment, auth type, body mode or method menu when one is open,
+    /// Escape: closes the workspace, environment, auth type, body mode or method menu when one is open,
     /// else the sidebar's row menu or delete confirmation (clearing its error), else cancels
     /// the send in flight of the active request. The binding takes Escape before the menu's
     /// own key handler.
     pub(super) fn cancel_active(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.environment_menu_open {
+        if self.workspace_menu_open {
+            self.close_workspace_menu(window, cx);
+        } else if self.environment_menu_open {
             self.close_environment_menu(window, cx);
         } else if self.auth_menu_open {
             self.close_auth_menu(window, cx);

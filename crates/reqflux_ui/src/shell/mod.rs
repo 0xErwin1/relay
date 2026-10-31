@@ -10,6 +10,7 @@ mod diamond;
 mod document;
 mod documents;
 mod drafts;
+mod empty_state;
 mod environment_menu;
 mod history;
 mod last_request;
@@ -37,8 +38,13 @@ mod url_edit;
 mod variables_document;
 mod variables_model;
 mod variables_ops;
+mod workspace_menu;
+mod workspace_picker;
+mod workspace_switch;
 
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::rc::Rc;
 
 use bolt::tokens::chrome;
 use gpui::{
@@ -46,7 +52,7 @@ use gpui::{
     Stateful, Styled, Subscription, Window, div, prelude::*,
 };
 use reqflux_engine::CurrentValues;
-use reqflux_engine::state::AppState;
+use reqflux_engine::state::{AppState, RecentWorkspace};
 
 use self::body_edit::BodyEdit;
 use self::cell_edit::CellEdit;
@@ -61,6 +67,7 @@ use self::sidebar_history::OpenHistory;
 use self::sidebar_variables::VariablesCommand;
 use self::tree_model::Node;
 use self::url_edit::UrlEdit;
+use self::workspace_picker::{OsPicker, WorkspacePicker};
 
 use crate::workspace::OpenedWorkspace;
 
@@ -76,6 +83,20 @@ pub(crate) fn bind_keys(cx: &mut App) {
 /// [`OpenRequest`] events and tree edits through [`TreeCommand`] events, and the document island renders and changes [`Documents`].
 pub(crate) struct Shell {
     workspace: OpenedWorkspace,
+    /// The canonical directory of the loaded workspace, the key of its recent entry.
+    workspace_path: Option<PathBuf>,
+    /// The recent workspaces, newest first, as last read from the app state.
+    recents: Vec<RecentWorkspace>,
+    /// Why the last workspace the window tried to open did not load; shown in the workspace
+    /// menu or the empty state until another opens.
+    workspace_error: Option<String>,
+    /// The folder dialogs of the workspace menu: the OS ones in the app, preset answers in
+    /// tests.
+    picker: Rc<dyn WorkspacePicker>,
+    /// Whether the title bar workspace menu is open.
+    workspace_menu_open: bool,
+    /// Focused while the workspace menu is open, so Escape reaches it.
+    workspace_menu_focus: FocusHandle,
     sidebar: Entity<Sidebar>,
     /// The collection trees of the loaded workspace, which tabs and the path bar read names
     /// and locations from; empty without one.
@@ -132,10 +153,8 @@ pub(crate) struct Shell {
     /// The read-only view of a history entry whose request no longer exists, shown over
     /// the tabs until a request is opened or activated.
     orphan: Option<history::Orphan>,
-    _open_history: Subscription,
-    _open_requests: Subscription,
-    _tree_commands: Subscription,
-    _variables_commands: Subscription,
+    /// The shell's subscriptions to the sidebar's events, replaced with the sidebar.
+    _sidebar_events: Vec<Subscription>,
 }
 
 impl Shell {
@@ -163,21 +182,15 @@ impl Shell {
             OpenedWorkspace::Loaded(engine) => Some(engine.workspace().manifest.id.to_string()),
             OpenedWorkspace::None | OpenedWorkspace::Failed { .. } => None,
         };
-        let open_requests = cx.subscribe(&sidebar, |this, _, OpenRequest(id), cx| {
-            this.open_document(id, cx);
-        });
-        let open_history = cx.subscribe(&sidebar, |this, _, OpenHistory(entry), cx| {
-            this.open_history_entry(*entry, cx);
-        });
-        let tree_commands = cx.subscribe(&sidebar, |this, _, command: &TreeCommand, cx| {
-            this.run_tree_command(command, cx);
-        });
-        let variables_commands =
-            cx.subscribe(&sidebar, |this, _, command: &VariablesCommand, cx| {
-                this.run_variables_command(command, cx);
-            });
+        let sidebar_events = subscribe_sidebar(&sidebar, cx);
         let mut shell = Self {
             workspace,
+            workspace_path: None,
+            recents: Vec::new(),
+            workspace_error: None,
+            picker: Rc::new(OsPicker),
+            workspace_menu_open: false,
+            workspace_menu_focus: cx.focus_handle(),
             sidebar,
             roots,
             documents: Documents::default(),
@@ -203,14 +216,14 @@ impl Shell {
             method_menu_focus: cx.focus_handle(),
             focus: cx.focus_handle(),
             orphan: None,
-            _open_history: open_history,
-            _open_requests: open_requests,
-            _tree_commands: tree_commands,
-            _variables_commands: variables_commands,
+            _sidebar_events: sidebar_events,
         };
         shell.load_drafts();
         shell.load_current_values();
         shell.refresh_history(cx);
+        // The workspace the window opens with is recent too (recent-workspaces S7).
+        shell.record_recent();
+        shell.refresh_recents();
         shell
     }
 
@@ -387,6 +400,25 @@ impl Render for Shell {
     }
 }
 
+/// Subscribes the shell to the events of `sidebar`: opened requests and history entries,
+/// tree edits and variable edits.
+fn subscribe_sidebar(sidebar: &Entity<Sidebar>, cx: &mut Context<Shell>) -> Vec<Subscription> {
+    vec![
+        cx.subscribe(sidebar, |this, _, OpenRequest(id), cx| {
+            this.open_document(id, cx);
+        }),
+        cx.subscribe(sidebar, |this, _, OpenHistory(entry), cx| {
+            this.open_history_entry(*entry, cx);
+        }),
+        cx.subscribe(sidebar, |this, _, command: &TreeCommand, cx| {
+            this.run_tree_command(command, cx);
+        }),
+        cx.subscribe(sidebar, |this, _, command: &VariablesCommand, cx| {
+            this.run_variables_command(command, cx);
+        }),
+    ]
+}
+
 /// A region the UI automation tree and the layout tests find by `id`.
 fn region(id: &'static str) -> Stateful<Div> {
     div()
@@ -443,3 +475,5 @@ mod tree_reorder_tests;
 mod variables_edit_tests;
 #[cfg(test)]
 mod variables_tests;
+#[cfg(test)]
+mod workspace_switch_tests;
