@@ -67,4 +67,9 @@ the design away from DBFlux and were dropped.
 - Relay has no logo yet; the welcome artboard uses a placeholder mark.
 - The focus ring does not follow the cut corners in the artboards (CSS `clip-path` removes
   outlines). In GPUI the ring is drawn as its own path, so the app can trace the cuts.
-- Light theme: Bolt has one; Relay's light accent values are not defined yet.
+- Light theme: Bolt's `Colors::light()` (desk `#EDECF0`, panel `#FCFBFD`, strong `#17151B`,
+  foreground `#3A3740`, muted `#6B6673`, semantic colors darkened to at least 4.5:1 on the
+  panel; a test checks the contrast) and `PaletteMode::{Dark, Light, System}`. In light the
+  washes use the accent (cobalt `#2B45B8`) instead of the tint; a brand cannot set its own
+  light tint yet. ReqFlux's light method colors: PATCH `#7445D6`, HEAD/OPTIONS `#0E7C83`.
+  The artboards are dark only.
