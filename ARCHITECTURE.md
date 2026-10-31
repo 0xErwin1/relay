@@ -697,6 +697,24 @@ Clicking a row opens its request's tab and shows the recorded response under
 records the result as a new entry. A row whose request was deleted opens a read-only view
 (`history-readonly`) with the recorded method, URL and response, and Resend disabled.
 
+The rail's Environments button (`rail-environments`) swaps the sidebar for the Variables panel
+(`variables-panel`): Globals (`variables-scope-globals`), each collection
+(`variables-scope-collection-<id>`) and each environment (`variables-scope-environment-<id>`).
+Its `+` (`variables-new-environment`) creates an environment and opens its name into a field
+(`variables-rename-input`); an environment's `…` menu renames or deletes it, and delete asks
+first (`variables-delete-prompt`; deleting the active environment selects No environment).
+Selecting a scope shows its variables in the document island (`variables-document`) as a grid,
+row `variables-row-<n>`: enable box, key, shared value, current value, secret toggle,
+description and delete, plus `Add` (`variables-add`, key `new_variable`). Variables are not
+drafts: every commit writes the file (or the keyring, or the app state for a current value) at
+once and re-inspects open requests. A secret's value shows `••••••••` and edits through an empty
+field whose empty commit keeps it; its current value is the same keyring value. Turning a
+secret off does not copy its value into the file, and the panel says so
+(`variables-warning`). Current values a script wrote for a key the scope does not declare show
+as `variables-undeclared-<n>` rows that can be edited or cleared; renaming a key leaves its
+current value on the old key, where it shows as such a row. A refused write shows its reason in
+`variables-error` and changes nothing.
+
 Every region and tree row has a stable element id (`title-bar`, `sidebar`, `document`,
 `status-bar`, `tree-row-<id>`, `doc-tab-<id>`, `request-tab-<name>`,
 `request-<params|headers>-row-<n>`, `request-send`, `request-cancel`, `response-status`,
