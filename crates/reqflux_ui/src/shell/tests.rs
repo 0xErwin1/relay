@@ -135,7 +135,7 @@ fn chrome_labels_follow_the_design() {
     assert_eq!(WORKSPACE_PLACEHOLDER, "No workspace");
     assert_eq!(ENVIRONMENT_PLACEHOLDER, "No environment");
     assert_eq!(COMMAND_SEARCH, "Search or run a command");
-    assert_eq!(COMMAND_SEARCH_KEYS, "Ctrl Shift P");
+    assert_eq!(COMMAND_SEARCH_KEYS, "Ctrl K");
     let labels: Vec<_> = super::rail::VIEWS
         .iter()
         .map(|(_, _, label)| *label)

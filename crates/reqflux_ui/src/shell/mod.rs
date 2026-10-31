@@ -5,6 +5,7 @@ mod action_strip;
 mod auth_edit;
 mod body_edit;
 mod cell_edit;
+mod commands;
 mod current;
 mod diamond;
 mod document;
@@ -15,6 +16,8 @@ mod environment_menu;
 mod history;
 mod last_request;
 mod method_edit;
+mod palette;
+mod palette_match;
 mod path_bar;
 mod rail;
 mod request;
@@ -56,12 +59,14 @@ use reqflux_engine::state::{AppState, RecentWorkspace};
 
 use self::body_edit::BodyEdit;
 use self::cell_edit::CellEdit;
+use self::commands::OpenPalette;
 use self::documents::Documents;
 use self::drafts::Drafts;
 use self::last_request::LastSend;
+use self::palette::Palette;
 use self::request::{RequestState, SubTab};
 use self::response::PreviewHost;
-use self::send::{CancelRequest, RequestSend, SHELL_CONTEXT, SaveRequest, SendRequest};
+use self::send::{RequestSend, SHELL_CONTEXT};
 use self::sidebar::{OpenRequest, Sidebar};
 use self::sidebar_edit::TreeCommand;
 use self::sidebar_history::OpenHistory;
@@ -75,7 +80,7 @@ use crate::workspace::OpenedWorkspace;
 /// Binds the keys of the main window.
 pub(crate) fn bind_keys(cx: &mut App) {
     sidebar::bind_keys(cx);
-    send::bind_keys(cx);
+    commands::bind_keys(cx);
 }
 
 /// The root view of the main window.
@@ -151,6 +156,8 @@ pub(crate) struct Shell {
     /// The shell's own focus, given back when the environment menu closes, so the window's
     /// keys (Ctrl+Enter, Escape) keep reaching the shell's key context.
     focus: FocusHandle,
+    /// The command palette, while it is open.
+    palette: Option<Palette>,
     /// The read-only view of a history entry whose request no longer exists, shown over
     /// the tabs until a request is opened or activated.
     orphan: Option<history::Orphan>,
@@ -218,6 +225,7 @@ impl Shell {
             method_menu_open: false,
             method_menu_focus: cx.focus_handle(),
             focus: cx.focus_handle(),
+            palette: None,
             orphan: None,
             preview_host: PreviewHost::default(),
             _sidebar_events: sidebar_events,
@@ -369,21 +377,15 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let colors = bolt::colors(cx);
-
-        div()
+        let root = div()
             .key_context(SHELL_CONTEXT)
             .track_focus(&self.focus)
-            .on_action(cx.listener(|this, _: &SendRequest, window, cx| {
-                this.send_active(window, cx);
-            }))
-            .on_action(cx.listener(|this, _: &CancelRequest, window, cx| {
-                this.cancel_active(window, cx);
-            }))
-            .on_action(cx.listener(|this, _: &SaveRequest, window, cx| {
-                this.save_active(window, cx);
-            }))
-            .size_full()
+            .on_action(cx.listener(|this, _: &OpenPalette, window, cx| {
+                this.open_palette(window, cx);
+            }));
+        let root = commands::on_actions(root, cx);
+        let colors = bolt::colors(cx);
+        root.size_full()
             .flex()
             .flex_col()
             .bg(colors.desk)
@@ -401,6 +403,7 @@ impl Render for Shell {
                     .child(document::render(self, window, cx)),
             )
             .child(status_bar::render(self, cx))
+            .children(palette::render(self, window, cx))
     }
 }
 
@@ -457,6 +460,8 @@ mod interaction_tests;
 mod last_request_tests;
 #[cfg(test)]
 mod method_edit_tests;
+#[cfg(test)]
+mod palette_tests;
 #[cfg(test)]
 mod preview_tests;
 #[cfg(test)]

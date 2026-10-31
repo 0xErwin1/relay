@@ -121,7 +121,6 @@ impl Sidebar {
     }
 
     /// The id of the selected tree node.
-    #[cfg(test)]
     pub(crate) fn selected(&self) -> Option<&str> {
         self.tree.as_ref().and_then(TreeState::selected)
     }

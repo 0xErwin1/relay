@@ -4,7 +4,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use gpui::{App, Context, KeyBinding, Task, Window, actions};
+use gpui::{Context, Task, Window};
 use reqflux_core::model::Request;
 use reqflux_engine::state::{HistoryOutcome, RecordedResponse};
 use reqflux_engine::{
@@ -18,33 +18,11 @@ use super::request::{Completed, Failure, Received, SendState};
 use super::response::{BodyView, Preview, ResponseTab};
 use crate::workspace::OpenedWorkspace;
 
-/// The key context of the main window, where the send keys are bound.
+/// The key context of the main window, where the command keys are bound.
 pub(crate) const SHELL_CONTEXT: &str = "Shell";
 
 /// How often the elapsed time of a send in flight is redrawn.
 const TICK: Duration = Duration::from_millis(100);
-
-actions!(
-    shell,
-    [
-        /// Sends the active request, replacing its send in flight.
-        SendRequest,
-        /// Cancels the send in flight of the active request.
-        CancelRequest,
-        /// Saves the draft of the active request.
-        SaveRequest,
-    ]
-);
-
-/// Binds Ctrl+Enter, Escape and Ctrl+S in [`SHELL_CONTEXT`].
-pub(super) fn bind_keys(cx: &mut App) {
-    let context = Some(SHELL_CONTEXT);
-    cx.bind_keys([
-        KeyBinding::new("ctrl-enter", SendRequest, context),
-        KeyBinding::new("escape", CancelRequest, context),
-        KeyBinding::new("ctrl-s", SaveRequest, context),
-    ]);
-}
 
 /// The send of one open request: its state, the response sub-tab and body view, and, while
 /// in flight, what keeps it running.
@@ -108,12 +86,15 @@ impl Shell {
         }
     }
 
-    /// Escape: closes the workspace, environment, auth type, body mode or method menu when one is open,
+    /// Escape: closes the command palette, or the workspace, environment, auth type, body
+    /// mode or method menu when one is open,
     /// else the sidebar's row menu or delete confirmation (clearing its error), else cancels
     /// the send in flight of the active request. The binding takes Escape before the menu's
     /// own key handler.
     pub(super) fn cancel_active(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.workspace_menu_open {
+        if self.palette.is_some() {
+            self.close_palette(window, cx);
+        } else if self.workspace_menu_open {
             self.close_workspace_menu(window, cx);
         } else if self.environment_menu_open {
             self.close_environment_menu(window, cx);

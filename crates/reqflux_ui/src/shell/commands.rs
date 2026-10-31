@@ -1,0 +1,279 @@
+//! The window's commands (command-palette S4, S5): one registry the palette lists, the
+//! keymap binds and the coverage test checks, so the three cannot drift.
+//!
+//! Every command has an action bound to its default key in its key context. A key runs the
+//! command when it can run now; the palette lists it dimmed and inert when it cannot.
+//! Escape always reaches [`Shell::cancel_active`], which closes an open menu first.
+
+use gpui::{App, Context, Div, InteractiveElement, KeyBinding, Window, actions};
+
+use super::Shell;
+use super::send::SHELL_CONTEXT;
+use super::sidebar_edit::TreeCommand;
+use super::sidebar_history::Panel;
+use super::sidebar_variables::VariablesCommand;
+use super::tree_model::NodeKind;
+use crate::workspace::OpenedWorkspace;
+
+/// One command: what the palette shows and where its key is bound.
+pub(crate) struct Command {
+    pub(crate) id: CommandId,
+    /// The stable id of the command.
+    pub(crate) name: &'static str,
+    /// The palette label.
+    pub(crate) label: &'static str,
+    /// The default key, in GPUI keystroke syntax.
+    pub(crate) key: &'static str,
+    /// The key context the key is bound in.
+    pub(crate) context: &'static str,
+    /// Whether the command can run now.
+    pub(crate) enabled: fn(&Shell) -> bool,
+}
+
+/// Generates the command actions, [`CommandId`], [`COMMANDS`], their key bindings and the
+/// shell's action handlers from one list.
+macro_rules! commands {
+    ($($variant:ident: $action:ident, $name:literal, $label:literal, $key:literal, $enabled:path;)*) => {
+        actions!(shell, [$(
+            #[doc = concat!("Runs the `", $name, "` command.")]
+            $action,
+        )*]);
+
+        /// Names a command of [`COMMANDS`].
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub(crate) enum CommandId {
+            $($variant,)*
+        }
+
+        /// Every command, in palette order.
+        pub(crate) const COMMANDS: &[Command] = &[$(Command {
+            id: CommandId::$variant,
+            name: $name,
+            label: $label,
+            key: $key,
+            context: SHELL_CONTEXT,
+            enabled: $enabled,
+        },)*];
+
+        /// Binds the default key of every command in its context, as [`COMMANDS`] has them.
+        fn bind_commands(cx: &mut App) {
+            let mut bindings = Vec::new();
+            $(if let Some(command) = command(CommandId::$variant) {
+                bindings.push(KeyBinding::new(command.key, $action, Some(command.context)));
+            })*
+            cx.bind_keys(bindings);
+        }
+
+        /// Adds the handler of every command action to the shell's root `element`.
+        pub(super) fn on_actions(element: Div, cx: &mut Context<Shell>) -> Div {
+            element$(.on_action(cx.listener(|this, _: &$action, window, cx| {
+                this.run_key(CommandId::$variant, window, cx);
+            })))*
+        }
+    };
+}
+
+commands! {
+    SendRequest: SendRequest, "send-request", "Send request", "ctrl-enter", has_request;
+    CancelSend: CancelRequest, "cancel-send", "Cancel send", "escape", has_request;
+    SaveRequest: SaveRequest, "save-request", "Save request", "ctrl-s", has_draft;
+    RevertRequest: RevertRequest, "revert-request", "Revert request", "ctrl-shift-r", has_draft;
+    NewRequest: NewRequest, "new-request", "New request", "ctrl-n", has_collection;
+    NewCollection: NewCollection, "new-collection", "New collection", "ctrl-shift-n", loaded;
+    NewEnvironment: NewEnvironment, "new-environment", "New environment", "ctrl-shift-e", loaded;
+    SwitchEnvironment: SwitchEnvironment, "switch-environment", "Switch environment", "ctrl-e", loaded;
+    OpenWorkspace: OpenWorkspace, "open-workspace", "Open workspace", "ctrl-o", always;
+    NewWorkspace: NewWorkspace, "new-workspace", "New workspace", "ctrl-shift-o", always;
+    CloseWorkspace: CloseWorkspace, "close-workspace", "Close workspace", "ctrl-shift-w", loaded;
+    CloseTab: CloseTab, "close-tab", "Close tab", "ctrl-w", has_request;
+    NextTab: NextTab, "next-tab", "Next tab", "ctrl-tab", has_request;
+    PreviousTab: PreviousTab, "previous-tab", "Previous tab", "ctrl-shift-tab", has_request;
+    ShowCollections: ShowCollections, "show-collections", "Show Collections", "ctrl-1", loaded;
+    ShowHistory: ShowHistory, "show-history", "Show History", "ctrl-2", loaded;
+    ShowVariables: ShowVariables, "show-variables", "Show Variables", "ctrl-3", loaded;
+}
+
+actions!(
+    shell,
+    [
+        /// Opens the command palette.
+        OpenPalette,
+    ]
+);
+
+/// The keys that open the palette, bound in [`SHELL_CONTEXT`].
+pub(crate) const PALETTE_KEYS: [&str; 2] = ["ctrl-k", "ctrl-p"];
+
+/// Binds every command's key and the palette keys.
+pub(super) fn bind_keys(cx: &mut App) {
+    bind_commands(cx);
+    cx.bind_keys(PALETTE_KEYS.map(|key| KeyBinding::new(key, OpenPalette, Some(SHELL_CONTEXT))));
+}
+
+/// The command `id`.
+pub(crate) fn command(id: CommandId) -> Option<&'static Command> {
+    COMMANDS.iter().find(|command| command.id == id)
+}
+
+/// `key` as the palette prints it: `ctrl-shift-tab` is `Ctrl+Shift+Tab`.
+pub(crate) fn key_label(key: &str) -> String {
+    key.split('-')
+        .map(|part| match part {
+            "ctrl" => "Ctrl".to_owned(),
+            "shift" => "Shift".to_owned(),
+            "alt" => "Alt".to_owned(),
+            "escape" => "Esc".to_owned(),
+            other => {
+                let mut characters = other.chars();
+                characters.next().map_or_else(String::new, |first| {
+                    first.to_uppercase().chain(characters).collect()
+                })
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+fn always(_: &Shell) -> bool {
+    true
+}
+
+fn loaded(shell: &Shell) -> bool {
+    matches!(shell.workspace, OpenedWorkspace::Loaded(_))
+}
+
+fn has_collection(shell: &Shell) -> bool {
+    loaded(shell) && !shell.roots.is_empty()
+}
+
+fn has_request(shell: &Shell) -> bool {
+    shell.documents.active().is_some()
+}
+
+fn has_draft(shell: &Shell) -> bool {
+    shell
+        .documents
+        .active()
+        .is_some_and(|id| shell.drafts.contains_key(id))
+}
+
+impl Shell {
+    /// The key of `id`: runs the command when it can run now. Escape always runs, because
+    /// it also closes an open menu.
+    fn run_key(&mut self, id: CommandId, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(command) = command(id) else {
+            return;
+        };
+        if (command.enabled)(self) || id == CommandId::CancelSend {
+            log::debug!("running {} from its key", command.name);
+            self.run_command(id, window, cx);
+        }
+    }
+
+    /// Runs the command `id`.
+    pub(super) fn run_command(
+        &mut self,
+        id: CommandId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let active = self.documents.active().map(str::to_owned);
+        match id {
+            CommandId::SendRequest => self.send_active(window, cx),
+            CommandId::CancelSend => self.cancel_active(window, cx),
+            CommandId::SaveRequest => self.save_active(window, cx),
+            CommandId::RevertRequest => {
+                if let Some(active) = active {
+                    self.revert(&active, window, cx);
+                }
+            }
+            CommandId::NewRequest => self.new_request(window, cx),
+            CommandId::NewCollection => {
+                self.show_panel(Panel::Collections, cx);
+                self.sidebar.update(cx, |sidebar, cx| {
+                    sidebar.command(TreeCommand::NewCollection, window, cx);
+                });
+            }
+            CommandId::NewEnvironment => {
+                self.show_panel(Panel::Variables, cx);
+                self.sidebar.update(cx, |sidebar, cx| {
+                    sidebar.variables_command(VariablesCommand::NewEnvironment, window, cx);
+                });
+            }
+            CommandId::SwitchEnvironment => {
+                if !self.environment_menu_open {
+                    self.workspace_menu_open = false;
+                    self.toggle_environment_menu(window, cx);
+                }
+            }
+            CommandId::OpenWorkspace => self.pick_folder(window, cx),
+            CommandId::NewWorkspace => self.pick_new(window, cx),
+            CommandId::CloseWorkspace => self.switch_workspace(None, window, cx),
+            CommandId::CloseTab => {
+                if let Some(active) = active {
+                    self.close_document(&active, cx);
+                }
+            }
+            CommandId::NextTab => self.step_tab(true, window, cx),
+            CommandId::PreviousTab => self.step_tab(false, window, cx),
+            CommandId::ShowCollections => self.switch_panel(Panel::Collections, window, cx),
+            CommandId::ShowHistory => self.switch_panel(Panel::History, window, cx),
+            CommandId::ShowVariables => self.switch_panel(Panel::Variables, window, cx),
+        }
+    }
+
+    /// Creates a request in the selected collection or folder, in the parent of the
+    /// selected request, else in the first collection, and opens it into rename.
+    fn new_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let target = {
+            let sidebar = self.sidebar.read(cx);
+            sidebar
+                .selected()
+                .and_then(|id| match sidebar.node(id).map(|node| &node.kind) {
+                    Some(NodeKind::Request { .. }) => sidebar.parent(id),
+                    Some(NodeKind::Collection | NodeKind::Folder) => Some(id.to_owned()),
+                    None => None,
+                })
+                .or_else(|| self.roots.first().map(|root| root.id.clone()))
+        };
+        let Some(target) = target else {
+            return;
+        };
+        self.show_panel(Panel::Collections, cx);
+        self.sidebar.update(cx, |sidebar, cx| {
+            sidebar.command(TreeCommand::NewRequest(target), window, cx);
+        });
+    }
+
+    /// Shows `panel` and gives the focus back: the panel it replaces may have held it, and
+    /// without a focus the window's keys reach nothing.
+    fn switch_panel(&mut self, panel: Panel, window: &mut Window, cx: &mut Context<Self>) {
+        self.show_panel(panel, cx);
+        self.restore_focus(window, cx);
+    }
+
+    /// Activates the tab after the active one, or before it, wrapping around.
+    fn step_tab(&mut self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let open = self.documents.open_ids();
+        let Some(index) = self
+            .documents
+            .active()
+            .and_then(|active| open.iter().position(|id| id == active))
+        else {
+            return;
+        };
+        let count = open.len();
+        let next = if forward {
+            (index + 1) % count
+        } else {
+            (index + count - 1) % count
+        };
+        if let Some(id) = open.get(next).cloned() {
+            self.activate_document(&id, window, cx);
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "commands_tests.rs"]
+mod tests;

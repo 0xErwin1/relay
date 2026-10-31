@@ -98,7 +98,7 @@ impl VariablesPanel {
 impl Sidebar {
     /// Emits `command` for the shell to run. A created environment opens into rename once
     /// the shell has reported it, which happens before the deferred step runs.
-    fn variables_command(
+    pub(super) fn variables_command(
         &mut self,
         command: VariablesCommand,
         window: &mut Window,

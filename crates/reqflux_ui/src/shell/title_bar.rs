@@ -1,7 +1,7 @@
 //! The title bar: the workspace and environment over the sidebar column, the command search
 //! at the center, and the approvals bell on the right. The environment selector opens the
-//! environment menu and the workspace selector the workspace menu; the search and the bell do
-//! nothing yet.
+//! environment menu, the workspace selector the workspace menu and the search the command
+//! palette; the bell does nothing yet.
 
 use bolt::controls::{Field, IconButton};
 use bolt::tokens::{border, chrome, field, icon, space};
@@ -25,7 +25,7 @@ pub(crate) const WORKSPACE_PLACEHOLDER: &str = "No workspace";
 pub(crate) const COMMAND_SEARCH: &str = "Search or run a command";
 
 /// The shortcut printed on the command search field.
-pub(crate) const COMMAND_SEARCH_KEYS: &str = "Ctrl Shift P";
+pub(crate) const COMMAND_SEARCH_KEYS: &str = "Ctrl K";
 
 /// The left inset of the title bar: the desk gap, the activity rail and the gap before the
 /// sidebar island, so the workspace selector sits over the sidebar column.
@@ -208,12 +208,19 @@ pub(super) fn render(shell: &Shell, window: &Window, cx: &mut Context<Shell>) ->
         .items_center()
         .child(context(shell, window, cx))
         .child(
-            Field::new("command-search", COMMAND_SEARCH)
-                .leading_icon(IconName::Search)
-                .trailing_keycap(COMMAND_SEARCH_KEYS)
+            div()
+                .id("command-search-button")
                 .w(tokens::COMMAND_SEARCH_WIDTH)
                 .flex_shrink(1.0)
-                .min_w_0(),
+                .min_w_0()
+                .cursor_pointer()
+                .on_click(cx.listener(|this, _event, window, cx| this.open_palette(window, cx)))
+                .child(
+                    Field::new("command-search", COMMAND_SEARCH)
+                        .leading_icon(IconName::Search)
+                        .trailing_keycap(COMMAND_SEARCH_KEYS)
+                        .w_full(),
+                ),
         )
         .child(
             div().flex_1().min_w_0().flex().justify_end().child(

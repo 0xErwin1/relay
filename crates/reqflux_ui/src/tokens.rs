@@ -77,6 +77,12 @@ pub(crate) const SIDEBAR_FILTER_BOTTOM: Pixels = px(10.0);
 /// The height of the sidebar footer with the request and collection counts.
 pub(crate) const SIDEBAR_FOOTER: Pixels = px(40.0);
 
+/// The width of the command palette.
+pub(crate) const PALETTE_WIDTH: Pixels = px(560.0);
+
+/// The tallest the command palette's list grows before it scrolls.
+pub(crate) const PALETTE_LIST_HEIGHT: Pixels = px(432.0);
+
 /// The width of the command search field at the center of the title bar.
 pub(crate) const COMMAND_SEARCH_WIDTH: Pixels = px(420.0);
 
