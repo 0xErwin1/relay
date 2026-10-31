@@ -1,18 +1,26 @@
 //! The response under the request: the tab row with the status, time and size, then the
 //! empty state before the first send, the progress bar while sending over the previous
-//! outcome dimmed, and the outcome: the unresolved line, then the body and headers of a
-//! response or the error banner of a failure, beside its Tests and Console panes. A response
+//! outcome dimmed, and the outcome: the unresolved line, then the body (Pretty, Raw or
+//! Preview), headers and cookies of a response or the error banner of a failure, beside its Tests and Console panes. A response
 //! reopened from history carries the `From history` bar with Resend under the tab row.
 
 mod body;
+mod cookies;
+mod cookies_view;
 mod error;
 mod history_bar;
 mod model;
+mod preview;
+mod preview_model;
 mod results;
 mod sub_tabs;
 mod tab_row;
 
+#[cfg(test)]
+pub(crate) use cookies::cookie_count;
 pub(crate) use model::{BodyText, BodyView, ResponseTab};
+pub(crate) use preview::{Preview, PreviewHost};
+pub(crate) use preview_model::{PreviewKind, preview_kind};
 
 use bolt::controls::Keycap;
 use bolt::tokens::{border, space};
@@ -78,8 +86,12 @@ fn completed(id: &str, send: &RequestSend, outcome: &Completed, cx: &mut Context
         Completed::Response(received) => column
             .child(sub_tabs::render(id, send, received, cx))
             .child(match sub_tabs::effective_tab(send.tab, received) {
-                ResponseTab::Body => body::render(received, send.view, cx),
+                ResponseTab::Body => match sub_tabs::effective_view(send.view, received) {
+                    BodyView::Preview => preview::render(id, send, cx),
+                    view => body::render(received, view, cx),
+                },
                 ResponseTab::Headers => sub_tabs::headers(received, cx),
+                ResponseTab::Cookies => cookies_view::render(received, cx),
                 ResponseTab::Tests => results::tests(received, cx),
                 ResponseTab::Console => results::console(received, cx),
             }),

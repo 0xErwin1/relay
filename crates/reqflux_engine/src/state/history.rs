@@ -126,6 +126,24 @@ impl RecordedResponse {
             size: u64::try_from(response.size()).unwrap_or(u64::MAX),
         }
     }
+
+    /// [`RecordedResponse::from_response`] with every `Set-Cookie` value passed through
+    /// `mask`, the send's [`crate::Masker`], so a cookie that carries a secret value is
+    /// stored masked like the request (response-preview S5). Other headers and the body
+    /// are the user's own data and stay as received.
+    #[must_use]
+    pub fn from_response_masking_cookies(
+        response: &reqflux_http::Response,
+        mask: impl Fn(&str) -> String,
+    ) -> Self {
+        let mut recorded = Self::from_response(response);
+        for (name, value) in &mut recorded.headers {
+            if name.eq_ignore_ascii_case("set-cookie") {
+                *value = mask(value);
+            }
+        }
+        recorded
+    }
 }
 
 /// A stored history entry.

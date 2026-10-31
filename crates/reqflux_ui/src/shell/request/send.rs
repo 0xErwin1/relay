@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use reqflux_engine::{Response, ScriptOutcome};
 
-use crate::shell::response::BodyText;
+use crate::shell::response::{BodyText, PreviewKind, preview_kind};
 
 /// The outcome of a finished send.
 #[derive(Debug, Clone, PartialEq)]
@@ -33,6 +33,8 @@ pub(crate) struct Received {
     pub(crate) scripts: ScriptOutcome,
     /// The body split into lines for the view, computed once.
     pub(crate) text: Arc<BodyText>,
+    /// What the body previews as; `None` offers no Preview.
+    pub(crate) preview: Option<PreviewKind>,
 }
 
 /// A send that ended without a response.
@@ -52,6 +54,7 @@ impl Received {
     pub(crate) fn new(response: Response, unresolved: Vec<String>, scripts: ScriptOutcome) -> Self {
         let content_type = content_type(&response.headers);
         let text = Arc::new(BodyText::new(&response.body, content_type));
+        let preview = preview_kind(content_type, &response.body);
         Self {
             status: response.status,
             reason: response.reason,
@@ -61,6 +64,7 @@ impl Received {
             unresolved,
             scripts,
             text,
+            preview,
         }
     }
 
@@ -210,6 +214,7 @@ mod tests {
             unresolved: Vec::new(),
             scripts: ScriptOutcome::default(),
             text: Arc::new(BodyText::new(b"{}", None)),
+            preview: None,
         }
     }
 

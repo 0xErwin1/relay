@@ -1,5 +1,5 @@
-//! The response sub-tab row, `Body` and `Headers <n>` with the content type and the
-//! `Pretty` / `Raw` toggle, and the Headers grid.
+//! The response sub-tab row, `Body`, `Headers <n>` and `Cookies <n>` with the content type
+//! and the `Pretty` / `Raw` / `Preview` toggle, and the Headers grid.
 
 use bolt::chamfer::Chamfer;
 use bolt::tokens::{border, chrome, cut, family, icon, space, text};
@@ -9,6 +9,7 @@ use gpui::{
     prelude::*,
 };
 
+use super::cookies::cookie_count;
 use super::model::{BodyView, ResponseTab};
 use crate::shell::request::Received;
 use crate::shell::rows::{labeled_row, part};
@@ -27,6 +28,15 @@ pub(super) fn effective_tab(tab: ResponseTab, received: &Received) -> ResponseTa
     }
 }
 
+/// The body view the response shows: `Preview` of a body with nothing to preview falls
+/// back to `Pretty`, so the row keeps a selected chip.
+pub(super) fn effective_view(view: BodyView, received: &Received) -> BodyView {
+    match view {
+        BodyView::Preview if received.preview.is_none() => BodyView::Pretty,
+        other => other,
+    }
+}
+
 /// The row of the response `received` of the request `id`.
 pub(super) fn render(
     id: &str,
@@ -39,6 +49,7 @@ pub(super) fn render(
     // selected chip.
     let tab = effective_tab(send.tab, received);
     let headers = received.headers.len().to_string();
+    let cookie_count = cookie_count(&received.headers).to_string();
     let mut tabs = vec![
         (ResponseTab::Body, "Body", IconName::Braces, Vec::new()),
         (
@@ -46,6 +57,12 @@ pub(super) fn render(
             "Headers",
             IconName::List,
             vec![(headers, colors.muted)],
+        ),
+        (
+            ResponseTab::Cookies,
+            "Cookies",
+            IconName::Cookie,
+            vec![(cookie_count, colors.muted)],
         ),
     ];
     tabs.extend(test_tabs(received, colors));
@@ -87,18 +104,22 @@ pub(super) fn render(
         }))
         .child(div().flex_1());
     if tab == ResponseTab::Body {
-        let views = [
+        let selected = effective_view(send.view, received);
+        let mut views = vec![
             (BodyView::Pretty, "Pretty", IconName::Braces),
             (BodyView::Raw, "Raw", IconName::List),
         ];
-        row = row.children(views.map(|(view, label, icon_name)| {
+        if received.preview.is_some() {
+            views.push((BodyView::Preview, "Preview", IconName::Eye));
+        }
+        row = row.children(views.into_iter().map(|(view, label, icon_name)| {
             let request = id.to_owned();
             chip(
                 format!("response-view-{}", label.to_lowercase()),
                 label,
                 icon_name,
                 Vec::new(),
-                send.view == view,
+                selected == view,
                 cx,
             )
             .on_click(cx.listener(move |this, _event, _window, cx| {

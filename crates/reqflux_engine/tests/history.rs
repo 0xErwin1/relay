@@ -366,3 +366,40 @@ fn a_utf8_body_is_cut_on_a_character_boundary() {
     assert_eq!(text.body.len(), HISTORY_MAX_BODY_BYTES / 3 * 3);
     assert_eq!(stored(binary_id).body.len(), HISTORY_MAX_BODY_BYTES);
 }
+
+#[test]
+fn a_recorded_set_cookie_value_goes_through_the_masker() {
+    let response = reqflux_engine::Response {
+        status: 200,
+        reason: Some("OK".to_owned()),
+        version: "1.1".to_owned(),
+        headers: vec![
+            ("set-cookie".to_owned(), "sid=s3cret; Path=/".to_owned()),
+            ("Set-Cookie".to_owned(), "theme=dark".to_owned()),
+            ("x-echo".to_owned(), "s3cret".to_owned()),
+        ],
+        body: b"s3cret".to_vec(),
+        final_url: "http://h/".to_owned(),
+        elapsed: std::time::Duration::from_millis(5),
+    };
+    let recorded = RecordedResponse::from_response_masking_cookies(&response, |text| {
+        text.replace("s3cret", "••••")
+    });
+    assert_eq!(
+        recorded.headers,
+        vec![
+            ("set-cookie".to_owned(), "sid=••••; Path=/".to_owned()),
+            ("Set-Cookie".to_owned(), "theme=dark".to_owned()),
+            ("x-echo".to_owned(), "s3cret".to_owned()),
+        ]
+    );
+    // The body is the user's own data and stays as received.
+    assert_eq!(recorded.body, b"s3cret".to_vec());
+    assert_eq!(
+        RecordedResponse {
+            headers: response.headers.clone(),
+            ..recorded
+        },
+        RecordedResponse::from_response(&response)
+    );
+}

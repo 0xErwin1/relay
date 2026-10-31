@@ -17,11 +17,13 @@ bolt.workspace = true
 gpui.workspace = true
 gpui-component.workspace = true
 gpui-mcp.workspace = true
+image.workspace = true
 log.workspace = true
 reqflux_core.workspace = true
 reqflux_engine.workspace = true
 toml.workspace = true
 serde_json.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }

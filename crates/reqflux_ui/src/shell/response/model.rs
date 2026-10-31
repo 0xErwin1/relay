@@ -9,16 +9,19 @@ pub(crate) enum ResponseTab {
     #[default]
     Body,
     Headers,
+    Cookies,
     Tests,
     Console,
 }
 
-/// How the body shows: indented and colored, or the bytes as text.
+/// How the body shows: indented and colored, the bytes as text, or previewed as an image
+/// or the readable text of an HTML page.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum BodyView {
     #[default]
     Pretty,
     Raw,
+    Preview,
 }
 
 /// The body of a response split into lines, computed once when the response arrives.
@@ -63,7 +66,7 @@ impl BodyText {
     pub(crate) fn lines(&self, view: BodyView) -> Option<(Arc<[String]>, bool)> {
         match (self, view) {
             (Self::Binary, _) => None,
-            (Self::Text { pretty, json, .. }, BodyView::Pretty) => {
+            (Self::Text { pretty, json, .. }, BodyView::Pretty | BodyView::Preview) => {
                 Some((Arc::clone(pretty), *json))
             }
             (Self::Text { raw, .. }, BodyView::Raw) => Some((Arc::clone(raw), false)),

@@ -60,6 +60,7 @@ use self::documents::Documents;
 use self::drafts::Drafts;
 use self::last_request::LastSend;
 use self::request::{RequestState, SubTab};
+use self::response::PreviewHost;
 use self::send::{CancelRequest, RequestSend, SHELL_CONTEXT, SaveRequest, SendRequest};
 use self::sidebar::{OpenRequest, Sidebar};
 use self::sidebar_edit::TreeCommand;
@@ -153,6 +154,8 @@ pub(crate) struct Shell {
     /// The read-only view of a history entry whose request no longer exists, shown over
     /// the tabs until a request is opened or activated.
     orphan: Option<history::Orphan>,
+    /// Where `Open in browser` writes an HTML response and how it opens it.
+    preview_host: PreviewHost,
     /// The shell's subscriptions to the sidebar's events, replaced with the sidebar.
     _sidebar_events: Vec<Subscription>,
 }
@@ -216,6 +219,7 @@ impl Shell {
             method_menu_focus: cx.focus_handle(),
             focus: cx.focus_handle(),
             orphan: None,
+            preview_host: PreviewHost::default(),
             _sidebar_events: sidebar_events,
         };
         shell.load_drafts();
@@ -453,6 +457,8 @@ mod interaction_tests;
 mod last_request_tests;
 #[cfg(test)]
 mod method_edit_tests;
+#[cfg(test)]
+mod preview_tests;
 #[cfg(test)]
 mod request_tests;
 #[cfg(test)]

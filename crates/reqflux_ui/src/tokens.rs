@@ -242,6 +242,13 @@ pub(crate) fn wash(color: Hsla, alpha: f32) -> Hsla {
     Hsla { a: alpha, ..color }
 }
 
+/// A previewed image's natural size, one logical pixel per image pixel: a size the
+/// response data sets, not a design value.
+pub(crate) fn image_size(width: u32, height: u32) -> Size<Pixels> {
+    #[expect(clippy::cast_precision_loss, reason = "a pixel size shown on screen")]
+    size(px(width as f32), px(height as f32))
+}
+
 /// The size the main window opens at.
 pub(crate) const MAIN_WINDOW_SIZE: Size<Pixels> = size(px(1200.0), px(800.0));
 

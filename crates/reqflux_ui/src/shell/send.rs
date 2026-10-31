@@ -15,7 +15,7 @@ use super::Shell;
 use super::history::{Pending, Reopened};
 use super::last_request::{LastSend, path_of};
 use super::request::{Completed, Failure, Received, SendState};
-use super::response::{BodyView, ResponseTab};
+use super::response::{BodyView, Preview, ResponseTab};
 use crate::workspace::OpenedWorkspace;
 
 /// The key context of the main window, where the send keys are bound.
@@ -56,6 +56,12 @@ pub(crate) struct RequestSend {
     /// The history entry the response shows, while it shows a reopened one; a new send
     /// clears it.
     pub(crate) history: Option<Reopened>,
+    /// The preview of the last finished response, once computed; a new response clears it.
+    pub(crate) preview: Option<Arc<Preview>>,
+    /// The task computing `preview` off the UI thread.
+    pub(crate) preview_task: Option<Task<()>>,
+    /// Why the last `Open in browser` could not write its file.
+    pub(crate) preview_error: Option<String>,
     running: Option<Running>,
     /// The task preparing the current send: it runs the engine's `execute` on the
     /// background executor and hands the execution to `running`. Held so it is not
@@ -282,13 +288,23 @@ impl Shell {
             send.view = view;
             cx.notify();
         }
+        if view == BodyView::Preview {
+            self.ensure_preview(id, cx);
+        }
     }
 
     fn finish_send(&mut self, id: &str, completed: Completed, cx: &mut Context<Self>) {
         if let Some(send) = self.sends.get_mut(id) {
             send.state.finish(completed);
             send.running = None;
+            send.preview = None;
+            send.preview_task = None;
+            send.preview_error = None;
+            let previewing = send.view == BodyView::Preview;
             cx.notify();
+            if previewing {
+                self.ensure_preview(id, cx);
+            }
         }
     }
 }
@@ -311,7 +327,8 @@ fn spawn(
     let scripts = execution.scripts.clone();
     // The redacted request as sent, kept for a failure, which consumes the execution.
     let sent = execution.sent.clone();
-    // A transport error can echo the URL with a query secret: history keeps it masked.
+    // A transport error can echo the URL with a query secret, and a cookie can carry a
+    // secret value: history keeps both masked.
     let masker = execution.masker();
     let key = id.to_owned();
     let wait = cx.spawn(async move |this, cx| {
@@ -327,7 +344,10 @@ fn spawn(
                 let writes = scripts.writes.clone();
                 let recorded = (
                     sent,
-                    HistoryOutcome::Response(RecordedResponse::from_response(&response)),
+                    HistoryOutcome::Response(RecordedResponse::from_response_masking_cookies(
+                        &response,
+                        |text| masker.mask(text),
+                    )),
                 );
                 // Splitting a large body into lines stays off the UI thread.
                 let received = cx
