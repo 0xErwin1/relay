@@ -1,10 +1,12 @@
-//! The engine tools: workspace, tree, request, execute and history (mcp-engine-tools S1-S5).
+//! The engine tools: workspace, tree, request, execute, history, environments and variables
+//! (mcp-engine-tools S1-S6).
 //!
 //! Handlers are plain synchronous functions over [`EngineState`] returning the JSON text
 //! result, so they can be tested on temp workspaces without rmcp. They block (the engine
 //! owns its own Tokio runtime and its sends block on it), so the server runs them on the
 //! blocking pool. The engine state is separate from the `ui_*` bridge session.
 
+mod environments;
 mod execute;
 mod history;
 mod request;
@@ -24,6 +26,11 @@ use serde_json::{Value, json};
 
 use crate::tools::ToolError;
 
+pub use environments::{
+    EnvironmentArgs, EnvironmentCreateArgs, EnvironmentRenameArgs, ScopeArgs, VariableDeleteArgs,
+    VariableSetArgs, environment_create, environment_delete, environment_list, environment_rename,
+    variable_delete, variable_set, variables_get,
+};
 pub use execute::request_execute;
 pub use history::{history_get, history_list};
 pub use request::{request_get, request_update};

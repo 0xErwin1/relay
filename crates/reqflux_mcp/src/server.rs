@@ -1,5 +1,5 @@
 //! The rmcp stdio server that exposes the `ui_*` tools (S6, S7, S8) and the engine tools
-//! (mcp-engine-tools S1-S5), each group with its own router.
+//! (mcp-engine-tools S1-S6), each group with its own router.
 //!
 //! Every tool handler delegates to the plain functions in [`crate::tools`]
 //! under a lock on the shared [`ServerState`], and maps a [`ToolError`] to a
@@ -267,7 +267,7 @@ mod tests {
         "ui_scroll",
     ];
 
-    const ENGINE_TOOL_NAMES: [&str; 15] = [
+    const ENGINE_TOOL_NAMES: [&str; 22] = [
         "workspace_open",
         "workspace_create",
         "workspace_info",
@@ -283,6 +283,13 @@ mod tests {
         "request_execute",
         "history_list",
         "history_get",
+        "environment_list",
+        "environment_create",
+        "environment_rename",
+        "environment_delete",
+        "variables_get",
+        "variable_set",
+        "variable_delete",
     ];
 
     #[allow(clippy::unwrap_used, clippy::expect_used)]

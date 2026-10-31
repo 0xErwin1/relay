@@ -11,8 +11,10 @@ use rmcp::{
 };
 
 use super::{
-    CollectionCreateArgs, EngineState, EntryArgs, ExecuteArgs, FolderCreateArgs, HistoryListArgs,
-    ItemArgs, MoveArgs, PathArgs, RenameArgs, RequestCreateArgs, UpdateArgs, WorkspaceCreateArgs,
+    CollectionCreateArgs, EngineState, EntryArgs, EnvironmentArgs, EnvironmentCreateArgs,
+    EnvironmentRenameArgs, ExecuteArgs, FolderCreateArgs, HistoryListArgs, ItemArgs, MoveArgs,
+    PathArgs, RenameArgs, RequestCreateArgs, ScopeArgs, UpdateArgs, VariableDeleteArgs,
+    VariableSetArgs, WorkspaceCreateArgs,
 };
 use crate::server::{ReqFluxMcp, into_result};
 use crate::tools::ToolError;
@@ -215,6 +217,86 @@ impl ReqFluxMcp {
         Parameters(args): Parameters<EntryArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         self.run_engine(move |state| super::history_get(state, args))
+            .await
+    }
+
+    #[tool(
+        name = "environment_list",
+        description = "List the workspace environments with id, name, slug and variable count"
+    )]
+    async fn environment_list(&self) -> Result<CallToolResult, ErrorData> {
+        self.run_engine(super::environment_list).await
+    }
+
+    #[tool(
+        name = "environment_create",
+        description = "Create an environment; returns its id"
+    )]
+    async fn environment_create(
+        &self,
+        Parameters(args): Parameters<EnvironmentCreateArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.run_engine(move |state| super::environment_create(state, args))
+            .await
+    }
+
+    #[tool(
+        name = "environment_rename",
+        description = "Rename an environment, moving its file to the new slug; returns its id"
+    )]
+    async fn environment_rename(
+        &self,
+        Parameters(args): Parameters<EnvironmentRenameArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.run_engine(move |state| super::environment_rename(state, args))
+            .await
+    }
+
+    #[tool(
+        name = "environment_delete",
+        description = "Delete an environment; returns its id"
+    )]
+    async fn environment_delete(
+        &self,
+        Parameters(args): Parameters<EnvironmentArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.run_engine(move |state| super::environment_delete(state, args))
+            .await
+    }
+
+    #[tool(
+        name = "variables_get",
+        description = "List the variables of a scope (global, collection:<id> or environment:<id>); a secret's value shows only whether it is set"
+    )]
+    async fn variables_get(
+        &self,
+        Parameters(args): Parameters<ScopeArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.run_engine(move |state| super::variables_get(state, args))
+            .await
+    }
+
+    #[tool(
+        name = "variable_set",
+        description = "Create a variable in a scope, or update only the given fields of an existing one; a secret's value goes to the OS keyring, never to a file"
+    )]
+    async fn variable_set(
+        &self,
+        Parameters(args): Parameters<VariableSetArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.run_engine(move |state| super::variable_set(state, args))
+            .await
+    }
+
+    #[tool(
+        name = "variable_delete",
+        description = "Delete a variable from a scope, and a secret's keyring entry with it"
+    )]
+    async fn variable_delete(
+        &self,
+        Parameters(args): Parameters<VariableDeleteArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.run_engine(move |state| super::variable_delete(state, args))
             .await
     }
 }
