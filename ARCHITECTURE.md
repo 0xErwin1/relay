@@ -700,6 +700,19 @@ off the UI thread and drawn with `uniform_list` so only visible lines render, an
 with Retry, and the unresolved variables the send used. Each open request keeps its last
 response in memory, and every send is recorded in history (see "History").
 
+An image or HTML response (by `Content-Type`, then PNG, JPEG, GIF or WebP magic bytes) adds
+`Preview` (`response-view-preview`). An image is decoded off the UI thread and drawn at its
+natural size, shrunk to fit and never enlarged, with its size and format
+(`response-preview-meta`); one that does not decode says so. GPUI has no web view, so HTML
+shows its title and readable text (tags stripped, scripts and styles dropped) and
+`Open in browser` (`response-preview-open`), which writes the body to a new file under
+`$XDG_CACHE_HOME/reqflux/preview/` and opens it with the system handler; ReqFlux never fetches
+anything to render a page. An image over 20 MB or HTML over 5 MB is too large to preview. The
+Cookies sub-tab (`response-tab-cookies`) parses every `Set-Cookie` header into name, value and
+attributes (`response-cookie-<n>`), raw with a warning mark when it does not parse; nothing is
+stored, since the cookie jar comes later. History stores `Set-Cookie` values through the send's
+masker.
+
 The rail's History button (`rail-history`) swaps the sidebar tree for the History panel
 (`history-row-<n>`, newest first, `METHOD path · status · time ago` or `failed`; the 200
 newest; `No requests sent yet` when empty), and Collections (`rail-collections`) swaps back.
