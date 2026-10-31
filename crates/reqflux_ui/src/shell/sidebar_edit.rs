@@ -162,6 +162,9 @@ impl Sidebar {
     /// Escape: closes the menu or the delete confirmation and clears the error. Returns
     /// whether it closed something, so the shell does not also cancel a send.
     pub(crate) fn dismiss(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.dismiss_variables(window, cx) {
+            return true;
+        }
         let had_error = self.edit.error.take().is_some();
         let closed = if self.edit.menu.is_some() {
             self.close_menu(window, cx);

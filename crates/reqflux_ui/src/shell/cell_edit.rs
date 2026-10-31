@@ -4,7 +4,8 @@
 //! was typed, since nothing was written while typing; clicking another cell commits the
 //! open field first, like a spreadsheet. A value that references a secret is never seeded:
 //! the field opens empty with a `Secret value` placeholder and an empty commit keeps the
-//! stored reference.
+//! stored reference. The Variables document's cells use the same field; see
+//! [`super::variables_ops`].
 
 use gpui::{AppContext as _, Context, Entity, Window};
 use gpui_component::input::InputState;
@@ -14,6 +15,7 @@ use super::auth_edit::AUTH_TABLE;
 use super::drafts::grid_cell;
 use super::method_edit::METHOD_TABLE;
 use super::setting_edit::SETTINGS_TABLE;
+use super::variables_model::Column;
 
 /// Which cell of a grid row the field edits.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -128,6 +130,11 @@ impl Shell {
             return;
         };
         let value = input.read(cx).value().to_string();
+        if Column::from_table(&table).is_some() {
+            self.commit_variable_cell(&request_id, &table, n, secret, value, cx);
+            self.close_cell_edit(window, cx);
+            return;
+        }
         if table == SETTINGS_TABLE {
             self.set_draft_timeout(&request_id, &value, cx);
             self.close_cell_edit(window, cx);

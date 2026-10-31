@@ -5,6 +5,9 @@
 //! its response under it. A history entry whose request no longer exists shows read-only in
 //! its place, `history-readonly`: the recorded name, method and URL over the recorded
 //! response.
+//!
+//! While the Variables panel has a scope selected, the island shows that scope's Variables
+//! document instead.
 
 use bolt::Island;
 use bolt::tokens::{border, space, text};
@@ -12,11 +15,26 @@ use gpui::{Context, IntoElement, ParentElement, Styled, Window, prelude::*};
 
 use super::documents::locate;
 use super::history::Orphan;
+use super::sidebar_history::Panel;
 use super::{
     Shell, action_strip, path_bar, region, request, response, tabs, text as text_role, text_region,
+    variables_document,
 };
 
 pub(super) fn render(shell: &Shell, window: &Window, cx: &mut Context<Shell>) -> impl IntoElement {
+    let variables_scope = {
+        let sidebar = shell.sidebar.read(cx);
+        (sidebar.panel == Panel::Variables)
+            .then(|| sidebar.variables.selected())
+            .flatten()
+    };
+    if let (Some(scope), None) = (variables_scope, shell.workspace.document_message()) {
+        return region("document").flex_1().min_w_0().h_full().child(
+            Island::new()
+                .size_full()
+                .child(variables_document::render(shell, scope, cx)),
+        );
+    }
     let colors = bolt::colors(cx);
     let active = shell
         .documents

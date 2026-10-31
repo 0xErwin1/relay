@@ -25,6 +25,7 @@ mod setting_edit;
 mod sidebar;
 mod sidebar_edit;
 mod sidebar_history;
+mod sidebar_variables;
 mod status_bar;
 mod tabs;
 mod text;
@@ -33,6 +34,9 @@ mod tree_drag;
 mod tree_model;
 mod tree_ops;
 mod url_edit;
+mod variables_document;
+mod variables_model;
+mod variables_ops;
 
 use std::collections::HashMap;
 
@@ -54,6 +58,7 @@ use self::send::{CancelRequest, RequestSend, SHELL_CONTEXT, SaveRequest, SendReq
 use self::sidebar::{OpenRequest, Sidebar};
 use self::sidebar_edit::TreeCommand;
 use self::sidebar_history::OpenHistory;
+use self::sidebar_variables::VariablesCommand;
 use self::tree_model::Node;
 use self::url_edit::UrlEdit;
 
@@ -130,6 +135,7 @@ pub(crate) struct Shell {
     _open_history: Subscription,
     _open_requests: Subscription,
     _tree_commands: Subscription,
+    _variables_commands: Subscription,
 }
 
 impl Shell {
@@ -166,6 +172,10 @@ impl Shell {
         let tree_commands = cx.subscribe(&sidebar, |this, _, command: &TreeCommand, cx| {
             this.run_tree_command(command, cx);
         });
+        let variables_commands =
+            cx.subscribe(&sidebar, |this, _, command: &VariablesCommand, cx| {
+                this.run_variables_command(command, cx);
+            });
         let mut shell = Self {
             workspace,
             sidebar,
@@ -196,6 +206,7 @@ impl Shell {
             _open_history: open_history,
             _open_requests: open_requests,
             _tree_commands: tree_commands,
+            _variables_commands: variables_commands,
         };
         shell.load_drafts();
         shell.load_current_values();
@@ -428,3 +439,7 @@ mod tests;
 mod tree_edit_tests;
 #[cfg(test)]
 mod tree_reorder_tests;
+#[cfg(test)]
+mod variables_edit_tests;
+#[cfg(test)]
+mod variables_tests;

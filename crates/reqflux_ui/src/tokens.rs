@@ -172,6 +172,11 @@ pub(crate) const GRID_NUMBER_COLUMN: Pixels = px(46.0);
 pub(crate) const GRID_KEY_COLUMN: Pixels = px(200.0);
 pub(crate) const GRID_VALUE_COLUMN: Pixels = px(420.0);
 
+/// The Variables document columns: shared and current value, and the secret toggle; the
+/// key uses `GRID_KEY_COLUMN` and the description fills the rest.
+pub(crate) const VARIABLES_VALUE_COLUMN: Pixels = px(220.0);
+pub(crate) const VARIABLES_SECRET_COLUMN: Pixels = px(64.0);
+
 /// The text and icon size of the SECRET badge.
 pub(crate) const BADGE_TEXT: Pixels = px(10.0);
 

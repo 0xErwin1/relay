@@ -234,6 +234,9 @@ impl Shell {
         if panel == Panel::History {
             self.refresh_history(cx);
         }
+        if panel != Panel::Variables {
+            self.commit_variable_edit(cx);
+        }
         self.sidebar
             .update(cx, |sidebar, cx| sidebar.set_panel(panel, cx));
         cx.notify();

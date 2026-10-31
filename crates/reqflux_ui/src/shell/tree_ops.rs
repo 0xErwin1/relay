@@ -66,7 +66,7 @@ impl Shell {
     /// Fails without touching the workspace while a send's prepare task holds the other
     /// `Arc` clone: the engine is never dropped or replaced, because its runtime owns a
     /// send in flight.
-    fn with_engine(
+    pub(super) fn with_engine(
         &mut self,
         operation: impl FnOnce(&mut Engine) -> Result<Option<Id>, String>,
     ) -> Result<(Option<Id>, Vec<Node>), String> {

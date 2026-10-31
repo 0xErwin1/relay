@@ -2,7 +2,8 @@
 //! field, the error of the last failed tree operation, the delete confirmation, the
 //! collection tree and a footer with the request and collection counts. The filter does
 //! nothing yet. While the rail's History view is active, the History panel of
-//! [`super::sidebar_history`] takes the tree's place.
+//! [`super::sidebar_history`] takes the tree's place, and while its Environments view is,
+//! the Variables panel of [`super::sidebar_variables`].
 //!
 //! The tree keeps keyboard focus as a whole; its rows are not focusable. Navigation runs
 //! through the actions below, bound in the `SidebarTree` key context.
@@ -22,8 +23,10 @@ use gpui::{
 use super::rows::{NameDecorator, RowSlots};
 use super::sidebar_edit::{TreeCommand, TreeEdit};
 use super::sidebar_history::{HistoryRow, OpenHistory, Panel};
+use super::sidebar_variables::{VariablesCommand, VariablesPanel};
 use super::tree_drag::{self, DragPreview, DraggedRow, DropPlace, Step};
 use super::tree_model::{self, Node, NodeKind, TreeState};
+use super::variables_model::scope_rows;
 use super::{region, rows, text as text_role, text_region};
 use crate::tokens;
 use crate::workspace::OpenedWorkspace;
@@ -94,15 +97,18 @@ pub(crate) struct Sidebar {
     pub(super) panel: Panel,
     /// The rows of the History panel, newest first.
     pub(super) history: Vec<HistoryRow>,
+    /// The Variables panel.
+    pub(super) variables: VariablesPanel,
 }
 
 impl Sidebar {
     pub(crate) fn new(workspace: &OpenedWorkspace, cx: &mut Context<Self>) -> Self {
-        let tree = match workspace {
-            OpenedWorkspace::Loaded(engine) => {
-                Some(TreeState::new(tree_model::nodes(engine.workspace())))
-            }
-            OpenedWorkspace::None | OpenedWorkspace::Failed { .. } => None,
+        let (tree, scopes) = match workspace {
+            OpenedWorkspace::Loaded(engine) => (
+                Some(TreeState::new(tree_model::nodes(engine.workspace()))),
+                scope_rows(engine.workspace()),
+            ),
+            OpenedWorkspace::None | OpenedWorkspace::Failed { .. } => (None, Vec::new()),
         };
         Self {
             tree,
@@ -110,6 +116,7 @@ impl Sidebar {
             edit: TreeEdit::new(cx),
             panel: Panel::default(),
             history: Vec::new(),
+            variables: VariablesPanel::new(scopes, cx),
         }
     }
 
@@ -237,6 +244,8 @@ impl EventEmitter<TreeCommand> for Sidebar {}
 
 impl EventEmitter<OpenHistory> for Sidebar {}
 
+impl EventEmitter<VariablesCommand> for Sidebar {}
+
 impl Focusable for Sidebar {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus.clone()
@@ -297,6 +306,8 @@ impl Render for Sidebar {
 
         if self.panel == Panel::History && self.tree.is_some() {
             content = content.children(self.history_panel(cx));
+        } else if self.panel == Panel::Variables && self.tree.is_some() {
+            content = content.child(self.variables_panel(window, cx));
         } else if let Some(tree) = &self.tree {
             let tree_rows: Vec<_> = tree
                 .visible_rows()

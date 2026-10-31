@@ -24,6 +24,8 @@ pub(crate) enum Panel {
     Collections,
     /// The History panel.
     History,
+    /// The Variables panel.
+    Variables,
 }
 
 /// One row of the History panel.

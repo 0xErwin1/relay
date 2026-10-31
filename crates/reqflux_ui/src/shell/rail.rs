@@ -1,5 +1,5 @@
-//! The activity rail on the desk: one button per view, Settings at the bottom. Collections
-//! and History swap what the sidebar island shows and the active one is marked; the others
+//! The activity rail on the desk: one button per view, Settings at the bottom. Collections,
+//! History and Environments swap what the sidebar island shows and the active one is marked; the others
 //! do nothing yet.
 
 use bolt::IconName;
@@ -30,6 +30,7 @@ pub(super) fn render(panel: Panel, cx: &mut Context<Shell>) -> impl IntoElement 
             let target = match id {
                 "rail-collections" => Some(Panel::Collections),
                 "rail-history" => Some(Panel::History),
+                "rail-environments" => Some(Panel::Variables),
                 _ => None,
             };
             let button = RailButton::new(id, icon, label).active(target == Some(panel));
