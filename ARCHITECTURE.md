@@ -740,6 +740,30 @@ as `variables-undeclared-<n>` rows that can be edited or cleared; renaming a key
 current value on the old key, where it shows as such a row. A refused write shows its reason in
 `variables-error` and changes nothing.
 
+Ctrl+K, Ctrl+P or a click on the title bar's search (`command-search-button`) opens the command
+palette (`palette`, input `palette-input`, rows `palette-row-<n>`). An empty query lists the
+commands; typing searches requests (by `METHOD name` and `METHOD url` as written) and commands
+together with a fuzzy subsequence score that favors runs and word starts. Up and Down move the
+highlight, Enter or a click runs it, Escape or a click outside closes it. One registry
+(`shell/commands.rs`) defines every command with its label, key, key context and when it can
+run; the palette, the key bindings and a coverage test (every command has a key, no key is
+shared in a context) all read it. A command that cannot run is listed dimmed and its key does
+nothing. The window gives the shell the first focus, so keys work before any click; a text
+field takes keys first. The keymap is not configurable yet.
+
+| Command | Key | Can run when |
+|---|---|---|
+| Open palette | Ctrl+K, Ctrl+P | always |
+| Send request, Cancel send | Ctrl+Enter, Escape | a request is open |
+| Save request, Revert request | Ctrl+S, Ctrl+Shift+R | the active request has a draft |
+| New request | Ctrl+N | a collection exists (in the selected collection or folder) |
+| New collection, New environment | Ctrl+Shift+N, Ctrl+Shift+E | a workspace is open |
+| Switch environment | Ctrl+E | a workspace is open |
+| Open workspace, New workspace | Ctrl+O, Ctrl+Shift+O | always |
+| Close workspace | Ctrl+Shift+W | a workspace is open |
+| Close tab, Next tab, Previous tab | Ctrl+W, Ctrl+Tab, Ctrl+Shift+Tab | a request is open |
+| Show Collections, History, Variables | Ctrl+1, Ctrl+2, Ctrl+3 | a workspace is open |
+
 Every region and tree row has a stable element id (`title-bar`, `sidebar`, `document`,
 `status-bar`, `tree-row-<id>`, `doc-tab-<id>`, `request-tab-<name>`,
 `request-<params|headers>-row-<n>`, `request-send`, `request-cancel`, `response-status`,
