@@ -264,8 +264,9 @@ Saving is explicit, as in Postman: an edit never touches the workspace file unti
   The app state is SQLite (`reqflux_engine::state`, `rusqlite`) at
   `$XDG_STATE_HOME/reqflux/state.sqlite3` (`$HOME/.local/state/reqflux/state.sqlite3` when the
   variable is unset), with an explicit, forward-only schema version (v2 adds the `history`
-  table, v3 the `current_values` table keyed by workspace id, scope and key; an older file
-  upgrades in one transaction and keeps what it holds). A draft stores the
+  table, v3 the `current_values` table keyed by workspace id, scope and key, v4 the
+  `recent_workspaces` table, the 20 newest by canonical path; an older file upgrades in one
+  transaction and keeps what it holds). A draft stores the
   whole entity document as TOML, so later editable surfaces need no new storage.
 - **Sending** a request with a draft sends the draft. History records what was sent.
 
@@ -638,7 +639,18 @@ database, which was DBFlux's most expensive structural mistake.
 ## UI
 
 What exists today: `reqflux [<dir>]` opens a workspace through `reqflux_engine` before the window
-appears (a slow disk delays the window). The window is the Bolt shell of
+appears (a slow disk delays the window) and records it as recent. The title bar's workspace
+selector (`workspace-selector`) opens a menu (`workspace-menu`) with the recent workspaces
+(`workspace-recent-<n>`, name and path, the current one marked; `workspace-recent-remove-<n>`
+drops one), `Open folder…` (`workspace-open`, the OS folder dialog), `New workspace…`
+(`workspace-new`, the OS save dialog; `reqflux_engine::create_workspace` writes a
+`reqflux.toml` named after the directory into a missing or empty directory) and
+`Close workspace` (`workspace-close`). Switching cancels sends in flight, closes every tab,
+resets the active environment and loads the new workspace's drafts and current values; the
+previous workspace's drafts stay in the app state. A workspace that fails to load keeps the
+current one and shows why (`workspace-error`). With no workspace the document island shows
+`Open folder…` (`empty-open`), `New workspace…` (`empty-new`) and the recent list
+(`empty-recent-<n>`). One window shows one workspace. The window is the Bolt shell of
 `design/bolt-v2/01-main.html`: a title bar with the workspace and environment on the left,
 the command search in the middle and the approvals bell on the right; the activity rail
 (Collections, History, Environments, MCP approvals, Audit log, Settings); a sidebar island with
