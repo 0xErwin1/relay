@@ -134,7 +134,13 @@ fn ctrl_k_opens_the_palette_and_down_enter_opens_a_request(cx: &mut TestAppConte
     };
     assert_eq!(label(1).as_deref(), Some("GET List users API"));
     assert_eq!(label(2).as_deref(), Some("GET Health API"));
-    assert_eq!(label(3), None, "only the GET requests match");
+    // `get` is also a subsequence of `Toggle theme`, which ranks below both requests.
+    assert_eq!(label(3).as_deref(), Some("Toggle theme Ctrl+Shift+T"));
+    assert_eq!(
+        label(4),
+        None,
+        "only the GET requests and that command match"
+    );
 
     press(cx, "down");
     press(cx, "enter");

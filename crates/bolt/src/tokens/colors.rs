@@ -1,4 +1,4 @@
-//! Color roles of the dark palette and the wash strengths.
+//! Color roles of the dark and light palettes and the wash strengths.
 
 use gpui::Hsla;
 
@@ -31,7 +31,8 @@ pub mod accent_wash {
 
 /// The neutral, wash and semantic color roles of one palette.
 ///
-/// Only the dark palette exists; a light one is another constructor with the same roles.
+/// [`Colors::dark`] is the design of record; [`Colors::light`] fills the same roles for a light
+/// ground, keeping every text role and semantic color at least 4.5:1 on `panel`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Colors {
     /// The window ground the islands sit on.
@@ -99,6 +100,32 @@ impl Colors {
             on_semantic: hex(0x09090B),
         }
     }
+
+    /// The light palette: near-white grounds with the desk a step below the panels, lines
+    /// darker than the panels, dark text, black washes and deeper semantic colors.
+    pub fn light() -> Self {
+        Self {
+            desk: hex(0xEDECF0),
+            background: hex(0xF4F3F6),
+            panel: hex(0xFCFBFD),
+            raised: hex(0xEFEDF2),
+            line: hex(0xE0DEE5),
+            line_2: hex(0xC9C5D0),
+            row_divider: hex(0xEEECF1),
+            strong: hex(0x17151B),
+            foreground: hex(0x3A3740),
+            muted: hex(0x6B6673),
+            hover: hex_alpha(0x000000, 0.04),
+            alternating_row: hex_alpha(0x000000, 0.02),
+            island_edge: hex_alpha(0x000000, 0.06),
+            scrim: hex_alpha(0x17151B, 0.32),
+            success: hex(0x1C7A45),
+            info: hex(0x1F5FCC),
+            warning: hex(0x8A5A00),
+            danger: hex(0xC4352B),
+            on_semantic: hex(0xFFFFFF),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -142,5 +169,82 @@ mod tests {
         assert_eq!(rgba_of(colors.info), (0x6EA8FF, 1.0));
         assert_eq!(rgba_of(colors.warning), (0xFFC23D, 1.0));
         assert_eq!(rgba_of(colors.danger), (0xFF6B5E, 1.0));
+    }
+
+    /// The WCAG 2 contrast ratio between two opaque colors.
+    fn contrast(a: Hsla, b: Hsla) -> f32 {
+        let luminance = |color: Hsla| {
+            let rgba = gpui::Rgba::from(color);
+            let linear = |c: f32| {
+                if c <= 0.039_28 {
+                    c / 12.92
+                } else {
+                    ((c + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            0.2126 * linear(rgba.r) + 0.7152 * linear(rgba.g) + 0.0722 * linear(rgba.b)
+        };
+        let (high, low) = {
+            let (x, y) = (luminance(a), luminance(b));
+            if x > y { (x, y) } else { (y, x) }
+        };
+        (high + 0.05) / (low + 0.05)
+    }
+
+    #[test]
+    fn light_neutrals_are_near_white_grounds_with_darker_lines_and_dark_text() {
+        let colors = Colors::light();
+        assert_eq!(rgba_of(colors.desk), (0xEDECF0, 1.0));
+        assert_eq!(rgba_of(colors.background), (0xF4F3F6, 1.0));
+        assert_eq!(rgba_of(colors.panel), (0xFCFBFD, 1.0));
+        assert_eq!(rgba_of(colors.raised), (0xEFEDF2, 1.0));
+        assert_eq!(rgba_of(colors.line), (0xE0DEE5, 1.0));
+        assert_eq!(rgba_of(colors.line_2), (0xC9C5D0, 1.0));
+        assert_eq!(rgba_of(colors.row_divider), (0xEEECF1, 1.0));
+        assert_eq!(rgba_of(colors.strong), (0x17151B, 1.0));
+        assert_eq!(rgba_of(colors.foreground), (0x3A3740, 1.0));
+        assert_eq!(rgba_of(colors.muted), (0x6B6673, 1.0));
+        assert!(colors.line.l < colors.panel.l && colors.line_2.l < colors.line.l);
+        assert!(colors.strong.l < colors.foreground.l && colors.foreground.l < colors.muted.l);
+    }
+
+    #[test]
+    fn light_washes_darken_and_semantics_are_deeper() {
+        let colors = Colors::light();
+        assert_eq!(rgba_of(colors.hover), (0x000000, 0.04));
+        assert_eq!(rgba_of(colors.alternating_row), (0x000000, 0.02));
+        assert_eq!(rgba_of(colors.island_edge), (0x000000, 0.06));
+        assert_eq!(rgba_of(colors.scrim), (0x17151B, 0.32));
+        assert_eq!(rgba_of(colors.success), (0x1C7A45, 1.0));
+        assert_eq!(rgba_of(colors.info), (0x1F5FCC, 1.0));
+        assert_eq!(rgba_of(colors.warning), (0x8A5A00, 1.0));
+        assert_eq!(rgba_of(colors.danger), (0xC4352B, 1.0));
+        assert_eq!(rgba_of(colors.on_semantic), (0xFFFFFF, 1.0));
+    }
+
+    #[test]
+    fn text_on_the_panel_meets_wcag_aa_in_both_palettes() {
+        for (name, colors) in [("dark", Colors::dark()), ("light", Colors::light())] {
+            for (role, color) in [
+                ("strong", colors.strong),
+                ("foreground", colors.foreground),
+                ("muted", colors.muted),
+                ("success", colors.success),
+                ("info", colors.info),
+                ("warning", colors.warning),
+                ("danger", colors.danger),
+            ] {
+                let ratio = contrast(color, colors.panel);
+                assert!(ratio >= 4.5, "{name} {role} on panel: {ratio:.2}");
+            }
+        }
+    }
+
+    #[test]
+    fn on_semantic_text_reads_on_every_light_semantic_fill() {
+        let colors = Colors::light();
+        for fill in [colors.success, colors.info, colors.warning, colors.danger] {
+            assert!(contrast(colors.on_semantic, fill) >= 4.5);
+        }
     }
 }

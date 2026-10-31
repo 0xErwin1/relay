@@ -2,6 +2,7 @@
 
 mod brand;
 mod shell;
+mod theme;
 mod tokens;
 mod ui_automation;
 mod workspace;
@@ -23,13 +24,20 @@ pub fn assets() -> impl gpui::AssetSource {
     bolt::assets()
 }
 
-/// Installs Bolt with ReqFlux's brand and opens the main window on the workspace at
-/// `workspace`, or on the empty state when it is `None`.
+/// Installs Bolt with ReqFlux's brand in the theme saved in the app state and opens the main
+/// window on the workspace at `workspace`, or on the empty state when it is `None`.
 ///
 /// The workspace loads synchronously before the window opens; a load failure is shown in
 /// the window, not returned.
 pub fn open_main_window(workspace: Option<PathBuf>, cx: &mut App) -> anyhow::Result<()> {
-    bolt::install(brand::reqflux(), cx);
+    let state = match AppState::open_default() {
+        Ok(state) => Some(state),
+        Err(error) => {
+            log::warn!("cannot open the app state; drafts stay in memory: {error}");
+            None
+        }
+    };
+    theme::install(state.as_ref(), cx);
     shell::bind_keys(cx);
 
     let bounds = Bounds::centered(None, tokens::MAIN_WINDOW_SIZE, cx);
@@ -44,15 +52,9 @@ pub fn open_main_window(workspace: Option<PathBuf>, cx: &mut App) -> anyhow::Res
     };
 
     let workspace = OpenedWorkspace::open(workspace);
-    let state = match AppState::open_default() {
-        Ok(state) => Some(state),
-        Err(error) => {
-            log::warn!("cannot open the app state; drafts stay in memory: {error}");
-            None
-        }
-    };
     cx.open_window(options, |window, cx| {
         ui_automation::install(window, cx);
+        theme::follow_appearance(window, cx);
         let shell = cx.new(|cx| Shell::with_state(workspace, state, cx));
         let focus = shell.read(cx).initial_focus();
         focus.focus(window, cx);

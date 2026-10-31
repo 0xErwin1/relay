@@ -1,25 +1,32 @@
 //! Installing Bolt onto gpui-component and reading its roles.
 //!
-//! [`install`] maps the tokens and a [`Brand`] onto gpui-component's `Theme`, so its
-//! widgets draw in Bolt, and keeps the roles in a global that screens read through
-//! [`colors`], [`brand`] and [`accent_washes`]. Screens never read `Theme` fields.
+//! [`install`] maps the tokens of the chosen palette and a [`Brand`] onto gpui-component's
+//! `Theme`, so its widgets draw in Bolt, and keeps the roles in a global that screens read
+//! through [`colors`], [`brand`] and [`accent_washes`]. [`set_mode`] switches the palette at
+//! runtime. Screens never read `Theme` fields.
 
 use std::rc::Rc;
 use std::sync::LazyLock;
 
-use gpui::{App, Global, Hsla};
-use gpui_component::theme::{Theme, ThemeMode};
+use gpui::{App, Global, Hsla, WindowAppearance};
+use gpui_component::theme::{Theme, ThemeConfig, ThemeMode};
 
 use crate::brand::{AccentWashes, Brand};
 use crate::fonts;
+use crate::palette::{Palette, PaletteMode};
 use crate::tokens::{Colors, cut, family, text};
 
 /// The installed Bolt roles.
 #[derive(Debug, Clone)]
 struct Installed {
     colors: Colors,
+    /// The brand as the product passed it.
+    base_brand: Brand,
+    /// The brand as it draws on the active palette.
     brand: Brand,
     washes: AccentWashes,
+    mode: PaletteMode,
+    palette: Palette,
 }
 
 impl Global for Installed {}
@@ -39,40 +46,71 @@ static FALLBACK: LazyLock<Installed> = LazyLock::new(|| {
     let washes = brand.washes();
     Installed {
         colors,
+        base_brand: brand.clone(),
         brand,
         washes,
+        mode: PaletteMode::Dark,
+        palette: Palette::Dark,
     }
 });
 
-/// Installs Bolt for `brand`: initializes gpui-component when it is not yet, registers the
-/// bundled fonts, and applies the dark palette and the brand to gpui-component's theme.
+/// Installs Bolt for `brand` in `mode`: initializes gpui-component when it is not yet,
+/// registers the bundled fonts, and applies the palette `mode` resolves to and the brand to
+/// gpui-component's theme. [`PaletteMode::System`] resolves through the app's window
+/// appearance; call [`set_mode`] with a window's own appearance once one is open.
 ///
 /// Call it once before opening the first window. Calling it again replaces the brand.
 /// Calling `gpui_component::theme::Theme::change` afterwards reloads gpui-component's
-/// own theme over Bolt, so do not.
+/// own theme over Bolt, so do not; switch palettes with [`set_mode`].
 ///
 /// The theme keeps gpui-component's 16 px rem size, which `Root` applies to each window;
 /// Bolt sizes are absolute pixels and do not depend on it.
-pub fn install(brand: Brand, cx: &mut App) {
+pub fn install(brand: Brand, mode: PaletteMode, cx: &mut App) {
     if !cx.has_global::<Theme>() {
         gpui_component::init(cx);
     }
     fonts::load(cx);
+    let appearance = cx.window_appearance();
+    publish(brand, mode, appearance, cx);
+}
 
-    let colors = Colors::dark();
-    let washes = brand.washes();
+/// Switches to `mode` at runtime: resolves it against `appearance` (a window's
+/// `Window::appearance`), publishes that palette and the installed brand drawn on it, maps
+/// them onto gpui-component's light or dark theme and refreshes every window.
+///
+/// With [`PaletteMode::System`], call it again from the window's appearance observer so the
+/// palette follows the OS.
+pub fn set_mode(mode: PaletteMode, appearance: WindowAppearance, cx: &mut App) {
+    let brand = installed(cx).base_brand.clone();
+    publish(brand, mode, appearance, cx);
+}
 
-    Theme::change(ThemeMode::Dark, None, cx);
+fn publish(brand: Brand, mode: PaletteMode, appearance: WindowAppearance, cx: &mut App) {
+    let palette = mode.resolve(appearance);
+    let colors = palette.colors();
+    let active = brand.for_palette(palette);
+    let washes = active.washes();
+
+    let theme_mode = if palette.is_dark() {
+        ThemeMode::Dark
+    } else {
+        ThemeMode::Light
+    };
+    Theme::change(theme_mode, None, cx);
     Theme::update(cx, |theme| {
         apply_metrics(theme);
-        apply_colors(theme, &colors, &brand, &washes);
+        apply_colors(theme, &colors, &active, &washes);
     });
 
     cx.set_global(Installed {
         colors,
-        brand,
+        base_brand: brand,
+        brand: active,
         washes,
+        mode,
+        palette,
     });
+    cx.refresh_windows();
 }
 
 /// The color roles of the installed palette.
@@ -80,29 +118,44 @@ pub fn colors(cx: &App) -> &Colors {
     &installed(cx).colors
 }
 
-/// The installed brand.
+/// The installed brand, as it draws on the active palette.
 pub fn brand(cx: &App) -> &Brand {
     &installed(cx).brand
 }
 
-/// The washes derived from the installed brand's accent tint.
+/// The washes derived from the installed brand's accent tint on the active palette.
 pub fn accent_washes(cx: &App) -> &AccentWashes {
     &installed(cx).washes
+}
+
+/// The mode the user chose.
+pub fn mode(cx: &App) -> PaletteMode {
+    installed(cx).mode
+}
+
+/// The palette drawing now: the mode resolved against the window appearance.
+pub fn palette(cx: &App) -> Palette {
+    installed(cx).palette
 }
 
 fn installed(cx: &App) -> &Installed {
     cx.try_global::<Installed>().unwrap_or(&FALLBACK)
 }
 
-/// Fonts and shape. Written into the dark theme config too, so a reload of it keeps them.
+/// Fonts and shape. Written into the light and dark theme configs too, so a reload of
+/// either keeps them.
 fn apply_metrics(theme: &mut Theme) {
-    let mut config = (*theme.dark_theme).clone();
-    config.font_family = Some(family::INTERFACE.into());
-    config.mono_font_family = Some(family::MONO.into());
-    config.mono_font_size = Some(text::CODE.size.into());
-    config.radius = Some(0);
-    config.radius_lg = Some(0);
-    theme.dark_theme = Rc::new(config);
+    let with_metrics = |config: &Rc<ThemeConfig>| {
+        let mut config = (**config).clone();
+        config.font_family = Some(family::INTERFACE.into());
+        config.mono_font_family = Some(family::MONO.into());
+        config.mono_font_size = Some(text::CODE.size.into());
+        config.radius = Some(0);
+        config.radius_lg = Some(0);
+        Rc::new(config)
+    };
+    theme.dark_theme = with_metrics(&theme.dark_theme);
+    theme.light_theme = with_metrics(&theme.light_theme);
 
     theme.font_family = family::INTERFACE.into();
     theme.mono_font_family = family::MONO.into();

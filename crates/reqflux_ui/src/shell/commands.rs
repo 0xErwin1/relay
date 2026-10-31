@@ -91,6 +91,7 @@ commands! {
     ShowCollections: ShowCollections, "show-collections", "Show Collections", "ctrl-1", loaded;
     ShowHistory: ShowHistory, "show-history", "Show History", "ctrl-2", loaded;
     ShowVariables: ShowVariables, "show-variables", "Show Variables", "ctrl-3", loaded;
+    ToggleTheme: ToggleTheme, "toggle-theme", "Toggle theme", "ctrl-shift-t", always;
 }
 
 actions!(
@@ -219,6 +220,7 @@ impl Shell {
             CommandId::ShowCollections => self.switch_panel(Panel::Collections, window, cx),
             CommandId::ShowHistory => self.switch_panel(Panel::History, window, cx),
             CommandId::ShowVariables => self.switch_panel(Panel::Variables, window, cx),
+            CommandId::ToggleTheme => self.toggle_theme(window, cx),
         }
     }
 

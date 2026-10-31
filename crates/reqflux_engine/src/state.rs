@@ -1,6 +1,7 @@
 //! Per-user app state in SQLite (S1, S8): drafts, the send history (history S1-S5,
 //! see [`history`](self#history)), current values (variables-editor S4) and the recent
-//! workspaces (recent-workspaces S1, see [`AppState::recent_workspaces`]).
+//! workspaces (recent-workspaces S1, see [`AppState::recent_workspaces`]) and small settings
+//! (light-theme S4, see [`AppState::setting`]).
 //!
 //! The state file lives at `$XDG_STATE_HOME/reqflux/state.sqlite3`, or
 //! `$HOME/.local/state/reqflux/state.sqlite3` when the variable is unset, and never inside
@@ -25,7 +26,7 @@
 //! is the drafts table; version 2 adds the `history` table and keeps every draft; version 3
 //! adds the `current_values` table (see [`AppState::current_values`]) and keeps the drafts
 //! and the history; version 4 adds the `recent_workspaces` table and keeps everything
-//! before it. A fresh
+//! before it; version 5 adds the `settings` table and keeps everything before it. A fresh
 //! file is created at the latest version, an older one is upgraded in one transaction, and
 //! a newer one is refused with [`StateError::UnsupportedVersion`].
 //!
@@ -43,6 +44,7 @@ use rusqlite::Connection;
 mod current;
 mod history;
 mod recent;
+mod settings;
 
 pub use history::{
     HISTORY_MAX_BODY_BYTES, HISTORY_MAX_ENTRIES, HistoryEntry, HistoryLimits, HistoryOutcome,
@@ -51,7 +53,7 @@ pub use history::{
 pub use recent::{RECENT_WORKSPACES_MAX, RecentWorkspace};
 
 /// The schema version this build writes. Raising it is a forward-only migration.
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 
 /// The drafts table of schema version 1.
 const SCHEMA_V1: &str = "
@@ -160,8 +162,8 @@ impl Draft {
     }
 }
 
-/// The per-user app state: a SQLite database holding the drafts, history, current values and
-/// recent workspaces tables.
+/// The per-user app state: a SQLite database holding the drafts, history, current values,
+/// recent workspaces and settings tables.
 #[derive(Debug)]
 pub struct AppState {
     path: PathBuf,
@@ -366,11 +368,19 @@ fn migrate(conn: &Connection, path: &Path) -> Result<(), StateError> {
             history::SCHEMA_V2,
             current::SCHEMA_V3,
             recent::SCHEMA_V4,
+            settings::SCHEMA_V5,
         ]
         .as_slice(),
-        1 => [history::SCHEMA_V2, current::SCHEMA_V3, recent::SCHEMA_V4].as_slice(),
-        2 => [current::SCHEMA_V3, recent::SCHEMA_V4].as_slice(),
-        3 => [recent::SCHEMA_V4].as_slice(),
+        1 => [
+            history::SCHEMA_V2,
+            current::SCHEMA_V3,
+            recent::SCHEMA_V4,
+            settings::SCHEMA_V5,
+        ]
+        .as_slice(),
+        2 => [current::SCHEMA_V3, recent::SCHEMA_V4, settings::SCHEMA_V5].as_slice(),
+        3 => [recent::SCHEMA_V4, settings::SCHEMA_V5].as_slice(),
+        4 => [settings::SCHEMA_V5].as_slice(),
         version if version == SCHEMA_VERSION => return Ok(()),
         version => {
             return Err(StateError::UnsupportedVersion {

@@ -8,8 +8,9 @@
 //! This crate must never name a product, a protocol or a product type, so it can move to
 //! its own repository without changes. See "Design system" in ARCHITECTURE.md.
 //!
-//! A product calls [`install`] with its [`Brand`] before opening a window, then reads
-//! roles through [`colors`], [`brand`], [`accent_washes`] and the constants in [`tokens`].
+//! A product calls [`install`] with its [`Brand`] and a [`PaletteMode`] before opening a
+//! window, switches with [`set_mode`], and reads roles through [`colors`], [`brand`],
+//! [`accent_washes`], [`palette`] and the constants in [`tokens`].
 
 mod brand;
 pub mod chamfer;
@@ -18,6 +19,7 @@ pub mod controls;
 pub mod fonts;
 mod icon;
 mod island;
+mod palette;
 mod theme;
 pub mod tokens;
 
@@ -28,4 +30,5 @@ pub use brand::{AccentWashes, Brand};
 pub use chevron::{Chevron, ChevronDirection, chevron_points};
 pub use icon::{Icon, IconName, assets};
 pub use island::Island;
-pub use theme::{accent_washes, brand, colors, install};
+pub use palette::{Palette, PaletteMode};
+pub use theme::{accent_washes, brand, colors, install, mode, palette, set_mode};

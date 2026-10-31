@@ -109,7 +109,7 @@ fn tab(
                 .font_family(family::MONO)
                 .text_size(tokens::METHOD_LABEL_SIZE)
                 .font_weight(FontWeight::BOLD)
-                .text_color(method_color(&location.method, colors))
+                .text_color(method_color(&location.method, bolt::palette(cx)))
                 .child(location.method.clone()),
         )
         .child(

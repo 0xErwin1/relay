@@ -1,33 +1,41 @@
 //! ReqFlux's own tokens, on top of Bolt: method labels, the draft marker, syntax colors, shell
 //! sizes and the main window size. The only `reqflux_ui` file besides `brand.rs` that holds raw values.
 
+use bolt::Palette;
 use bolt::tokens::{Colors, hex, hex_alpha};
 use std::time::Duration;
 
 use gpui::{Hsla, Pixels, Size, px, size};
 
-/// The label color of the uppercase HTTP `verb`: Bolt's semantic hues, as DBFlux colors its
-/// object kinds. GET success, POST warning, PUT info, PATCH the null purple, DELETE danger,
-/// and HEAD, OPTIONS and custom verbs cyan.
-pub(crate) fn method_color(verb: &str, colors: &Colors) -> Hsla {
+/// The label color of the uppercase HTTP `verb` on `palette`: Bolt's semantic hues, as DBFlux
+/// colors its object kinds. GET success, POST warning, PUT info, PATCH the null purple, DELETE
+/// danger, and HEAD, OPTIONS and custom verbs cyan.
+pub(crate) fn method_color(verb: &str, palette: Palette) -> Hsla {
+    let colors = palette.colors();
     match verb {
         "GET" => colors.success,
         "POST" => colors.warning,
         "PUT" => colors.info,
-        "PATCH" => method_patch(),
+        "PATCH" => method_patch(palette),
         "DELETE" => colors.danger,
-        _ => method_other(),
+        _ => method_other(palette),
     }
 }
 
-/// The PATCH label: the purple Bolt gives `null` in data views.
-fn method_patch() -> Hsla {
-    hex(0xB79CFF)
+/// The PATCH label: the purple Bolt gives `null` in data views, deeper on the light ground.
+fn method_patch(palette: Palette) -> Hsla {
+    match palette {
+        Palette::Dark => hex(0xB79CFF),
+        Palette::Light => hex(0x7445D6),
+    }
 }
 
-/// HEAD, OPTIONS and custom verbs.
-fn method_other() -> Hsla {
-    hex(0x6FD3D8)
+/// HEAD, OPTIONS and custom verbs: cyan, deeper on the light ground.
+fn method_other(palette: Palette) -> Hsla {
+    match palette {
+        Palette::Dark => hex(0x6FD3D8),
+        Palette::Light => hex(0x0E7C83),
+    }
 }
 
 /// Body syntax colors: quiet keys, values carry the data.
@@ -41,12 +49,23 @@ pub(crate) struct SyntaxColors {
 }
 
 impl SyntaxColors {
-    pub(crate) fn dark() -> Self {
-        Self {
-            key: hex(0xA9A4B2),
-            string: hex(0x7BE0A0),
-            number: hex(0xB79CFF),
-            punct: hex(0x8E8996),
+    /// The syntax colors on `palette`: strings take its success color, punctuation its
+    /// muted text.
+    pub(crate) fn for_palette(palette: Palette) -> Self {
+        let colors = palette.colors();
+        match palette {
+            Palette::Dark => Self {
+                key: hex(0xA9A4B2),
+                string: colors.success,
+                number: method_patch(palette),
+                punct: colors.muted,
+            },
+            Palette::Light => Self {
+                key: hex(0x5C5766),
+                string: colors.success,
+                number: method_patch(palette),
+                punct: colors.muted,
+            },
         }
     }
 }
@@ -156,7 +175,8 @@ pub(crate) const KEYCAP_PADDING_Y: Pixels = px(2.0);
 /// The text size of keycaps and sub-tab row counts.
 pub(crate) const SMALL_MONO_TEXT: Pixels = px(10.5);
 
-/// The keycap fill on the accent: the accent darkened.
+/// The keycap fill on the accent: the accent darkened. The accent fill and the text on it are
+/// the same on both palettes, so the keycap is too.
 pub(crate) fn keycap_on_accent_fill() -> Hsla {
     hex_alpha(0x000000, 0.25)
 }
@@ -261,6 +281,7 @@ pub(crate) const MAIN_WINDOW_SIZE: Size<Pixels> = size(px(1200.0), px(800.0));
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use bolt::Palette;
     use gpui::Rgba;
 
     /// `0xRRGGBB` of an opaque `color`.
@@ -274,6 +295,7 @@ pub(crate) mod tests {
     #[test]
     fn methods_use_the_bolt_semantic_hues() {
         let colors = Colors::dark();
+        let palette = Palette::Dark;
         let pairs = [
             ("GET", 0x7BE0A0),
             ("POST", 0xFFC23D),
@@ -282,26 +304,57 @@ pub(crate) mod tests {
             ("DELETE", 0xFF6B5E),
         ];
         for (verb, rgb) in pairs {
-            assert_eq!(rgb_of(method_color(verb, &colors)), rgb, "{verb}");
+            assert_eq!(rgb_of(method_color(verb, palette)), rgb, "{verb}");
         }
-        assert_eq!(method_color("GET", &colors), colors.success);
-        assert_eq!(method_color("DELETE", &colors), colors.danger);
+        assert_eq!(method_color("GET", palette), colors.success);
+        assert_eq!(method_color("DELETE", palette), colors.danger);
     }
 
     #[test]
     fn other_verbs_are_cyan() {
-        let colors = Colors::dark();
         for verb in ["HEAD", "OPTIONS", "PURGE"] {
-            assert_eq!(rgb_of(method_color(verb, &colors)), 0x6FD3D8, "{verb}");
+            assert_eq!(
+                rgb_of(method_color(verb, Palette::Dark)),
+                0x6FD3D8,
+                "{verb}"
+            );
         }
     }
 
     #[test]
     fn syntax_colors_match_the_design_system() {
-        let syntax = SyntaxColors::dark();
+        let syntax = SyntaxColors::for_palette(Palette::Dark);
         assert_eq!(rgb_of(syntax.key), 0xA9A4B2);
         assert_eq!(rgb_of(syntax.string), 0x7BE0A0);
         assert_eq!(rgb_of(syntax.number), 0xB79CFF);
         assert_eq!(rgb_of(syntax.punct), 0x8E8996);
+    }
+
+    #[test]
+    fn light_methods_use_the_light_semantics_and_deeper_product_hues() {
+        let colors = Colors::light();
+        let palette = Palette::Light;
+        assert_eq!(method_color("GET", palette), colors.success);
+        assert_eq!(method_color("POST", palette), colors.warning);
+        assert_eq!(method_color("PUT", palette), colors.info);
+        assert_eq!(method_color("DELETE", palette), colors.danger);
+        assert_eq!(rgb_of(method_color("PATCH", palette)), 0x7445D6);
+        assert_eq!(rgb_of(method_color("OPTIONS", palette)), 0x0E7C83);
+        for verb in ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"] {
+            assert_ne!(
+                method_color(verb, Palette::Dark),
+                method_color(verb, palette),
+                "{verb}"
+            );
+        }
+    }
+
+    #[test]
+    fn light_syntax_colors_read_on_the_light_panel() {
+        let syntax = SyntaxColors::for_palette(Palette::Light);
+        assert_eq!(rgb_of(syntax.key), 0x5C5766);
+        assert_eq!(rgb_of(syntax.string), 0x1C7A45);
+        assert_eq!(rgb_of(syntax.number), 0x7445D6);
+        assert_eq!(rgb_of(syntax.punct), 0x6B6673);
     }
 }

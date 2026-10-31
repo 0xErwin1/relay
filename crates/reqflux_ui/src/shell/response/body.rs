@@ -52,7 +52,7 @@ pub(super) fn render(received: &Received, view: BodyView, cx: &App) -> AnyElemen
 /// Line `n`, element id `response-body-line-<n>`, colored as JSON when `json`.
 fn line_row(n: usize, line: &str, json: bool, cx: &App) -> AnyElement {
     let colors = bolt::colors(cx);
-    let syntax = SyntaxColors::dark();
+    let syntax = SyntaxColors::for_palette(bolt::palette(cx));
     let text = div()
         .flex()
         .whitespace_nowrap()

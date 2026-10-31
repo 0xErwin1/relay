@@ -6,7 +6,7 @@ use super::{COMMANDS, PALETTE_KEYS, key_label};
 use crate::shell::send::SHELL_CONTEXT;
 
 /// The palette commands of command-palette S4, by stable id.
-const EXPECTED: [&str; 17] = [
+const EXPECTED: [&str; 18] = [
     "send-request",
     "cancel-send",
     "save-request",
@@ -24,6 +24,7 @@ const EXPECTED: [&str; 17] = [
     "show-collections",
     "show-history",
     "show-variables",
+    "toggle-theme",
 ];
 
 #[test]
@@ -81,6 +82,7 @@ fn the_spec_keys_are_the_defaults() {
     assert_eq!(key("send-request"), Some("ctrl-enter"));
     assert_eq!(key("cancel-send"), Some("escape"));
     assert_eq!(key("save-request"), Some("ctrl-s"));
+    assert_eq!(key("toggle-theme"), Some("ctrl-shift-t"));
 }
 
 #[test]

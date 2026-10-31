@@ -132,7 +132,7 @@ pub(super) fn tree_row(
                     .font_family(family::MONO)
                     .text_size(tokens::METHOD_LABEL_SIZE)
                     .font_weight(FontWeight::BOLD)
-                    .text_color(method_color(method, colors))
+                    .text_color(method_color(method, bolt::palette(cx)))
                     .child(method.clone()),
             )
             .child(name),

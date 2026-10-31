@@ -33,6 +33,7 @@ mod sidebar_variables;
 mod status_bar;
 mod tabs;
 mod text;
+mod theme;
 mod title_bar;
 mod tree_drag;
 mod tree_model;
@@ -484,6 +485,8 @@ mod settings_edit_tests;
 mod sidebar_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod theme_tests;
 #[cfg(test)]
 mod tree_edit_tests;
 #[cfg(test)]

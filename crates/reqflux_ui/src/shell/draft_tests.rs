@@ -61,7 +61,7 @@ pub(crate) fn render<'a>(
         Ok(state) => state,
         Err(error) => panic!("open state: {error}"),
     };
-    cx.update(|cx| bolt::install(crate::brand::reqflux(), cx));
+    cx.update(|cx| bolt::install(crate::brand::reqflux(), bolt::PaletteMode::Dark, cx));
     cx.update(super::bind_keys);
     let workspace = OpenedWorkspace::open(Some(dir.path().to_path_buf()));
     let (shell, cx) = cx.add_window_view(|_, cx| Shell::with_state(workspace, Some(state), cx));

@@ -125,7 +125,7 @@ fn method(
                 .font_family(family::MONO)
                 .text_size(tokens::REQUEST_LINE_TEXT)
                 .font_weight(FontWeight::BOLD)
-                .text_color(method_color(&verb, colors))
+                .text_color(method_color(&verb, bolt::palette(cx)))
                 .child(verb),
         )
         .child(
