@@ -337,3 +337,22 @@ fn the_request_keys_keep_working_and_the_url_field_keeps_its_keys(cx: &mut TestA
         "Ctrl+S saves the draft"
     );
 }
+
+#[gpui::test]
+fn the_palette_key_works_as_soon_as_the_window_opens(cx: &mut TestAppContext) {
+    let dir = demo_workspace();
+    let (_state_dir, state_path) = state_file();
+    let (shell, cx) = render(cx, &dir, &state_path);
+    // The app gives the window's first focus to the shell when it opens; nothing else is
+    // clicked first.
+    cx.update(|window, cx| {
+        let focus = shell.read(cx).initial_focus();
+        focus.focus(window, cx);
+    });
+    cx.simulate_keystrokes("ctrl-k");
+    cx.run_until_parked();
+    assert!(
+        is_open(cx, &shell),
+        "Ctrl+K opens the palette without a click"
+    );
+}

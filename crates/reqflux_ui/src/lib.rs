@@ -54,6 +54,8 @@ pub fn open_main_window(workspace: Option<PathBuf>, cx: &mut App) -> anyhow::Res
     cx.open_window(options, |window, cx| {
         ui_automation::install(window, cx);
         let shell = cx.new(|cx| Shell::with_state(workspace, state, cx));
+        let focus = shell.read(cx).initial_focus();
+        focus.focus(window, cx);
         cx.new(|cx| Root::new(shell, window, cx))
     })?;
 

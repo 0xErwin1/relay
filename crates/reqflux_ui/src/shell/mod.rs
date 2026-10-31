@@ -239,6 +239,12 @@ impl Shell {
         shell
     }
 
+    /// The focus the window gives the shell when it opens, so its keys (Ctrl+K, Ctrl+N, ...)
+    /// work at once; without it nothing is focused until the first click.
+    pub(crate) fn initial_focus(&self) -> FocusHandle {
+        self.focus.clone()
+    }
+
     /// Opens the request `id` in a tab, inspecting it when it was not open.
     fn open_document(&mut self, id: &str, cx: &mut Context<Self>) {
         self.close_orphan();
