@@ -110,9 +110,9 @@ fn check_format(path: &Path, text: &str) -> Result<(), StoreError> {
 }
 
 fn parse<T: DeserializeOwned>(path: &Path, text: &str) -> Result<T, StoreError> {
-    toml::from_str(text).map_err(|source| StoreError::Parse {
+    toml::from_str(text).map_err(|error| StoreError::Parse {
         path: path.to_owned(),
-        source,
+        location: crate::error::toml_error_location(text, &error),
     })
 }
 

@@ -1,10 +1,14 @@
 //! `request_get` and `request_update` (S3), with the window's auth masking (S7): a basic
-//! password, a bearer token, an API key value and every field of another auth type are
-//! masked on the way out, and a field that still holds the mask on the way in keeps the
-//! stored value.
+//! password, a bearer token, an API key value, every field of another auth type and the
+//! value of an `Authorization`, `Proxy-Authorization` or `Cookie` header are masked on the
+//! way out, and a field that still holds the mask on the way in keeps the stored value.
+//!
+//! `request_get` returns the `base_hash` of the file it read and `request_update` saves
+//! hash-checked against it, so an edit made after the agent's read is a conflict whatever
+//! other tools reloaded in between.
 
-use reqflux_core::model::{Auth, Id, Item, Request, RequestNode, Workspace};
-use reqflux_engine::MASK;
+use reqflux_core::model::{Auth, Id, Item, KeyValue, Request, RequestNode, Workspace};
+use reqflux_engine::{ContentHash, MASK, is_credential_header, toml_error_location};
 use serde_json::json;
 
 use super::{EngineState, ItemArgs, UpdateArgs, encode, id_result, parse_id};
@@ -51,8 +55,9 @@ fn unknown(id: Id) -> ToolError {
     ToolError::Engine(format!("no request has the id {id}"))
 }
 
-/// `request_get`: the request document as TOML with its auth secrets masked, plus its
-/// parent's id and slug path (S3, S7).
+/// `request_get`: the request document as TOML with its auth secrets and credential header
+/// values masked, plus its parent's id and slug path and the `base_hash` `request_update`
+/// takes (S3, S7).
 ///
 /// # Errors
 ///
@@ -63,36 +68,46 @@ pub fn request_get(state: &mut EngineState, args: ItemArgs) -> Result<String, To
     let found = find_request(engine.workspace(), id).ok_or_else(|| unknown(id))?;
     let mut request = found.request.request.clone();
     request.auth = masked(&request.auth);
+    request.headers = masked_headers(&request.headers);
     let document = toml::to_string(&request)
         .map_err(|error| ToolError::Engine(format!("could not encode the request: {error}")))?;
     let parent_path: Vec<&str> = found.parents.iter().map(|(_, slug)| *slug).collect();
     let parent_id = found.parents.last().map(|(id, _)| id.to_string());
+    let base_hash = engine
+        .request_base_hash(&id.to_string())
+        .map_err(|error| ToolError::Engine(error.to_string()))?
+        .map(|hash| hash.to_string());
     encode(&json!({
         "id": id.to_string(),
         "name": request.name,
         "parent_id": parent_id,
         "parent_path": parent_path.join("/"),
         "document": document,
+        "base_hash": base_hash,
     }))
 }
 
-/// `request_update`: replaces the request `id` with `document`, hash-checked against the
-/// file as the server last loaded it, so an edit made since is a conflict and nothing is
-/// written (S3). A masked auth secret keeps the stored value (S7).
+/// `request_update`: replaces the request `id` with `document`, hash-checked against
+/// `base_hash`, the hash of the file `request_get` read, so an edit made since that read is
+/// a conflict and nothing is written (S3). A masked auth secret or credential header keeps
+/// the stored value (S7).
 ///
 /// # Errors
 ///
-/// A bad or unknown id, a document that does not parse or carries another id, a mask
-/// with no stored value to keep, or a conflict.
+/// A bad or unknown id, a bad `base_hash`, a document that does not parse or carries
+/// another id, a mask with no stored value to keep, or a conflict.
 pub fn request_update(state: &mut EngineState, args: UpdateArgs) -> Result<String, ToolError> {
     let id = parse_id(&args.id)?;
-    // No reload: the hash check compares against the file as last read, so a change made
-    // since then is a conflict, never overwritten.
+    let base: ContentHash = args.base_hash.parse().map_err(|error| {
+        ToolError::Invalid(format!(
+            "invalid base_hash: {error}; pass the one request_get returned"
+        ))
+    })?;
     let engine = state.engine()?;
     let mut request: Request = toml::from_str(&args.document).map_err(|error| {
         ToolError::Invalid(format!(
             "the document is not a request: {}",
-            error.message()
+            toml_error_location(&args.document, &error)
         ))
     })?;
     if request.id != id {
@@ -101,20 +116,67 @@ pub fn request_update(state: &mut EngineState, args: UpdateArgs) -> Result<Strin
             request.id
         )));
     }
+    // The stored values a mask restores come from the workspace as last loaded. When the
+    // file changed since the agent's read, the save below is a conflict and nothing restored
+    // is written.
     let stored = find_request(engine.workspace(), id).ok_or_else(|| unknown(id))?;
     request.auth = restored(request.auth, &stored.request.request.auth)?;
+    request.headers = restored_headers(request.headers, &stored.request.request.headers)?;
 
-    let selector = id.to_string();
-    let base = engine
-        .request_base_hash(&selector)
-        .map_err(|error| ToolError::Engine(error.to_string()))?;
     engine
-        .save_request(&selector, &request, base)
+        .save_request(&id.to_string(), &request, Some(base))
         .map_err(|error| ToolError::Engine(error.to_string()))?;
     engine
         .reload()
         .map_err(|error| ToolError::Engine(format!("the workspace does not load: {error}")))?;
     id_result(id)
+}
+
+/// `headers` with the value of each credential header masked, unless it is empty.
+pub(super) fn masked_headers(headers: &[KeyValue]) -> Vec<KeyValue> {
+    headers
+        .iter()
+        .map(|header| {
+            let mut header = header.clone();
+            if is_credential_header(&header.key) {
+                header.value = mask(&header.value);
+            }
+            header
+        })
+        .collect()
+}
+
+/// `incoming` with each credential header that holds the mask set back to the stored value
+/// of the header with the same name and the same position among headers of that name.
+fn restored_headers(
+    incoming: Vec<KeyValue>,
+    stored: &[KeyValue],
+) -> Result<Vec<KeyValue>, ToolError> {
+    let mut seen: Vec<String> = Vec::new();
+    incoming
+        .into_iter()
+        .map(|mut header| {
+            let name = header.key.to_ascii_lowercase();
+            let position = seen.iter().filter(|known| **known == name).count();
+            seen.push(name);
+            if header.value != MASK || !is_credential_header(&header.key) {
+                return Ok(header);
+            }
+            let original = stored
+                .iter()
+                .filter(|candidate| candidate.key.eq_ignore_ascii_case(&header.key))
+                .nth(position)
+                .ok_or_else(|| {
+                    ToolError::Invalid(format!(
+                        "the header {} holds the mask but the stored request has no such \
+                         header to keep",
+                        header.key
+                    ))
+                })?;
+            header.value.clone_from(&original.value);
+            Ok(header)
+        })
+        .collect()
 }
 
 /// `value` masked unless it is empty, so an unset secret stays visibly unset.

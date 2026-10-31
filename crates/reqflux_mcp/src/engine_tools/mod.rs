@@ -5,6 +5,10 @@
 //! result, so they can be tested on temp workspaces without rmcp. They block (the engine
 //! owns its own Tokio runtime and its sends block on it), so the server runs them on the
 //! blocking pool. The engine state is separate from the `ui_*` bridge session.
+//!
+//! One lock guards the state, and `request_execute` holds it for the whole send, so other
+//! engine tools wait until the response (or the request timeout) arrives. A tool that
+//! panicked does not disable the others: the lock is recovered.
 
 mod environments;
 mod execute;
@@ -217,8 +221,11 @@ pub struct UpdateArgs {
     /// The request id; the document must carry the same id.
     pub id: String,
     /// The whole request document as TOML, as `request_get` returns it. A masked auth
-    /// secret keeps the stored value.
+    /// secret or credential header value keeps the stored value.
     pub document: String,
+    /// The `base_hash` `request_get` returned with the document: the save is refused as a
+    /// conflict when the file changed since that read.
+    pub base_hash: String,
 }
 
 /// Arguments of `request_execute`.

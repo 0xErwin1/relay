@@ -2,7 +2,7 @@
 //! its tool on the blocking pool: the engine blocks on its own runtime, and dropping or
 //! blocking on that runtime inside an async handler would panic.
 
-use std::sync::Arc;
+use std::sync::{Arc, PoisonError};
 
 use rmcp::{
     handler::server::wrapper::Parameters,
@@ -27,9 +27,10 @@ impl ReqFluxMcp {
     {
         let engine = Arc::clone(&self.engine);
         let joined = tokio::task::spawn_blocking(move || {
-            let mut state = engine
-                .lock()
-                .map_err(|_| ToolError::Engine("an earlier engine tool panicked".to_owned()))?;
+            // A tool that panicked leaves nothing half-made to guard: the engine replaces its
+            // loaded workspace whole and every read reloads it, so the lock is taken back
+            // instead of disabling the engine tools for the session.
+            let mut state = engine.lock().unwrap_or_else(PoisonError::into_inner);
             tool(&mut state)
         })
         .await;
@@ -162,7 +163,7 @@ impl ReqFluxMcp {
 
     #[tool(
         name = "request_get",
-        description = "Return a request document as TOML, auth secrets masked, with its parent's id and slug path"
+        description = "Return a request document as TOML, auth secrets and credential header values masked, with its parent's id and slug path and the base_hash request_update needs"
     )]
     async fn request_get(
         &self,
@@ -174,7 +175,7 @@ impl ReqFluxMcp {
 
     #[tool(
         name = "request_update",
-        description = "Replace a request with a TOML document carrying the same id; a masked auth secret keeps the stored value, and a file changed since the last read is a conflict"
+        description = "Replace a request with a TOML document carrying the same id, passing the base_hash request_get returned; a masked auth secret or credential header keeps the stored value, and a file changed since that request_get is a conflict"
     )]
     async fn request_update(
         &self,
@@ -210,7 +211,7 @@ impl ReqFluxMcp {
 
     #[tool(
         name = "history_get",
-        description = "Return one recorded send of the open workspace with its request and response"
+        description = "Return one recorded send of the open workspace with its request and response, every secret of the workspace masked"
     )]
     async fn history_get(
         &self,

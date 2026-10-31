@@ -243,8 +243,11 @@ Engine tools, on the open workspace (the files, through the same engine as the w
   environment_list, environment_create, environment_rename, environment_delete
   variables_get, variable_set, variable_delete
 
-Secret values never appear in tool output: secret variables show set or not set, and basic
-passwords, bearer tokens and API key values show as a mask.
+Secret values never appear in tool output: secret variables show set or not set; basic
+passwords, bearer tokens, API key values and Authorization, Proxy-Authorization and Cookie
+header values show as a mask; history is masked with every secret of the workspace.
+request_update takes the base_hash request_get returned, so a file changed since that read is
+a conflict, never overwritten.
 
 UI tools, driving a running ReqFlux window through its gpui-mcp bridge:
   ui_list_targets, ui_select_target, ui_ping

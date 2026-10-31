@@ -393,7 +393,9 @@ fn request_update_with_the_mask_keeps_the_stored_secret() {
     let dir = TempDir::new().unwrap();
     let (mut state, root) = with_workspace(&dir);
     let id = bearer_request(&mut state, &root, "tok-keep-456");
-    let document = get(&mut state, &id)["document"]
+    let got = get(&mut state, &id);
+    let base_hash = got["base_hash"].as_str().unwrap().to_owned();
+    let document = got["document"]
         .as_str()
         .unwrap()
         .replace("http://x/s", "http://x/changed");
@@ -403,6 +405,7 @@ fn request_update_with_the_mask_keeps_the_stored_secret() {
         UpdateArgs {
             id: id.clone(),
             document,
+            base_hash,
         },
     ));
     assert_eq!(id_of(&updated), id);
@@ -418,7 +421,9 @@ fn request_update_after_a_change_on_disk_is_a_conflict_and_writes_nothing() {
     let (mut state, root) = with_workspace(&dir);
     let api = collection(&mut state, "Api");
     let id = request(&mut state, &api, "One", "http://x/1");
-    let document = get(&mut state, &id)["document"]
+    let got = get(&mut state, &id);
+    let base_hash = got["base_hash"].as_str().unwrap().to_owned();
+    let document = got["document"]
         .as_str()
         .unwrap()
         .replace("http://x/1", "http://x/mine");
@@ -433,6 +438,7 @@ fn request_update_after_a_change_on_disk_is_a_conflict_and_writes_nothing() {
         UpdateArgs {
             id: id.clone(),
             document,
+            base_hash,
         },
     ));
     assert!(message.contains("changed on disk"), "{message}");
@@ -448,16 +454,16 @@ fn request_update_refuses_another_id_and_a_bad_document() {
     let file = request_file(&root, &id);
     let before = std::fs::read_to_string(&file).unwrap();
     let other_id = reqflux_core::model::Id::new().to_string();
-    let document = get(&mut state, &id)["document"]
-        .as_str()
-        .unwrap()
-        .replace(&id, &other_id);
+    let got = get(&mut state, &id);
+    let base_hash = got["base_hash"].as_str().unwrap().to_owned();
+    let document = got["document"].as_str().unwrap().replace(&id, &other_id);
 
     let message = err(engine_tools::request_update(
         &mut state,
         UpdateArgs {
             id: id.clone(),
             document,
+            base_hash: base_hash.clone(),
         },
     ));
     assert!(message.contains(&id), "{message}");
@@ -466,6 +472,7 @@ fn request_update_refuses_another_id_and_a_bad_document() {
         UpdateArgs {
             id: id.clone(),
             document: "not = [toml".to_owned(),
+            base_hash,
         },
     ));
     assert_eq!(std::fs::read_to_string(&file).unwrap(), before);

@@ -259,6 +259,21 @@ impl Engine {
         &self.secrets
     }
 
+    /// What masks every secret of the workspace in any text: the values of the secret
+    /// variables of the globals, every collection and every environment (read from the
+    /// secret store when the files hold none) and the literal auth credentials of every
+    /// collection, folder and request. A front end masks text recorded earlier, such as a
+    /// history entry's response, with it.
+    ///
+    /// The second value says why some secret variables could not be read from the store;
+    /// the masker then lacks them, so text that may hold them must not be shown.
+    #[must_use]
+    pub fn workspace_masker(&self) -> (Masker, Option<String>) {
+        let (secrets, problem) =
+            crate::prepare::workspace_secrets(self.secrets.as_ref(), self.workspace());
+        (secrets.masker(), problem)
+    }
+
     /// Re-reads the workspace from disk into this engine, keeping its runtime, its client and
     /// any request already in flight on that runtime. A save uses this instead of opening a
     /// new engine, which would drop the runtime and with it the send it owns.

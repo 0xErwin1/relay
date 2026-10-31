@@ -19,13 +19,14 @@ pub enum StoreError {
         /// The underlying error.
         source: io::Error,
     },
-    /// A TOML file does not parse as its entity.
-    #[error("{}: {source}", path.display())]
+    /// A TOML file does not parse as its entity. The message never quotes the file: the
+    /// parser's own text shows the offending line, which can hold a literal secret.
+    #[error("{}: {location}", path.display())]
     Parse {
         /// The file.
         path: PathBuf,
-        /// The parser error, with line and column.
-        source: toml::de::Error,
+        /// Where and why, from [`toml_error_location`].
+        location: String,
     },
     /// An entity does not serialize to TOML.
     #[error("{}: {source}", path.display())]
@@ -135,6 +136,47 @@ pub enum StoreError {
         /// The refused operation, in past participle: `"moved"`.
         operation: &'static str,
     },
+}
+
+/// `error`, found parsing `text`, as `line <l>, column <c>: <message>`, without the source
+/// line the parser's `Display` quotes.
+#[must_use]
+pub fn toml_error_location(text: &str, error: &toml::de::Error) -> String {
+    let message = without_quoted_values(error.message());
+    let Some(before) = error.span().and_then(|span| text.get(..span.start)) else {
+        return message;
+    };
+    let line = before.matches('\n').count() + 1;
+    let column = before
+        .rsplit('\n')
+        .next()
+        .map_or(0, |last| last.chars().count())
+        + 1;
+    format!("line {line}, column {column}: {message}")
+}
+
+/// `message` with every double-quoted run replaced by `"…"`: serde quotes the offending value
+/// (`invalid type: string "…", expected u64`), and that value can be a secret.
+fn without_quoted_values(message: &str) -> String {
+    let mut out = String::with_capacity(message.len());
+    let mut quoted = false;
+    for character in message.chars() {
+        if character == '"' {
+            if quoted {
+                out.push_str("…\"");
+            }
+            quoted = !quoted;
+            if quoted {
+                out.push('"');
+            }
+        } else if !quoted {
+            out.push(character);
+        }
+    }
+    if quoted {
+        out.push('…');
+    }
+    out
 }
 
 /// A non-fatal problem found while loading.

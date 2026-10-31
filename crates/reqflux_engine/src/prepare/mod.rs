@@ -7,6 +7,8 @@ mod resolver;
 mod stored;
 mod url;
 
+pub(crate) use stored::workspace_secrets;
+
 use std::path::Path;
 use std::time::Duration;
 

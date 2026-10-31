@@ -81,11 +81,14 @@ pub use reqflux_http::{HttpError, PreparedBody, PreparedRequest, Response};
 pub use reqflux_script::{
     ConsoleEntry, ConsoleLevel, ScriptOutcome, TestResult, VariableScope, VariableWrite,
 };
+/// The file hash a hash-checked save compares against, and the parse error text that never
+/// quotes the source, re-exported so front ends depend on the engine only.
+pub use reqflux_store::{ContentHash, toml_error_location};
 pub use secrets::{
     KeyringSecretStore, MemorySecretStore, SECRET_SERVICE, SecretError, SecretKey, SecretScope,
     SecretStore,
 };
-pub use sent::{MASK, Masker, SentBody, SentRequest};
+pub use sent::{MASK, Masker, SentBody, SentRequest, is_credential_header};
 /// The token type of [`Execution::cancel`], re-exported so front ends can hold it.
 pub use tokio_util::sync::CancellationToken;
 pub use variables::VariableEdit;

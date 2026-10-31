@@ -2,9 +2,10 @@
 
 use std::collections::HashMap;
 
-use reqflux_core::model::{CollectionNode, EnvironmentNode, Variable, Workspace};
+use reqflux_core::model::{Auth, CollectionNode, EnvironmentNode, Item, Variable, Workspace};
 
 use crate::secrets::{SecretError, SecretKey, SecretScope, SecretStore};
+use crate::sent::Secrets;
 
 /// The stored values of the secret variables that have no value in the workspace files, read
 /// once per preparation, and why some could not be read.
@@ -83,4 +84,92 @@ impl StoredSecrets {
 /// Whether `variable` is a secret whose value must come from the store.
 fn is_valueless_secret(variable: &Variable) -> bool {
     variable.secret && variable.value.is_none()
+}
+
+/// Every secret value of `workspace`: each secret variable of the globals, every collection
+/// and every environment, from the file or from `store`, and every literal basic password,
+/// bearer token, API key value and field of another auth type on a collection, folder or
+/// request. Also why some secret variables could not be read from `store`, if any: the
+/// returned values then lack those.
+pub(crate) fn workspace_secrets(
+    store: &dyn SecretStore,
+    workspace: &Workspace,
+) -> (Secrets, Option<String>) {
+    let workspace_id = workspace.manifest.id;
+    let scopes = std::iter::once((SecretScope::Global, workspace.manifest.globals.as_slice()))
+        .chain(workspace.collections.iter().map(|collection| {
+            (
+                SecretScope::Collection(collection.collection.id),
+                collection.collection.variables.as_slice(),
+            )
+        }))
+        .chain(workspace.environments.iter().map(|environment| {
+            (
+                SecretScope::Environment(environment.environment.id),
+                environment.environment.variables.as_slice(),
+            )
+        }));
+    let mut secrets = Secrets::default();
+    let mut problem = None;
+    let mut readable = true;
+    for (scope, variables) in scopes {
+        for variable in variables.iter().filter(|variable| variable.secret) {
+            if let Some(value) = &variable.value {
+                secrets.add(value.as_str());
+                continue;
+            }
+            if !readable {
+                continue;
+            }
+            let key = SecretKey {
+                workspace_id,
+                scope,
+                key: variable.key.clone(),
+            };
+            match store.get(&key) {
+                Ok(Some(value)) => secrets.add(value),
+                Ok(None) => {}
+                Err(error) => {
+                    readable = !matches!(error, SecretError::Unavailable(_));
+                    problem.get_or_insert_with(|| {
+                        format!("secret variables were not read from the keyring: {error}")
+                    });
+                }
+            }
+        }
+    }
+    for collection in &workspace.collections {
+        add_auth(&collection.collection.auth, &mut secrets);
+        add_items(&collection.items, &mut secrets);
+    }
+    (secrets, problem)
+}
+
+fn add_items(items: &[Item], secrets: &mut Secrets) {
+    for item in items {
+        match item {
+            Item::Folder(folder) => {
+                add_auth(&folder.folder.auth, secrets);
+                add_items(&folder.items, secrets);
+            }
+            Item::Request(request) => add_auth(&request.request.auth, secrets),
+        }
+    }
+}
+
+/// Adds the credential fields of `auth`, as written.
+fn add_auth(auth: &Auth, secrets: &mut Secrets) {
+    match auth {
+        Auth::Inherit | Auth::None => {}
+        Auth::Basic { password, .. } => secrets.add(password.as_str()),
+        Auth::Bearer { token } => secrets.add(token.as_str()),
+        Auth::ApiKey { value, .. } => secrets.add(value.as_str()),
+        Auth::Other { fields, .. } => {
+            for value in fields.values() {
+                if let toml::Value::String(text) = value {
+                    secrets.add(text.as_str());
+                }
+            }
+        }
+    }
 }

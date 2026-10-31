@@ -74,3 +74,47 @@ fn format_one_loads() {
 
     assert_eq!(load(dir.path()).workspace.manifest.format, 1);
 }
+
+#[test]
+fn a_parse_error_names_the_line_and_column_and_never_quotes_the_file() {
+    let dir = workspace();
+    write(
+        dir.path(),
+        "reqflux.toml",
+        &format!("{}secret = \"pw-SECRET\\q9\"\n", manifest(1)),
+    );
+
+    let message = load_err(dir.path()).to_string();
+    let path = dir.path().join("reqflux.toml");
+    let line = manifest(1).lines().count() + 1;
+    assert!(
+        message.starts_with(&format!("{}: line {line}, column ", path.display())),
+        "{message}"
+    );
+    assert!(!message.contains("pw-SECRET"), "{message}");
+    assert!(!message.contains('|'), "{message}");
+}
+
+#[test]
+fn a_content_hash_parses_back_from_its_text() {
+    let hash = reqflux_store::ContentHash::of(b"x");
+    assert_eq!(hash.to_string().parse(), Ok(hash));
+    assert_eq!(hash.to_string().to_uppercase().parse(), Ok(hash));
+    let signed = format!("+{}", hash.to_string().chars().skip(1).collect::<String>());
+    for bad in ["", "zz", signed.as_str()] {
+        assert!(bad.parse::<reqflux_store::ContentHash>().is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn a_parse_error_never_quotes_a_value_from_the_document() {
+    // A string where a number belongs: serde's message quotes the string itself.
+    let text = "timeout_ms = \"val-SECRET-81\"\n";
+    let error = match toml::from_str::<reqflux_core::model::Settings>(text) {
+        Ok(_) => panic!("a string timeout must not parse"),
+        Err(error) => error,
+    };
+    let shown = reqflux_store::toml_error_location(text, &error);
+    assert!(!shown.contains("val-SECRET-81"), "{shown}");
+    assert!(shown.starts_with("line 1, column"), "{shown}");
+}

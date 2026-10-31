@@ -17,8 +17,8 @@ mod save;
 mod tree_ops;
 mod variables;
 
-pub use error::{StoreError, Warning, WarningKind};
-pub use hash::ContentHash;
+pub use error::{StoreError, Warning, WarningKind, toml_error_location};
+pub use hash::{ContentHash, ParseHashError};
 pub use layout::{
     Parent, RESERVED_REQUEST_SLUGS, ScriptFiles, ScriptOwner, checked_collection_file,
     checked_environment_file, checked_folder_file, checked_request_file, is_reserved_request_slug,

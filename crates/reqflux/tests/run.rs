@@ -609,3 +609,27 @@ fn run_does_not_persist_script_writes_or_touch_the_app_state() {
     };
     assert_eq!(entries, 0, "reqflux run created app state");
 }
+
+#[test]
+fn a_workspace_that_does_not_parse_never_echoes_its_source() {
+    let dir = workspace(
+        "",
+        &[(
+            "one",
+            format!(
+                "{}[auth]\ntype = \"bearer\"\ntoken = \"cli-SECRET\\q9\"\n",
+                get("http://x/")
+            ),
+        )],
+    );
+    let root = dir.path().to_string_lossy().into_owned();
+    for output in [
+        run(&dir, &["api/one"]),
+        reqflux(&["mcp", "--workspace", root.as_str()]),
+    ] {
+        let stderr = text(&output.stderr);
+        assert!(!stderr.contains("cli-SECRET"), "{stderr}");
+        assert!(stderr.contains("one.req.toml: line 7, column "), "{stderr}");
+        assert_eq!(output.status.code(), Some(2), "{stderr}");
+    }
+}

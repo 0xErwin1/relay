@@ -613,20 +613,31 @@ workspace first, so it sees what the window or `git` wrote. The tools: `workspac
 `workspace_create`, `workspace_info` (name, id, path, warnings and the flat tree);
 `collection_create`, `folder_create`, `request_create`, `item_rename`, `item_duplicate`,
 `item_move`, `item_delete` (the tree operations, by id); `request_get` and `request_update`
-(the request document as TOML, saved hash-checked against the file as the last read saw it);
+(the request document as TOML; `request_get` returns the `base_hash` of the file it read and
+`request_update` requires it and saves hash-checked against it, so an edit made after the
+agent's read is a conflict whatever other tools reloaded in between);
 `request_execute` (status, headers, body text cut at 256 KiB, time, size, unresolved variables
 and test results; it records no history and keeps no script writes); `history_list` and
 `history_get` (the window's history of this workspace, read-only); `environment_list`,
 `environment_create`, `environment_rename`, `environment_delete`; `variables_get`,
 `variable_set` and `variable_delete` by scope `global`, `collection:<id>` or `environment:<id>`.
-The handlers run on the blocking pool; the engine, which owns a Tokio runtime, is dropped on
-its own thread, never inside the async server.
+The handlers run on the blocking pool under one lock; `request_execute` holds it for the whole
+send, and a tool that panicked does not poison it for the session. The engine, which owns a
+Tokio runtime, is dropped on its own thread, never inside the async server.
 
 Secrets never leave the engine. A secret variable shows `{"set": true|false}`, never a value.
-Basic passwords, bearer tokens, API key values and every field of an unsupported auth type show
-as `••••••••` in `request_get`, `workspace_info` and history documents; a `request_update` that
-sends the mask back for such a field keeps the stored value. An executed response's headers,
-body and error text go through the send's masker.
+Basic passwords, bearer tokens, API key values, every field of an unsupported auth type and
+the values of `Authorization`, `Proxy-Authorization` and `Cookie` headers show as `••••••••`
+in `request_get` and history documents; a `request_update` that sends the mask back for such a
+field or header keeps the stored value, and never restores it into another auth type. An
+executed response's headers, body and error text go through the send's masker. History output
+(the recorded URL, headers, bodies and error text) is masked again with every secret of the
+workspace now (`Engine::workspace_masker`: the secret variables of the globals, every
+collection and every environment, and the literal auth credentials), credential header values
+(`Set-Cookie` included) whole; when the keyring cannot be read, `history_get` leaves out the
+response body and header values and says why. A load or parse error names the file, line,
+column and the parser's message, never the source line, which can hold a literal secret; this
+holds for `reqflux run` and the window too.
 
 For the `ui_*` tools: `reqflux_mcp` reads the bridge endpoint descriptors under the runtime directory
 and speaks the framed wire protocol to one window (`reqflux_mcp::bridge`), and serves thirteen
